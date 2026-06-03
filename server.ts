@@ -159,6 +159,37 @@ async function initDb(): Promise<DatabaseWrapper> {
       createdAt TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS documents (
+      id TEXT PRIMARY KEY,
+      projectId TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT,
+      authorId TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY (projectId) REFERENCES projects(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS milestones (
+      id TEXT PRIMARY KEY,
+      projectId TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      startDate TEXT,
+      endDate TEXT,
+      status TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      FOREIGN KEY (projectId) REFERENCES projects(id) ON DELETE CASCADE
+    );
+
+    -- Ignore duplicate column errors for sqlite
+    try {
+      await db.exec("ALTER TABLE tasks ADD COLUMN milestoneId TEXT;");
+    } catch(e) {
+      // Column might already exist
+    }
+
+
     CREATE TABLE IF NOT EXISTS team_members (
       id TEXT PRIMARY KEY,
       teamId TEXT NOT NULL,
@@ -1040,7 +1071,100 @@ app.delete("/api/teams/:id", authenticateToken, async (req: any, res: any) => {
   res.json({ success: true });
 });
 
+// Documents APIs
+
+app.get("/api/projects/:projectId/documents", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const docs = await db.all("SELECT * FROM documents WHERE projectId = ? ORDER BY updatedAt DESC", req.params.projectId);
+  res.json(docs);
+});
+
+app.post("/api/projects/:projectId/documents", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const { title, content } = req.body;
+  const id = uuidv4();
+  const now = new Date().toISOString();
+  
+  await db.run(
+    "INSERT INTO documents (id, projectId, title, content, authorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [id, req.params.projectId, title, content || "", req.user.id, now, now]
+  );
+  
+  const doc = await db.get("SELECT * FROM documents WHERE id = ?", id);
+  res.json(doc);
+});
+
+app.get("/api/documents/:id", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const doc = await db.get("SELECT * FROM documents WHERE id = ?", req.params.id);
+  if (!doc) return res.sendStatus(404);
+  res.json(doc);
+});
+
+app.put("/api/documents/:id", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const { title, content } = req.body;
+  const now = new Date().toISOString();
+  
+  await db.run(
+    "UPDATE documents SET title = COALESCE(?, title), content = COALESCE(?, content), updatedAt = ? WHERE id = ?",
+    [title, content, now, req.params.id]
+  );
+  
+  const doc = await db.get("SELECT * FROM documents WHERE id = ?", req.params.id);
+  res.json(doc);
+});
+
+app.delete("/api/documents/:id", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  await db.run("DELETE FROM documents WHERE id = ?", req.params.id);
+  res.json({ success: true });
+});
+
+// Milestones APIs
+
+app.get("/api/projects/:projectId/milestones", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const milestones = await db.all("SELECT * FROM milestones WHERE projectId = ? ORDER BY startDate ASC", req.params.projectId);
+  res.json(milestones);
+});
+
+app.post("/api/projects/:projectId/milestones", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const { name, description, startDate, endDate, status } = req.body;
+  const id = uuidv4();
+  const now = new Date().toISOString();
+  
+  await db.run(
+    "INSERT INTO milestones (id, projectId, name, description, startDate, endDate, status, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    [id, req.params.projectId, name, description, startDate, endDate, status || "pending", now]
+  );
+  
+  const milestone = await db.get("SELECT * FROM milestones WHERE id = ?", id);
+  res.json(milestone);
+});
+
+app.put("/api/milestones/:id", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const { name, description, startDate, endDate, status } = req.body;
+  
+  await db.run(
+    "UPDATE milestones SET name = COALESCE(?, name), description = COALESCE(?, description), startDate = COALESCE(?, startDate), endDate = COALESCE(?, endDate), status = COALESCE(?, status) WHERE id = ?",
+    [name, description, startDate, endDate, status, req.params.id]
+  );
+  
+  const milestone = await db.get("SELECT * FROM milestones WHERE id = ?", req.params.id);
+  res.json(milestone);
+});
+
+app.delete("/api/milestones/:id", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  await db.run("DELETE FROM milestones WHERE id = ?", req.params.id);
+  res.json({ success: true });
+});
+
 // Vite middleware for development
+
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

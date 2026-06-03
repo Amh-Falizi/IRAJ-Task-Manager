@@ -32,6 +32,27 @@ export interface Project {
   createdAt: string;
 }
 
+export interface Document {
+  id: string;
+  projectId: string;
+  title: string;
+  content: string;
+  authorId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Milestone {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string;
+  startDate?: string;
+  endDate?: string;
+  status: 'pending' | 'active' | 'completed';
+  createdAt: string;
+}
+
 export interface Team {
   id: string;
   name: string;

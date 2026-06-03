@@ -13,6 +13,8 @@ import CalendarView from './pages/CalendarView';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import UsersAdmin from './pages/UsersAdmin';
+import Documents from './pages/Documents';
+import Planning from './pages/Planning';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token, loading } = useAuth();
@@ -48,6 +50,8 @@ export default function App() {
               <Route path="graph" element={<Graph />} />
               <Route path="calendar" element={<CalendarView />} />
               <Route path="teams" element={<Teams />} />
+              <Route path="documents" element={<Documents />} />
+              <Route path="planning" element={<Planning />} />
               <Route path="profile" element={<Profile />} />
               <Route path="admin/users" element={<UsersAdmin />} />
             </Route>
