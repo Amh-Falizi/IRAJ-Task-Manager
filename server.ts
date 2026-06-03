@@ -182,14 +182,6 @@ async function initDb(): Promise<DatabaseWrapper> {
       FOREIGN KEY (projectId) REFERENCES projects(id) ON DELETE CASCADE
     );
 
-    -- Ignore duplicate column errors for sqlite
-    try {
-      await db.exec("ALTER TABLE tasks ADD COLUMN milestoneId TEXT;");
-    } catch(e) {
-      // Column might already exist
-    }
-
-
     CREATE TABLE IF NOT EXISTS team_members (
       id TEXT PRIMARY KEY,
       teamId TEXT NOT NULL,
@@ -223,6 +215,12 @@ async function initDb(): Promise<DatabaseWrapper> {
       createdAt TEXT NOT NULL
     );
   `);
+
+  try {
+    await db.exec('ALTER TABLE tasks ADD COLUMN milestoneId TEXT;');
+  } catch(err) {
+    // ignore
+  }
 
   try {
     await db.exec('ALTER TABLE tasks ADD COLUMN orderIndex REAL DEFAULT 0;');
