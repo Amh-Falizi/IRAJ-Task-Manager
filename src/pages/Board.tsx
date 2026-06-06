@@ -4,7 +4,7 @@ import { Task, User, Project } from '../types';
 import TaskModal from '../components/TaskModal';
 import WorkloadModal from '../components/WorkloadModal';
 import ProjectActivityModal from '../components/ProjectActivityModal';
-import { Plus, MoreVertical, Calendar, ArrowUpDown, CornerDownRight, Search, Filter, AlertCircle, ChevronUp, Minus, ChevronDown, X, FolderKanban, Activity, CheckCircle2, Workflow, Clock, Pencil, Trash2 } from 'lucide-react';
+import { Plus, MoreVertical, Calendar, ArrowUpDown, CornerDownRight, Search, Filter, AlertCircle, ChevronUp, Minus, ChevronDown, X, FolderKanban, Activity, CheckCircle2, Workflow, Clock, Pencil, Trash2, UserPlus } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
 import { useSearchParams, Link, Navigate } from 'react-router';
@@ -858,11 +858,33 @@ export default function Board() {
                               : 'NO DEADLINE'}
                           </span>
                         </div>
-                        {assignee && (
-                          <div className="flex items-center space-x-2" title={assignee.name}>
-                            <UserAvatar user={assignee} className="w-5 h-5 text-[9px] rounded" showTooltip={false} />
+                        <div className="flex items-center space-x-2 relative group/assignee" title={assignee ? assignee.name : 'Unassigned'}>
+                          <div className="cursor-pointer inline-flex relative">
+                            {assignee ? (
+                              <UserAvatar user={assignee} className="w-5 h-5 text-[9px] rounded" showTooltip={false} />
+                            ) : (
+                              <div className="w-5 h-5 rounded border border-dashed border-border-strong flex items-center justify-center text-muted group-hover:border-blue-500/50 group-hover:text-blue-400 transition-colors bg-surface-dim group-hover:bg-blue-500/10">
+                                <UserPlus size={10} />
+                              </div>
+                            )}
+                            <select 
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              value={task.assigneeId || ""}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                const newAssigneeId = e.target.value || null;
+                                setTasks(tasks.map(t => t.id === task.id ? { ...t, assigneeId: newAssigneeId } : t));
+                                handleUpdateTask(task.id, task, { assigneeId: newAssigneeId });
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <option value="">Unassigned</option>
+                              {users.map(u => (
+                                 <option key={u.id} value={u.id}>{u.name}</option>
+                              ))}
+                            </select>
                           </div>
-                        )}
+                        </div>
                       </div>
                     </div>
                   );
