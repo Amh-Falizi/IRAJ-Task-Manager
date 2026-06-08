@@ -157,6 +157,7 @@ export default function Projects() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          e.preventDefault();
                           setSelectedProject(project);
                           setShowCreateModal(true);
                         }}
@@ -168,6 +169,7 @@ export default function Projects() {
                       <button
                         onClick={async (e) => {
                           e.stopPropagation();
+                          e.preventDefault();
 
                           try {
                             const res = await fetch(`/api/projects/${project.id}`, {

@@ -91,6 +91,7 @@ export default function Teams() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              e.preventDefault();
                               setSelectedTeam(team);
                               setShowCreateModal(true);
                             }}
@@ -102,6 +103,7 @@ export default function Teams() {
                           <button
                             onClick={async (e) => {
                               e.stopPropagation();
+                              e.preventDefault();
 
                               try {
                                 const res = await fetch(`/api/teams/${team.id}`, {

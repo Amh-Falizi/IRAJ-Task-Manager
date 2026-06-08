@@ -780,7 +780,7 @@ export default function Board() {
                           <button 
                             className="text-subtle hover:text-red-400 p-1 rounded hover:bg-red-500/10"
                             title="Delete Task"
-                            onClick={(e) => { e.stopPropagation(); handleDeleteTask(task.id); }}
+                            onClick={(e) => { e.stopPropagation(); e.preventDefault(); handleDeleteTask(task.id); }}
                           >
                             <Trash2 size={14} />
                           </button>

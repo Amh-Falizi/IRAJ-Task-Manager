@@ -151,6 +151,7 @@ export default function CalendarView() {
 
   const handleDrop = async (e: React.DragEvent, date: Date) => {
     e.preventDefault();
+    setDraggingTaskId(null);
     const taskId = e.dataTransfer.getData('taskId');
     if (!taskId) return;
 

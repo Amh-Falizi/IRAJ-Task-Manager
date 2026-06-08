@@ -281,10 +281,10 @@ export default function Planning() {
                     <div className="flex justify-between items-start mb-1">
                       <h4 className="font-medium text-sm text-strong truncate pr-2">{m.name}</h4>
                       <div className="flex space-x-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => openModal(m)} className="p-1 hover:bg-surface rounded text-muted hover:text-blue-400">
+                        <button onClick={(e) => { e.stopPropagation(); e.preventDefault(); openModal(m); }} className="p-1 hover:bg-surface rounded text-muted hover:text-blue-400">
                           <Edit size={12} />
                         </button>
-                        <button onClick={() => handleDelete(m.id)} className="p-1 hover:bg-surface rounded text-muted hover:text-red-400">
+                        <button onClick={(e) => { e.stopPropagation(); e.preventDefault(); handleDelete(m.id); }} className="p-1 hover:bg-surface rounded text-muted hover:text-red-400">
                           <Trash2 size={12} />
                         </button>
                       </div>
