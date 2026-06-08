@@ -1183,11 +1183,19 @@ app.put("/api/teams/:id", authenticateToken, async (req: any, res: any) => {
     return res.status(403).json({ error: "Only admins and the team owner can edit this team." });
   }
 
-  const { name, description } = req.body;
-  await db.run(
-    "UPDATE teams SET name = COALESCE(?, name), description = COALESCE(?, description) WHERE id = ?",
-    [name, description, req.params.id]
-  );
+  const { name = null, description = null, projectId } = req.body;
+  
+  if (projectId !== undefined) {
+    await db.run(
+      "UPDATE teams SET name = COALESCE(?, name), description = COALESCE(?, description), projectId = ? WHERE id = ?",
+      [name, description, projectId, req.params.id]
+    );
+  } else {
+    await db.run(
+      "UPDATE teams SET name = COALESCE(?, name), description = COALESCE(?, description) WHERE id = ?",
+      [name, description, req.params.id]
+    );
+  }
   
   const updatedTeam = await db.get("SELECT * FROM teams WHERE id = ?", req.params.id);
   res.json(updatedTeam);

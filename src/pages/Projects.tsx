@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router';
 import WorkloadModal from '../components/WorkloadModal';
 import ProjectActivityModal from '../components/ProjectActivityModal';
 import ProjectMembersModal from '../components/ProjectMembersModal';
+import ProjectTeamsModal from '../components/ProjectTeamsModal';
 import Markdown from 'react-markdown';
 import { exportToCSV, exportToJSON } from '../lib/export';
 
@@ -20,6 +21,7 @@ export default function Projects() {
   const [isWorkloadModalOpen, setIsWorkloadModalOpen] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
+  const [isProjectTeamsModalOpen, setIsProjectTeamsModalOpen] = useState(false);
   const navigate = useNavigate();
   
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
@@ -166,7 +168,7 @@ export default function Projects() {
                       <button
                         onClick={async (e) => {
                           e.stopPropagation();
-                          if (!confirm(`Are you sure you want to delete ${project.name}?`)) return;
+
                           try {
                             const res = await fetch(`/api/projects/${project.id}`, {
                               method: 'DELETE',
@@ -212,6 +214,17 @@ export default function Projects() {
                     >
                       <Users size={14} />
                       <span>Members</span>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedProject(project);
+                        setIsProjectTeamsModalOpen(true);
+                      }}
+                      className="flex items-center space-x-1.5 text-xs text-muted hover:text-strong font-medium bg-surface-dim hover:bg-surface-accent px-2.5 py-1.5 rounded transition-colors border border-border-subtle"
+                    >
+                      <Users size={14} />
+                      <span>Teams</span>
                     </button>
                     <button
                       onClick={(e) => {
@@ -301,6 +314,17 @@ export default function Projects() {
           }}
         />
       )}
+
+      {isProjectTeamsModalOpen && selectedProject && (
+        <ProjectTeamsModal
+          project={selectedProject}
+          onClose={() => {
+            setIsProjectTeamsModalOpen(false);
+            setSelectedProject(null);
+          }}
+        />
+      )}
+
     </div>
   );
 }

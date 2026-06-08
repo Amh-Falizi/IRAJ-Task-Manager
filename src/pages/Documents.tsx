@@ -4,10 +4,11 @@ import { useSearchParams, Link, Navigate } from 'react-router';
 import { FolderKanban, FileText, Plus, ChevronLeft, Save, Trash2, Edit3, X } from 'lucide-react';
 import { Project, Document } from '../types';
 import Markdown from 'react-markdown';
+import MDEditor from '@uiw/react-md-editor';
 
 export default function Documents() {
   const { token } = useAuth();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const projectId = searchParams.get('projectId');
   const documentId = searchParams.get('documentId');
   
@@ -79,7 +80,7 @@ export default function Documents() {
       setEditContent(doc.content);
     } else {
       setEditTitle('Untitled Document');
-      setEditContent('# New Document\n\nStart typing here...');
+      setEditContent('');
     }
     setIsEditing(true);
   };
@@ -106,8 +107,7 @@ export default function Documents() {
         setIsEditing(false);
         // update url to point to new doc
         if (!documentId || documentId === 'new') {
-          // Replace state if creating new? No, let's just let the link handle it or programmatic navigation
-          window.history.pushState({}, '', `/documents?projectId=${projectId}&documentId=${savedDoc.id}`);
+          setSearchParams({ projectId: projectId || '', documentId: savedDoc.id });
         }
       }
     } catch (err) {
@@ -115,8 +115,9 @@ export default function Documents() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this document?')) return;
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     try {
       const res = await fetch(`/api/documents/${id}`, {
         method: 'DELETE',
@@ -124,7 +125,7 @@ export default function Documents() {
       });
       if (res.ok) {
         if (documentId === id) {
-          window.history.pushState({}, '', `/documents?projectId=${projectId}`);
+          setSearchParams({ projectId: projectId || '' });
         }
         fetchDocuments();
       }
@@ -221,7 +222,7 @@ export default function Documents() {
                   <span className="truncate">{doc.title}</span>
                 </Link>
                 <button 
-                  onClick={() => handleDelete(doc.id)}
+                  onClick={(e) => handleDelete(doc.id, e)}
                   className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 p-1.5 hover:bg-red-400/10 rounded mr-1 transition-all"
                   title="Delete Document"
                 >
@@ -243,7 +244,7 @@ export default function Documents() {
                 type="text"
                 value={editTitle}
                 onChange={e => setEditTitle(e.target.value)}
-                className="text-2xl font-semibold bg-transparent border-none outline-none text-strong placeholder-muted flex-1"
+                className="text-2xl font-semibold bg-surface border border-border-subtle focus:border-blue-500 rounded px-3 py-2 outline-none text-strong placeholder-muted flex-1"
                 placeholder="Document Title"
               />
               <div className="flex items-center space-x-2 ml-4">
@@ -260,12 +261,14 @@ export default function Documents() {
                 </button>
               </div>
             </div>
-            <textarea
-              value={editContent}
-              onChange={e => setEditContent(e.target.value)}
-              className="flex-1 w-full bg-surface-dim border border-border-subtle rounded-lg p-6 text-strong focus:outline-none focus:border-blue-500/50 resize-none font-mono text-sm leading-relaxed"
-              placeholder="Write using Markdown..."
-            />
+            <div data-color-mode="dark" className="flex-1 flex flex-col min-h-0 bg-surface-dim border border-border-subtle rounded-lg overflow-hidden">
+              <MDEditor
+                value={editContent}
+                onChange={(val) => setEditContent(val || '')}
+                height="100%"
+                className="flex-1 w-full overflow-hidden"
+              />
+            </div>
           </div>
         ) : selectedDocument ? (
           // View or Edit Selected Document
@@ -277,7 +280,7 @@ export default function Documents() {
                     type="text"
                     value={editTitle}
                     onChange={e => setEditTitle(e.target.value)}
-                    className="text-2xl font-semibold bg-transparent border-none outline-none text-strong placeholder-muted flex-1"
+                    className="text-2xl font-semibold bg-surface border border-border-subtle focus:border-blue-500 rounded px-3 py-2 outline-none text-strong placeholder-muted flex-1"
                     placeholder="Document Title"
                   />
                   <div className="flex items-center space-x-2 ml-4 shrink-0">
@@ -293,11 +296,14 @@ export default function Documents() {
                     </button>
                   </div>
                 </div>
-                <textarea
-                  value={editContent}
-                  onChange={e => setEditContent(e.target.value)}
-                  className="flex-1 w-full min-h-[500px] bg-surface-dim border border-border-subtle rounded-lg p-6 text-strong focus:outline-none focus:border-blue-500/50 resize-none font-mono text-sm shadow-inner"
-                />
+                <div data-color-mode="dark" className="flex-1 flex flex-col min-h-0 w-full min-h-[500px] border border-border-subtle rounded-lg overflow-hidden">
+                  <MDEditor
+                    value={editContent}
+                    onChange={(val) => setEditContent(val || '')}
+                    height="100%"
+                    className="flex-1 w-full"
+                  />
+                </div>
               </div>
             ) : (
               <div className="max-w-4xl mx-auto w-full">

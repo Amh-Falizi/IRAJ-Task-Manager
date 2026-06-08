@@ -134,7 +134,8 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
   };
 
   const handleDeleteComment = async (commentId: string) => {
-    if (!confirm('Delete this comment?') || !task) return;
+
+    if (!task) return;
     try {
       await fetch(`/api/tasks/${task.id}/comments/${commentId}`, {
         method: 'DELETE',

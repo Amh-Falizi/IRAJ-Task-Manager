@@ -403,7 +403,7 @@ export default function Board() {
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    if (!confirm('Are you sure you want to delete this task?')) return;
+
     await fetch(`/api/tasks/${taskId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` }
@@ -691,6 +691,7 @@ export default function Board() {
                         e.dataTransfer.effectAllowed = 'move';
                         e.dataTransfer.setData('taskId', task.id);
                         setTimeout(() => setDraggingTaskId(task.id), 0);
+
                       }}
                       onDragEnd={() => setDraggingTaskId(null)}
                       onDragOver={(e) => {
@@ -842,6 +843,7 @@ export default function Board() {
                                   e.dataTransfer.effectAllowed = 'move';
                                   e.dataTransfer.setData('taskId', st.id);
                                   setTimeout(() => setDraggingTaskId(st.id), 0);
+
                                 }}
                                 onDragEnd={() => setDraggingTaskId(null)}
                                 onDragOver={(e) => {

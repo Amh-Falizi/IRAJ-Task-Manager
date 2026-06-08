@@ -113,7 +113,7 @@ export default function CalendarView() {
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    if (!confirm('Are you sure you want to delete this task?')) return;
+
     try {
       await fetch(`/api/tasks/${taskId}`, {
         method: 'DELETE',
@@ -137,8 +137,16 @@ export default function CalendarView() {
 
   const days = eachDayOfInterval({ start: startDate, end: endDate });
 
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     e.dataTransfer.setData('taskId', taskId);
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => setDraggingTaskId(taskId), 0);
+  };
+
+  const handleDragEnd = () => {
+    setDraggingTaskId(null);
   };
 
   const handleDrop = async (e: React.DragEvent, date: Date) => {
@@ -342,6 +350,7 @@ export default function CalendarView() {
                           key={task.id}
                           draggable
                           onDragStart={(e) => handleDragStart(e, task.id)}
+                          onDragEnd={handleDragEnd}
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedTask(task);
@@ -349,6 +358,7 @@ export default function CalendarView() {
                           }}
                           className={cn(
                             "text-xs px-2 py-1.5 rounded cursor-pointer truncate transition-all border",
+                            draggingTaskId === task.id && "opacity-40",
                             isDone ? "bg-surface-dim text-subtle border-border-strong opacity-60" : "bg-surface hover:bg-surface-dim text-strong shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
                             !isDone && task.priority === 'urgent' ? "border-red-500/40 hover:border-red-500/60" :
                             !isDone && task.priority === 'high' ? "border-amber-500/40 hover:border-amber-500/60" :

@@ -91,7 +91,7 @@ export default function Dashboard() {
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    if (!confirm('Are you sure you want to delete this task?')) return;
+
     try {
       await fetch(`/api/tasks/${taskId}`, {
         method: 'DELETE',
@@ -111,8 +111,6 @@ export default function Dashboard() {
       return null;
     }
   });
-
-  if (loading) return <div className="p-8 text-strong text-sm">Loading...</div>;
 
   const myTasks = tasks.filter(t => t.assigneeId === user?.id);
   const totalTasks = tasks.length;
@@ -181,6 +179,8 @@ export default function Dashboard() {
     return null;
   };
 
+  if (loading) return <div className="p-8 text-strong text-sm">Loading...</div>;
+
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Header */}
@@ -190,9 +190,15 @@ export default function Dashboard() {
           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-500 border border-green-500/20">ACTIVE</span>
         </div>
         <div className="flex items-center space-x-6">
-          <div className="flex items-center space-x-2 text-xs">
-            <span className="text-subtle">User:</span>
-            <span className="text-strong font-mono">{user?.name}</span>
+          <div className="flex items-center space-x-4 text-xs">
+            <div className="flex items-center space-x-2">
+              <span className="text-subtle">Role:</span>
+              <span className="text-strong font-mono uppercase text-[10px] bg-surface-dim px-1.5 py-0.5 rounded border border-border-subtle">{user?.role.replace('_', ' ')}</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="text-subtle">User:</span>
+              <span className="text-strong font-mono">{user?.name}</span>
+            </div>
           </div>
           <Link to="/board" className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-strong text-xs font-bold rounded shadow-lg transition-colors">
             GO TO BOARD
@@ -246,9 +252,9 @@ export default function Dashboard() {
         </div>
 
         {/* Main Grid */}
-        <div className="flex-1 grid grid-cols-12 gap-6 min-h-0">
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
           {/* Task List */}
-          <div className="col-span-7 bg-surface border border-border-subtle rounded-lg flex flex-col overflow-hidden">
+          <div className="col-span-1 lg:col-span-7 bg-surface border border-border-subtle rounded-lg flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between">
               <h2 className="text-xs font-bold text-strong uppercase tracking-widest">My Assigned Tasks</h2>
             </div>
@@ -301,7 +307,7 @@ export default function Dashboard() {
             </div>
           </div>
           
-          <div className="col-span-5 flex flex-col space-y-6 overflow-hidden">
+          <div className="col-span-1 lg:col-span-5 flex flex-col space-y-6 overflow-hidden">
             <div className="bg-surface border border-border-subtle p-4 rounded-lg flex-1 flex flex-col min-h-0">
                <div className="flex items-center space-x-2 mb-4">
                  <PieChartIcon size={14} className="text-muted" />
@@ -347,12 +353,6 @@ export default function Dashboard() {
                    </div>
                  )}
                  
-               </div>
-               
-               <div className="mt-auto pt-4 border-t border-border-subtle">
-                 <div className="flex items-center justify-between text-[10px]">
-                   <span className="text-subtle">Role: {user?.role.replace('_', ' ').toUpperCase()}</span>
-                 </div>
                </div>
              </div>
 

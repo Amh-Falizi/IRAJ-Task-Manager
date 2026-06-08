@@ -177,7 +177,7 @@ export default function Graph() {
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    if (!confirm('Are you sure you want to delete this task?')) return;
+
     await fetch(`/api/tasks/${taskId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` }

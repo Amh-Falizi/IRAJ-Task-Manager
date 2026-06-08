@@ -84,7 +84,7 @@ export default function ProjectMembersModal({ project, allUsers, onClose }: Prop
   };
 
   const handleRemoveMember = async (userId: string) => {
-    if (!confirm('Are you sure you want to remove this member?')) return;
+
     try {
       const res = await fetch(`/api/projects/${project.id}/members/${userId}`, {
         method: 'DELETE',

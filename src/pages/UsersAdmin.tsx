@@ -33,7 +33,7 @@ export default function UsersAdmin() {
   }, [token]);
 
   const handleDeleteUser = async (userToDelete: User) => {
-    if (!window.confirm(`Are you sure you want to delete user ${userToDelete.name}? This action cannot be undone.`)) return;
+
     
     setMessage(null);
     try {

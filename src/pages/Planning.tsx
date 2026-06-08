@@ -97,7 +97,7 @@ export default function Planning() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this milestone?')) return;
+
     try {
       const res = await fetch(`/api/milestones/${id}`, {
         method: 'DELETE',

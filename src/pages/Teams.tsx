@@ -102,7 +102,7 @@ export default function Teams() {
                           <button
                             onClick={async (e) => {
                               e.stopPropagation();
-                              if (!confirm(`Are you sure you want to delete ${team.name}?`)) return;
+
                               try {
                                 const res = await fetch(`/api/teams/${team.id}`, {
                                   method: 'DELETE',
@@ -378,7 +378,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
   };
 
   const handleRemoveMember = async (userId: string) => {
-    if (!confirm('Are you sure you want to remove this member?')) return;
+
     try {
       const res = await fetch(`/api/teams/${team.id}/members/${userId}`, {
         method: 'DELETE',
@@ -417,7 +417,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
   };
 
   const handleRemoveProject = async (projectId: string) => {
-    if (!confirm('Are you sure you want to remove this project from the team?')) return;
+
     try {
       const res = await fetch(`/api/teams/${team.id}/projects/${projectId}`, {
         method: 'DELETE',
@@ -432,7 +432,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
   };
 
   const handleDeleteTeam = async () => {
-    if (!confirm(`Are you sure you want to delete the team "${team.name}"? This action cannot be undone.`)) return;
+
     try {
       const res = await fetch(`/api/teams/${team.id}`, {
         method: 'DELETE',
