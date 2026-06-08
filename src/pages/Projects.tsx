@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Project, User } from '../types';
-import { FolderKanban, Plus, X, Trash2, Calendar, LayoutDashboard, Activity, Clock, Download } from 'lucide-react';
+import { FolderKanban, Plus, X, Trash2, Calendar, LayoutDashboard, Activity, Clock, Download, Users } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router';
 import WorkloadModal from '../components/WorkloadModal';
 import ProjectActivityModal from '../components/ProjectActivityModal';
+import ProjectMembersModal from '../components/ProjectMembersModal';
 import Markdown from 'react-markdown';
 import { exportToCSV, exportToJSON } from '../lib/export';
 
@@ -18,6 +19,7 @@ export default function Projects() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isWorkloadModalOpen, setIsWorkloadModalOpen] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
   const navigate = useNavigate();
   
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
@@ -204,6 +206,17 @@ export default function Projects() {
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedProject(project);
+                        setIsMembersModalOpen(true);
+                      }}
+                      className="flex items-center space-x-1.5 text-xs text-muted hover:text-strong font-medium bg-surface-dim hover:bg-surface-accent px-2.5 py-1.5 rounded transition-colors border border-border-subtle"
+                    >
+                      <Users size={14} />
+                      <span>Members</span>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedProject(project);
                         setIsWorkloadModalOpen(true);
                       }}
                       className="flex items-center space-x-1.5 text-xs text-muted hover:text-strong font-medium bg-surface-dim hover:bg-surface-accent px-2.5 py-1.5 rounded transition-colors border border-border-subtle"
@@ -273,6 +286,17 @@ export default function Projects() {
           users={users}
           onClose={() => {
             setIsActivityModalOpen(false);
+            setSelectedProject(null);
+          }}
+        />
+      )}
+
+      {isMembersModalOpen && selectedProject && (
+        <ProjectMembersModal
+          project={selectedProject}
+          allUsers={users}
+          onClose={() => {
+            setIsMembersModalOpen(false);
             setSelectedProject(null);
           }}
         />

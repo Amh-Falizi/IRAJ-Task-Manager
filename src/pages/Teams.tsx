@@ -10,6 +10,7 @@ import SearchableSelect from '../components/SearchableSelect';
 export default function Teams() {
   const { token, user: currentUser } = useAuth();
   const [teams, setTeams] = useState<Team[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
@@ -17,6 +18,10 @@ export default function Teams() {
   // Data fetching
   const fetchTeams = async () => {
     try {
+      const pRes = await fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` }});
+      if (pRes.ok) {
+        setProjects(await pRes.json());
+      }
       const res = await fetch('/api/teams', {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -73,6 +78,11 @@ export default function Teams() {
                   <div className="flex justify-between items-start mb-2">
                     <h3 className="text-strong font-medium truncate flex-1 min-w-0 pr-2">{team.name}</h3>
                     <div className="flex items-center space-x-2 shrink-0">
+                      {team.projectId && (
+                        <span className="text-[10px] bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold truncate max-w-[100px]" title={projects.find(p => p.id === team.projectId)?.name || 'Private Project'}>
+                          {projects.find(p => p.id === team.projectId)?.name || 'Private Project'}
+                        </span>
+                      )}
                       {team.ownerId === currentUser?.id && (
                         <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full font-bold">OWNER</span>
                       )}
@@ -165,11 +175,20 @@ export default function Teams() {
 }
 
 function CreateTeamModal({ team, onClose, onSuccess }: { team?: Team | null, onClose: () => void, onSuccess: () => void }) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [name, setName] = useState(team?.name || '');
   const [description, setDescription] = useState(team?.description || '');
+  const [projectId, setProjectId] = useState(team?.projectId || '');
+  const [projects, setProjects] = useState<Project[]>([]);
   const [previewMode, setPreviewMode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(setProjects)
+      .catch(console.error);
+  }, [token]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,10 +198,13 @@ function CreateTeamModal({ team, onClose, onSuccess }: { team?: Team | null, onC
       const res = await fetch(team ? `/api/teams/${team.id}` : '/api/teams', {
         method: team ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name, description })
+        body: JSON.stringify({ name, description, projectId: projectId || undefined })
       });
       if (res.ok) {
         onSuccess();
+      } else {
+        const err = await res.text();
+        alert(`Error saving team: ${err}`);
       }
     } catch (err) {
       console.error(err);
@@ -202,6 +224,22 @@ function CreateTeamModal({ team, onClose, onSuccess }: { team?: Team | null, onC
         </div>
         
         <form onSubmit={handleSubmit} className="p-5 flex flex-col gap-4">
+          {projects.length > 0 && (
+            <div>
+              <label className="text-[10px] font-bold text-subtle uppercase tracking-widest block mb-2">Assign to Project (Optional)</label>
+              <select
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+                className="w-full bg-surface border border-border-subtle rounded px-3 py-2 text-strong focus:outline-none focus:border-blue-500 text-sm"
+              >
+                <option value="">Global Team (No Project)</option>
+                {projects.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted mt-1">If a project is selected, only admins or project members can manage this team.</p>
+            </div>
+          )}
           <div>
             <label className="text-[10px] font-bold text-subtle uppercase tracking-widest block mb-2">Team Name *</label>
             <input

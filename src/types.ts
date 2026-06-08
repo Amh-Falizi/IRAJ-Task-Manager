@@ -59,10 +59,17 @@ export interface Team {
   description: string;
   ownerId: string;
   createdAt: string;
+  projectId?: string;
 }
 
 export interface TeamMember extends User {
   teamId: string;
+  joinedAt: string;
+}
+
+export interface ProjectMember extends User {
+  projectId: string;
+  role: "admin" | "manager" | "developer" | "viewer" | "member";
   joinedAt: string;
 }
 

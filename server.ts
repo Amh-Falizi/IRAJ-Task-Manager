@@ -159,6 +159,14 @@ async function initDb(): Promise<DatabaseWrapper> {
       createdAt TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS project_members (
+      projectId TEXT NOT NULL,
+      userId TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member', 
+      joinedAt TEXT NOT NULL,
+      PRIMARY KEY (projectId, userId)
+    );
+
     CREATE TABLE IF NOT EXISTS documents (
       id TEXT PRIMARY KEY,
       projectId TEXT NOT NULL,
@@ -248,6 +256,22 @@ async function initDb(): Promise<DatabaseWrapper> {
   for (const p of projectsWithoutKey) {
     const randomLetters = Array.from({length: 3}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
     await db.run("UPDATE projects SET projectKey = ? WHERE id = ?", [randomLetters, p.id]);
+  }
+
+  try {
+    await db.exec("ALTER TABLE teams ADD COLUMN projectId TEXT");
+  } catch (e) {
+    // Column might already exist
+  }
+
+  // Backfill project members for existing projects if they don't have members
+  try {
+    const existingProjects = await db.all("SELECT id, ownerId, createdAt FROM projects");
+    for (const p of existingProjects) {
+      await db.run("INSERT OR IGNORE INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, 'admin', ?)", [p.id, p.ownerId, p.createdAt]);
+    }
+  } catch(e) {
+    // Tables might not exist or error during insert
   }
 
   // Migrate existing data from db.json if present
@@ -568,10 +592,18 @@ app.post("/api/tasks", authenticateToken, async (req: any, res: any) => {
   }
 
   const db = await dbPromise;
+
+  const project = await db.get("SELECT ownerId, projectKey, taskCounter FROM projects WHERE id = ?", req.body.projectId);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.body.projectId, req.user.id]);
+  
+  if (req.user.role !== 'admin' && project.ownerId !== req.user.id && !pm) {
+     return res.status(403).json({ error: "You must be a project member to create tasks" });
+  }
   
   let branchName = req.body.branchName;
-  if (!branchName && req.body.projectId) {
-    const project = await db.get("SELECT projectKey, taskCounter FROM projects WHERE id = ?", req.body.projectId);
+  if (!branchName) {
     if (project && project.projectKey) {
         const nextCount = (project.taskCounter || 0) + 1;
         await db.run("UPDATE projects SET taskCounter = ? WHERE id = ?", [nextCount, req.body.projectId]);
@@ -832,13 +864,19 @@ app.get("/api/projects/:id/workload", authenticateToken, async (req: any, res: a
 
 app.get("/api/projects", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
-  const projects = await db.all("SELECT * FROM projects");
+  let projects;
+  if (req.user.role === 'admin') {
+    projects = await db.all("SELECT * FROM projects");
+  } else {
+    projects = await db.all("SELECT DISTINCT p.* FROM projects p LEFT JOIN project_members pm ON p.id = pm.projectId WHERE p.ownerId = ? OR pm.userId = ?", [req.user.id, req.user.id]);
+  }
   res.json(projects);
 });
 
 app.post("/api/projects", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
 
+  // Let managers and admins create, but maybe any user? Let's keep it global admin/manager.
   if (req.user.role !== "admin" && req.user.role !== "manager") {
     return res.status(403).json({ error: "Only admins and managers can create projects." });
   }
@@ -852,6 +890,12 @@ app.post("/api/projects", authenticateToken, async (req: any, res: any) => {
     "INSERT INTO projects (id, name, description, ownerId, projectKey, taskCounter, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
     [projectId, name, description || "", req.user.id, projectKey, 0, new Date().toISOString()]
   );
+  
+  await db.run(
+    "INSERT INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, 'admin', ?)",
+    [projectId, req.user.id, new Date().toISOString()]
+  );
+  
   const newProject = await db.get("SELECT * FROM projects WHERE id = ?", projectId);
   res.json(newProject);
 });
@@ -877,8 +921,11 @@ app.put("/api/projects/:id", authenticateToken, async (req: any, res: any) => {
   const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
   if (!project) return res.sendStatus(404);
 
-  if (req.user.role !== "admin" && req.user.role !== "manager" && project.ownerId !== req.user.id) {
-    return res.status(403).json({ error: "Only admins, managers or the owner can edit projects." });
+  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+  const isProjectAdmin = pm && pm.role === 'admin';
+
+  if (req.user.role !== "admin" && project.ownerId !== req.user.id && !isProjectAdmin) {
+    return res.status(403).json({ error: "Only admins, project owner or project admins can edit projects." });
   }
 
   const { name, description } = req.body;
@@ -896,33 +943,124 @@ app.delete("/api/projects/:id", authenticateToken, async (req: any, res: any) =>
   const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
   if (!project) return res.sendStatus(404);
 
-  if (req.user.role !== "admin" && req.user.role !== "manager" && project.ownerId !== req.user.id) {
-    return res.status(403).json({ error: "Only admins, managers or the owner can delete projects." });
+  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+  const isProjectAdmin = pm && pm.role === 'admin';
+
+  if (req.user.role !== "admin" && project.ownerId !== req.user.id && !isProjectAdmin) {
+    return res.status(403).json({ error: "Only admins, project owner or project admins can delete projects." });
   }
 
   await db.run("DELETE FROM projects WHERE id = ?", req.params.id);
   res.json({ success: true });
 });
 
+// Project Members APIs
+app.get("/api/projects/:id/members", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const members = await db.all(`
+    SELECT u.id, u.name, u.email, u.role as globalRole, pm.role, pm.joinedAt, pm.projectId
+    FROM project_members pm
+    JOIN users u ON pm.userId = u.id
+    WHERE pm.projectId = ?
+  `, req.params.id);
+  res.json(members);
+});
+
+app.post("/api/projects/:id/members", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const projectId = req.params.id;
+  const { userId, role } = req.body;
+
+  const project = await db.get("SELECT * FROM projects WHERE id = ?", projectId);
+  if (!project) return res.sendStatus(404);
+
+  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [projectId, req.user.id]);
+  const isProjectAdmin = pm && pm.role === 'admin';
+
+  if (req.user.role !== "admin" && project.ownerId !== req.user.id && !isProjectAdmin) {
+    return res.status(403).json({ error: "Only admins, project owner or project admins can manage members." });
+  }
+
+  try {
+    const newRole = role || 'member';
+    await db.run(
+      "INSERT INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, ?, ?) ON CONFLICT(projectId, userId) DO UPDATE SET role = ?",
+      [projectId, userId, newRole, new Date().toISOString(), newRole]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    if (e.message?.includes("UNIQUE constraint failed") || e.code === 'SQLITE_CONSTRAINT') {
+      await db.run("UPDATE project_members SET role = ? WHERE projectId = ? AND userId = ?", [role || 'member', projectId, userId]);
+      res.json({ success: true });
+    } else {
+      res.status(500).json({ error: "Failed to add/update member" });
+    }
+  }
+});
+
+app.delete("/api/projects/:id/members/:userId", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const projectId = req.params.id;
+
+  const project = await db.get("SELECT * FROM projects WHERE id = ?", projectId);
+  if (!project) return res.sendStatus(404);
+
+  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [projectId, req.user.id]);
+  const isProjectAdmin = pm && pm.role === 'admin';
+
+  if (req.user.role !== "admin" && project.ownerId !== req.user.id && !isProjectAdmin && req.user.id !== req.params.userId) {
+    return res.status(403).json({ error: "Only admins, project owner or project admins can remove members." });
+  }
+
+  await db.run("DELETE FROM project_members WHERE projectId = ? AND userId = ?", [projectId, req.params.userId]);
+  res.json({ success: true });
+});
+
 // Teams APIs
 app.get("/api/teams", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
-  const teams = await db.all("SELECT * FROM teams");
+  let teams;
+  if (req.user.role === 'admin') {
+    teams = await db.all("SELECT * FROM teams");
+  } else {
+    teams = await db.all(`
+      SELECT DISTINCT t.* 
+      FROM teams t 
+      LEFT JOIN project_members pm ON t.projectId = pm.projectId 
+      LEFT JOIN projects p ON t.projectId = p.id
+      LEFT JOIN team_members tm ON t.id = tm.teamId
+      WHERE t.ownerId = ? 
+         OR tm.userId = ? 
+         OR t.projectId IS NULL 
+         OR pm.userId = ? 
+         OR p.ownerId = ?
+    `, [req.user.id, req.user.id, req.user.id, req.user.id]);
+  }
   res.json(teams);
 });
 
 app.post("/api/teams", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
 
-  if (req.user.role !== "admin" && req.user.role !== "manager") {
-    return res.status(403).json({ error: "Only admins and managers can create teams." });
+  const { name, description, projectId } = req.body;
+
+  if (projectId) {
+    const project = await db.get("SELECT ownerId FROM projects WHERE id = ?", projectId);
+    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [projectId, req.user.id]);
+    const isProjectAdmin = pm && pm.role === 'admin';
+    if (!project || (req.user.role !== "admin" && project.ownerId !== req.user.id && !isProjectAdmin)) {
+       return res.status(403).json({ error: "Only admins, project owner or project admins can create teams for this project." });
+    }
+  } else {
+    if (req.user.role !== "admin" && req.user.role !== "manager") {
+      return res.status(403).json({ error: "Only admins and managers can create global teams." });
+    }
   }
 
-  const { name, description } = req.body;
   const teamId = uuidv4();
   await db.run(
-    "INSERT INTO teams (id, name, description, ownerId, createdAt) VALUES (?, ?, ?, ?, ?)",
-    [teamId, name, description || "", req.user.id, new Date().toISOString()]
+    "INSERT INTO teams (id, name, description, ownerId, createdAt, projectId) VALUES (?, ?, ?, ?, ?, ?)",
+    [teamId, name, description || "", req.user.id, new Date().toISOString(), projectId || null]
   );
   // add owner to members
   await db.run(
