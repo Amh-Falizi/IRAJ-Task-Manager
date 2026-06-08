@@ -171,6 +171,16 @@ export default function CalendarView() {
     setIsModalOpen(true);
   };
 
+  useEffect(() => {
+    const handleGlobalNewTask = () => {
+      setSelectedDateForNewTask(null);
+      setSelectedTask(null);
+      setIsModalOpen(true);
+    };
+    window.addEventListener('open-new-task-modal', handleGlobalNewTask);
+    return () => window.removeEventListener('open-new-task-modal', handleGlobalNewTask);
+  }, []);
+
   if (loading) return <div className="p-8">Loading calendar...</div>;
 
   if (!projectId) {

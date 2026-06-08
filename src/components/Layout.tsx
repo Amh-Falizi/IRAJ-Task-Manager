@@ -26,6 +26,33 @@ export default function Layout() {
     { name: 'Teams', href: '/teams', icon: Users },
   ];
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in input, textarea, or contenteditable
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
+      if (e.key === 't' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // We shouldn't preventDefault so easily, but here it's fine for simple shortcuts if not inside input
+        e.preventDefault();
+        toggleTheme();
+      } else if (e.key === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('open-new-task-modal'));
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleTheme]);
+
   if (user?.role === 'admin') {
     navItems.push({ name: 'Admin', href: '/admin/users', icon: Shield });
   }

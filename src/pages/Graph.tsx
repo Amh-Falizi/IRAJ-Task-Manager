@@ -122,6 +122,12 @@ export default function Graph() {
     setIsModalOpen(true);
   };
 
+  useEffect(() => {
+    const handleGlobalNewTask = () => handleCreateTask();
+    window.addEventListener('open-new-task-modal', handleGlobalNewTask);
+    return () => window.removeEventListener('open-new-task-modal', handleGlobalNewTask);
+  }, []);
+
   const handleEditTask = (task: Task) => {
     setEditingTask(task);
     setIsModalOpen(true);

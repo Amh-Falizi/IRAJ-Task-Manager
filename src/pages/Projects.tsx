@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Project, User } from '../types';
-import { FolderKanban, Plus, X, Trash2, Calendar, LayoutDashboard, Activity, Clock } from 'lucide-react';
+import { FolderKanban, Plus, X, Trash2, Calendar, LayoutDashboard, Activity, Clock, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router';
 import WorkloadModal from '../components/WorkloadModal';
 import ProjectActivityModal from '../components/ProjectActivityModal';
 import Markdown from 'react-markdown';
+import { exportToCSV, exportToJSON } from '../lib/export';
 
 export default function Projects() {
   const { token, user: currentUser } = useAuth();
@@ -19,6 +20,26 @@ export default function Projects() {
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const navigate = useNavigate();
   
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+
+  const handleExportCSV = () => {
+    setIsExportMenuOpen(false);
+    const exportData = projects.map(p => ({
+      ID: p.id,
+      Key: p.projectKey || '',
+      Name: p.name,
+      Description: p.description || '',
+      Owner: users.find(u => u.id === p.ownerId)?.name || 'Unknown',
+      Created: p.createdAt
+    }));
+    exportToCSV('projects', exportData);
+  };
+
+  const handleExportJSON = () => {
+    setIsExportMenuOpen(false);
+    exportToJSON('projects', projects);
+  };
+
   const fetchProjects = async () => {
     try {
       const res = await fetch('/api/projects', {
@@ -51,15 +72,45 @@ export default function Projects() {
           <h1 className="text-xl font-semibold text-strong tracking-tight">Projects</h1>
           <p className="text-xs text-muted mt-1">Manage all projects and their related tasks</p>
         </div>
-        {(currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-strong px-4 py-2 rounded font-medium transition-colors text-sm"
-          >
-            <Plus size={16} />
-            <span>New Project</span>
-          </button>
-        )}
+        <div className="flex flex-row items-center space-x-3">
+          <div className="relative">
+            <button
+              onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+              className="flex items-center space-x-2 bg-surface text-subtle border border-border-subtle hover:border-blue-500/50 hover:text-strong px-3 py-1.5 rounded transition-all text-xs font-bold uppercase tracking-widest"
+            >
+              <Download size={14} />
+              <span>EXPORT</span>
+            </button>
+            {isExportMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsExportMenuOpen(false)} />
+                <div className="absolute right-0 mt-2 z-50 w-36 bg-surface-dim border border-border-subtle rounded-md shadow-xl py-1">
+                  <button 
+                    onClick={handleExportCSV}
+                    className="w-full text-left px-4 py-2 text-xs font-bold uppercase tracking-widest text-subtle hover:bg-surface hover:text-strong"
+                  >
+                    CSV File
+                  </button>
+                  <button 
+                    onClick={handleExportJSON}
+                    className="w-full text-left px-4 py-2 text-xs font-bold uppercase tracking-widest text-subtle hover:bg-surface hover:text-strong"
+                  >
+                    JSON File
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          {(currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-strong px-4 py-2 rounded font-medium transition-colors text-sm"
+            >
+              <Plus size={16} />
+              <span>New Project</span>
+            </button>
+          )}
+        </div>
       </header>
       
       <div className="flex-1 overflow-y-auto p-6">

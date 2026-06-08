@@ -4,13 +4,14 @@ import { Task, User, Project } from '../types';
 import TaskModal from '../components/TaskModal';
 import WorkloadModal from '../components/WorkloadModal';
 import ProjectActivityModal from '../components/ProjectActivityModal';
-import { Plus, MoreVertical, Calendar, ArrowUpDown, CornerDownRight, Search, Filter, AlertCircle, ChevronUp, Minus, ChevronDown, X, FolderKanban, Activity, CheckCircle2, Workflow, Clock, Pencil, Trash2, UserPlus } from 'lucide-react';
+import { Plus, MoreVertical, Calendar, ArrowUpDown, CornerDownRight, Search, Filter, AlertCircle, ChevronUp, Minus, ChevronDown, X, FolderKanban, Activity, CheckCircle2, Workflow, Clock, Pencil, Trash2, UserPlus, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
 import { useSearchParams, Link, Navigate } from 'react-router';
 import TaskDiagram from '../components/TaskDiagram';
 import Markdown from 'react-markdown';
 import UserAvatar from '../components/UserAvatar';
+import { exportToCSV, exportToJSON } from '../lib/export';
 
 export interface Column {
   id: string;
@@ -98,6 +99,30 @@ export default function Board() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+
+  const handleExportCSV = () => {
+    setIsExportMenuOpen(false);
+    const exportData = filteredTasks.map(t => ({
+      ID: t.id,
+      Project: t.projectId || '',
+      Title: t.title,
+      Description: t.description || '',
+      Status: t.status,
+      Priority: t.priority,
+      Assignee: users.find(u => u.id === t.assigneeId)?.name || 'Unassigned',
+      Branch: t.branchName || '',
+      Deadline: t.deadline || '',
+      Created: t.createdAt
+    }));
+    exportToCSV(`tasks-${project?.name || 'all'}`, exportData);
+  };
+
+  const handleExportJSON = () => {
+    setIsExportMenuOpen(false);
+    exportToJSON(`tasks-${project?.name || 'all'}`, filteredTasks);
+  };
 
   const fetchData = async () => {
     try {
@@ -196,6 +221,12 @@ export default function Board() {
     setSelectedStatus(null);
     setIsModalOpen(true);
   };
+
+  useEffect(() => {
+    const handleGlobalNewTask = () => handleCreateTask();
+    window.addEventListener('open-new-task-modal', handleGlobalNewTask);
+    return () => window.removeEventListener('open-new-task-modal', handleGlobalNewTask);
+  }, []);
 
   const handleCreateTaskInColumn = (status: string) => {
     setEditingTask(null);
@@ -537,6 +568,34 @@ export default function Board() {
                <option value="createdAt-desc" className="bg-surface">Newest First</option>
                <option value="createdAt-asc" className="bg-surface">Oldest First</option>
              </select>
+          </div>
+          <div className="relative">
+            <button
+              onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+              className="flex items-center space-x-2 bg-surface text-subtle border border-border-subtle hover:border-blue-500/50 hover:text-strong px-3 py-1.5 rounded transition-all text-xs font-bold uppercase tracking-widest"
+            >
+              <Download size={14} />
+              <span>EXPORT</span>
+            </button>
+            {isExportMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsExportMenuOpen(false)} />
+                <div className="absolute right-0 mt-2 z-50 w-36 bg-surface-dim border border-border-subtle rounded-md shadow-xl py-1">
+                  <button 
+                    onClick={handleExportCSV}
+                    className="w-full text-left px-4 py-2 text-xs font-bold uppercase tracking-widest text-subtle hover:bg-surface hover:text-strong"
+                  >
+                    CSV File
+                  </button>
+                  <button 
+                    onClick={handleExportJSON}
+                    className="w-full text-left px-4 py-2 text-xs font-bold uppercase tracking-widest text-subtle hover:bg-surface hover:text-strong"
+                  >
+                    JSON File
+                  </button>
+                </div>
+              </>
+            )}
           </div>
           <button
             onClick={handleCreateTask}
