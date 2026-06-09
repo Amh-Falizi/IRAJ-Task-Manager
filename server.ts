@@ -138,6 +138,7 @@ async function initDb(): Promise<DatabaseWrapper> {
       branchName TEXT,
       parentId TEXT,
       projectId TEXT,
+      milestoneId TEXT,
       createdAt TEXT NOT NULL,
       orderIndex REAL DEFAULT 0
     );
@@ -289,8 +290,8 @@ async function initDb(): Promise<DatabaseWrapper> {
         }
         for (const t of data.tasks) {
           await db.run(
-            "INSERT INTO tasks (id, title, description, status, priority, deadline, assigneeId, creatorId, branchName, parentId, projectId, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [t.id, t.title, t.description, t.status, t.priority, t.deadline, t.assigneeId, t.creatorId, t.branchName, t.parentId || null, t.projectId || null, t.createdAt]
+            "INSERT INTO tasks (id, title, description, status, priority, deadline, assigneeId, creatorId, branchName, parentId, projectId, milestoneId, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [t.id, t.title, t.description, t.status, t.priority, t.deadline, t.assigneeId, t.creatorId, t.branchName, t.parentId || null, t.projectId || null, t.milestoneId || null, t.createdAt]
           );
         }
         console.log("Migrated data from db.json to database.sqlite");
@@ -329,6 +330,7 @@ interface Task {
   branchName: string | null;
   parentId?: string | null;
   projectId?: string | null;
+  milestoneId?: string | null;
   createdAt: string;
   orderIndex?: number;
 }
@@ -623,13 +625,14 @@ app.post("/api/tasks", authenticateToken, async (req: any, res: any) => {
     branchName: branchName || null,
     parentId: req.body.parentId || null,
     projectId: req.body.projectId || null,
+    milestoneId: req.body.milestoneId || null,
     createdAt: new Date().toISOString(),
     orderIndex: req.body.orderIndex !== undefined ? req.body.orderIndex : Date.now(),
   };
 
   await db.run(
-    "INSERT INTO tasks (id, title, description, status, priority, deadline, assigneeId, creatorId, branchName, parentId, projectId, createdAt, orderIndex) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    [newTask.id, newTask.title, newTask.description, newTask.status, newTask.priority, newTask.deadline, newTask.assigneeId, newTask.creatorId, newTask.branchName, newTask.parentId, newTask.projectId, newTask.createdAt, newTask.orderIndex]
+    "INSERT INTO tasks (id, title, description, status, priority, deadline, assigneeId, creatorId, branchName, parentId, projectId, milestoneId, createdAt, orderIndex) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [newTask.id, newTask.title, newTask.description, newTask.status, newTask.priority, newTask.deadline, newTask.assigneeId, newTask.creatorId, newTask.branchName, newTask.parentId, newTask.projectId, newTask.milestoneId, newTask.createdAt, newTask.orderIndex]
   );
   
   if (req.body.dependencies && Array.isArray(req.body.dependencies)) {
@@ -694,8 +697,8 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
   }
 
   await db.run(
-    "UPDATE tasks SET title=?, description=?, status=?, priority=?, deadline=?, assigneeId=?, branchName=?, parentId=?, projectId=?, orderIndex=? WHERE id=?",
-    [updated.title, updated.description, updated.status, updated.priority, updated.deadline, updated.assigneeId, updated.branchName, updated.parentId, updated.projectId, updated.orderIndex !== undefined ? updated.orderIndex : task.orderIndex, updated.id]
+    "UPDATE tasks SET title=?, description=?, status=?, priority=?, deadline=?, assigneeId=?, branchName=?, parentId=?, projectId=?, milestoneId=?, orderIndex=? WHERE id=?",
+    [updated.title, updated.description, updated.status, updated.priority, updated.deadline, updated.assigneeId, updated.branchName, updated.parentId, updated.projectId, updated.milestoneId, updated.orderIndex !== undefined ? updated.orderIndex : task.orderIndex, updated.id]
   );
   
   if (req.body.dependencies !== undefined && Array.isArray(req.body.dependencies)) {
@@ -885,6 +888,16 @@ app.post("/api/projects", authenticateToken, async (req: any, res: any) => {
   const projectId = uuidv4();
   
   let projectKey = customProjectKey ? customProjectKey.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase() : null;
+  
+  if (!projectKey) {
+    if (name) {
+      projectKey = name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase();
+    }
+    if (!projectKey || projectKey.length < 2) {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      projectKey = Array.from({length: 3}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    }
+  }
   
   await db.run(
     "INSERT INTO projects (id, name, description, ownerId, projectKey, taskCounter, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -1266,6 +1279,12 @@ app.delete("/api/documents/:id", authenticateToken, async (req: any, res: any) =
 });
 
 // Milestones APIs
+
+app.get("/api/milestones", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const milestones = await db.all("SELECT * FROM milestones");
+  res.json(milestones);
+});
 
 app.get("/api/projects/:projectId/milestones", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;

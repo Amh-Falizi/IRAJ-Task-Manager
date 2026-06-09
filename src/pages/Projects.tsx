@@ -391,7 +391,7 @@ function CreateProjectModal({ project, onClose, onSuccess }: { project?: Project
             <div>
               <label className="text-[10px] font-bold text-subtle uppercase tracking-widest block mb-1">Project Key (Prefix for branches/tasks)</label>
               <div className="flex justify-between items-center mb-2">
-                <p className="text-xs text-muted">Leave empty to use manual branch names without a forced prefix.</p>
+                <p className="text-xs text-muted">Leave empty to auto-generate a 3-letter project key.</p>
                 {!project && (
                   <button
                     type="button"

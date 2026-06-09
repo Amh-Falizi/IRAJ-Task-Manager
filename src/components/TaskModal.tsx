@@ -40,6 +40,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
     branchName: task?.branchName || '',
     parentId: task?.parentId || parentId || null,
     projectId: task?.projectId || projectId || null,
+    milestoneId: task?.milestoneId || null,
     dependencies: task?.dependencies || []
   });
 
@@ -57,6 +58,19 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
       .catch(err => console.error("Error fetching projects", err));
   }, [token]);
 
+  useEffect(() => {
+    if (formData.projectId) {
+      fetch(`/api/projects/${formData.projectId}/milestones`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => res.json())
+        .then(data => {
+          setMilestones(data);
+        })
+        .catch(err => console.error("Error fetching milestones", err));
+    } else {
+      setMilestones([]);
+    }
+  }, [formData.projectId, token]);
+
   const [generatingBranch, setGeneratingBranch] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
   
@@ -70,6 +84,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
   const [newCommentPreviewMode, setNewCommentPreviewMode] = useState(false);
   const [editCommentPreviewMode, setEditCommentPreviewMode] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [milestones, setMilestones] = useState<any[]>([]);
 
   useEffect(() => {
     if (isViewMode && task) {
@@ -226,6 +241,11 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                   <span className="flex items-center space-x-1 text-muted bg-surface-dim px-2 py-0.5 rounded border border-border-subtle font-mono">
                     <GitBranch size={12} />
                     <span>{task.branchName}</span>
+                  </span>
+                )}
+                {task.milestoneId && (
+                  <span className="px-2 py-0.5 rounded font-bold uppercase tracking-wider text-[#a855f7] bg-[#a855f7]/10 border border-[#a855f7]/20">
+                    M: {milestones.find(m => m.id === task.milestoneId)?.name || 'Unknown Milestone'}
                   </span>
                 )}
               </div>
@@ -716,12 +736,27 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
               <select
                 className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong focus:border-blue-500 focus:outline-none appearance-none"
                 value={formData.projectId || ''}
-                onChange={e => setFormData(p => ({ ...p, projectId: e.target.value }))}
+                onChange={e => setFormData(p => ({ ...p, projectId: e.target.value, milestoneId: null }))}
                 required
               >
                 <option value="" disabled hidden>Select Project...</option>
                 {projectsList.map(p => (
                   <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Milestone</label>
+              <select
+                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong focus:border-blue-500 focus:outline-none appearance-none"
+                value={formData.milestoneId || ''}
+                onChange={e => setFormData(p => ({ ...p, milestoneId: e.target.value }))}
+                disabled={!formData.projectId || milestones.length === 0}
+              >
+                <option value="">No Milestone</option>
+                {milestones.map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
               </select>
             </div>

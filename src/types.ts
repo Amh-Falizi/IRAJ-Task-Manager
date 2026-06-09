@@ -2,7 +2,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: "admin" | "manager" | "developer";
+  role: "admin" | "manager" | "developer" | "viewer" | "member";
 }
 
 export interface Task {
@@ -18,6 +18,7 @@ export interface Task {
   createdAt: string;
   parentId?: string | null;
   projectId?: string | null;
+  milestoneId?: string | null;
   dependencies?: string[];
   orderIndex?: number;
 }

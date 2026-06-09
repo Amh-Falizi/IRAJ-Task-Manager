@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Task, User, Project } from '../types';
+import { Task, User, Project, Milestone } from '../types';
 import TaskModal from '../components/TaskModal';
 import WorkloadModal from '../components/WorkloadModal';
 import ProjectActivityModal from '../components/ProjectActivityModal';
@@ -44,6 +44,7 @@ export default function Board() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [project, setProject] = useState<Project | null>(null);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
   
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   
@@ -129,14 +130,17 @@ export default function Board() {
       const results = await Promise.all([
         fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } })
+        fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/milestones', { headers: { Authorization: `Bearer ${token}` } })
       ]);
       
       const tasksData: Task[] = await results[0].json();
       const usersData = await results[1].json();
       const projectsData: Project[] = await results[2].json();
+      const milestonesData: Milestone[] = await results[3].json();
       
       setAllProjects(projectsData);
+      setMilestones(milestonesData);
       
       if (projectId) {
         const found = projectsData.find((p: Project) => p.id === projectId);
@@ -790,6 +794,11 @@ export default function Board() {
                       <h4 className="text-xs font-bold text-strong mb-1 leading-snug">{task.title}</h4>
                       {task.branchName && (
                         <div className="text-[10px] text-subtle font-mono italic mb-2 truncate">{task.branchName}</div>
+                      )}
+                      {task.milestoneId && (
+                        <div className="text-[9px] font-bold uppercase tracking-widest text-[#a855f7] bg-[#a855f7]/10 border border-[#a855f7]/20 px-1.5 py-0.5 rounded inline-block mb-2 max-w-full truncate">
+                          {milestones.find(m => m.id === task.milestoneId)?.name || 'Milestone'}
+                        </div>
                       )}
                       
                       {(() => {

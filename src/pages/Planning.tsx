@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSearchParams, Link, Navigate } from 'react-router';
-import { FolderKanban, Map, Milestone as MilestoneIcon, Plus, Calendar, Settings, Trash2, Edit } from 'lucide-react';
-import { Project, Milestone } from '../types';
+import { FolderKanban, Map, Milestone as MilestoneIcon, Plus, Calendar, Settings, Trash2, Edit, GitBranch } from 'lucide-react';
+import { Project, Milestone, User, Task } from '../types';
+import TaskTimelineD3 from '../components/TaskTimelineD3';
+import TaskModal from '../components/TaskModal';
 
 export default function Planning() {
   const { token } = useAuth();
@@ -12,11 +14,15 @@ export default function Planning() {
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project | null>(null);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
   const [editMilestone, setEditMilestone] = useState<Milestone | null>(null);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -28,13 +34,70 @@ export default function Planning() {
 
   useEffect(() => {
     fetchProjects();
+    fetchUsers();
   }, [token]);
 
   useEffect(() => {
     if (projectId) {
       fetchMilestones();
+      fetchTasks();
     }
   }, [projectId, token]);
+
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        setUsers(await res.json());
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchTasks = async () => {
+    try {
+      const res = await fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        let allTasks = await res.json();
+        // filter by project
+        const projectTasks = allTasks.filter((t: any) => t.projectId === projectId);
+        setTasks(projectTasks);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Helper to calculate ranges and dates
+  const timelineData = React.useMemo(() => {
+    const allStarts = milestones.map(m => m.startDate).filter(Boolean) as string[];
+    const allEnds = milestones.map(m => m.endDate).filter(Boolean) as string[];
+    
+    if (allStarts.length === 0 || allEnds.length === 0) return null;
+
+    let minD = new Date(Math.min(...allStarts.map(d => new Date(d).getTime())));
+    let maxD = new Date(Math.max(...allEnds.map(d => new Date(d).getTime())));
+    
+    // Add 15 days padding to min and max for better visual spacing
+    minD = new Date(minD.setDate(minD.getDate() - 15));
+    maxD = new Date(maxD.setDate(maxD.getDate() + 15));
+
+    const totalTime = maxD.getTime() - minD.getTime();
+    
+    // Generate tick marks (roughly 5-6 points)
+    const ticks = [];
+    const numTicks = 6;
+    for (let i = 0; i <= numTicks; i++) {
+        const tickTime = minD.getTime() + (totalTime * (i / numTicks));
+        ticks.push({
+            date: new Date(tickTime).toLocaleDateString([], { month: 'short', year: 'numeric' }),
+            left: `${(i / numTicks) * 100}%`
+        });
+    }
+
+    return { minD, maxD, totalTime, ticks };
+  }, [milestones]);
 
   const fetchProjects = async () => {
     try {
@@ -132,6 +195,37 @@ export default function Planning() {
     setShowModal(true);
   };
 
+  const handleTaskClick = (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (task) {
+      setEditingTask(task);
+      setIsTaskModalOpen(true);
+    }
+  };
+
+  const handleSaveTask = async (updatedTask: Partial<Task>) => {
+    if (!editingTask) return;
+    try {
+      const res = await fetch(`/api/tasks/${editingTask.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(updatedTask)
+      });
+      if (res.ok) {
+        setIsTaskModalOpen(false);
+        setEditingTask(null);
+        fetchTasks();
+      } else {
+        alert("Failed to save task.");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   if (loading) return <div className="p-8 text-primary">Loading planning mode...</div>;
 
   if (!projectId) {
@@ -180,25 +274,17 @@ export default function Planning() {
     );
   }
 
-  // Helper to calculate percentages for timeline
   const getTimelineStyle = (start: string, end: string) => {
-    if (!start || !end) return { display: 'none' };
-    // Find min and max dates of all milestones
-    const allStarts = milestones.map(m => m.startDate).filter(Boolean) as string[];
-    const allEnds = milestones.map(m => m.endDate).filter(Boolean) as string[];
-    if (allStarts.length === 0 || allEnds.length === 0) return { display: 'none' };
-    
-    const minD = new Date(Math.min(...allStarts.map(d => new Date(d).getTime())));
-    const maxD = new Date(Math.max(...allEnds.map(d => new Date(d).getTime())));
-    const range = maxD.getTime() - minD.getTime();
-    
-    if (range === 0) return { width: '100%', left: '0%' };
+    if (!start || !end || !timelineData) return { display: 'none' };
+    const { minD, totalTime } = timelineData;
     
     const sTime = new Date(start).getTime();
     const eTime = new Date(end).getTime();
     
-    const left = ((sTime - minD.getTime()) / range) * 100;
-    const width = ((eTime - sTime) / range) * 100;
+    if (totalTime === 0) return { width: '100%', left: '0%' };
+    
+    const left = ((sTime - minD.getTime()) / totalTime) * 100;
+    const width = ((eTime - sTime) / totalTime) * 100;
     
     return { left: `${Math.max(0, left)}%`, width: `${Math.max(0, width)}%` };
   };
@@ -233,18 +319,38 @@ export default function Planning() {
                  </div>
                ) : (
                  <div className="space-y-4">
-                   {milestones.map(m => (
-                     <div key={`tl-${m.id}`} className="relative h-12 border-b border-border-subtle/50 group">
+                   {/* Timeline Ticks Grid */}
+                   <div className="ml-48 relative h-8 border-b border-border-strong mb-2">
+                     {timelineData?.ticks.map((tick, i) => (
+                       <div key={`tick-${i}`} className="absolute top-0 bottom-0 text-[10px] text-muted -translate-x-1/2 flex flex-col items-center" style={{ left: tick.left }}>
+                         <span>{tick.date}</span>
+                         <div className="w-px h-full bg-border-subtle mt-1 opacity-50 absolute top-[100%] z-0" style={{ height: `${milestones.length * 80}px` }} />
+                       </div>
+                     ))}
+                   </div>
+                   
+                   {milestones.map(m => {
+                     const mTasks = tasks.filter(t => t.milestoneId === m.id);
+                     const completedTasks = mTasks.filter(t => t.status === 'done').length;
+                     const progress = mTasks.length > 0 ? (completedTasks / mTasks.length) * 100 : 0;
+                     
+                     return (
+                     <div key={`tl-${m.id}`} className="relative h-16 border-b border-border-subtle/50 group">
                        <div className="absolute left-0 w-48 truncate pr-4 mt-1">
-                         <span className="text-sm font-medium text-strong">{m.name}</span>
-                         <span className="block text-xs text-muted">
+                         <span className="text-sm font-medium text-strong block truncate">{m.name}</span>
+                         <span className="block text-xs text-muted truncate">
                            {m.startDate && new Date(m.startDate).toLocaleDateString()} - {m.endDate && new Date(m.endDate).toLocaleDateString()}
                          </span>
+                         {mTasks.length > 0 && (
+                           <span className="text-[10px] text-muted">
+                             {completedTasks}/{mTasks.length} tasks
+                           </span>
+                         )}
                        </div>
-                       <div className="ml-48 relative h-full bg-surface-dim rounded border-l border-r border-border-subtle">
+                       <div className="ml-48 relative h-full bg-surface-dim rounded border-l border-r border-border-subtle z-10">
                          {m.startDate && m.endDate && (
                            <div 
-                             className={`absolute top-2 h-6 rounded px-2 text-xs flex items-center text-white truncate shadow-sm transition-all ${
+                             className={`absolute top-2 h-8 rounded px-2 text-xs flex flex-col justify-center text-white truncate shadow-sm transition-all z-20 ${
                                m.status === 'completed' ? 'bg-green-500' :
                                m.status === 'active' ? 'bg-blue-500' : 'bg-slate-500'
                              }`}
@@ -252,32 +358,42 @@ export default function Planning() {
                              title={m.name}
                            >
                              <span className="truncate">{m.name}</span>
+                             {mTasks.length > 0 && m.status !== 'completed' && (
+                                <div className="w-full bg-black/20 h-1.5 mt-1 rounded overflow-hidden">
+                                  <div className="bg-white/80 h-full" style={{ width: `${progress}%` }} />
+                                </div>
+                             )}
                            </div>
                          )}
                        </div>
                      </div>
-                   ))}
+                   );
+                 })}
                  </div>
                )}
             </div>
           </div>
         </div>
 
-        <div className="space-y-6">
-          <div className="bg-surface p-6 border border-border-subtle rounded-lg shadow-sm">
-            <h2 className="text-lg font-medium text-strong mb-4 flex items-center space-x-2">
+        <div className="space-y-6 lg:col-span-1">
+          <div className="bg-surface p-6 border border-border-subtle rounded-lg shadow-sm flex flex-col max-h-[500px]">
+            <h2 className="text-lg font-medium text-strong mb-4 flex items-center space-x-2 shrink-0">
               <MilestoneIcon size={20} className="text-purple-500" />
               <span>Upcoming Milestones</span>
             </h2>
             
             {milestones.length === 0 ? (
-              <div className="text-center py-8 text-sm text-subtle border border-dashed border-border-subtle rounded">
+              <div className="text-center py-8 text-sm text-subtle border border-dashed border-border-subtle rounded shrink-0">
                 No milestones defined yet.
               </div>
             ) : (
-              <div className="space-y-3">
-                {milestones.map(m => (
-                  <div key={m.id} className="p-3 border border-border-subtle rounded-md bg-surface-dim group hover:border-blue-500/30 transition-colors">
+              <div className="space-y-3 flex-1 overflow-y-auto pr-2">
+                {milestones.map(m => {
+                   const mTasks = tasks.filter(t => t.milestoneId === m.id);
+                   const completedTasks = mTasks.filter(t => t.status === 'done').length;
+                   const progress = mTasks.length > 0 ? (completedTasks / mTasks.length) * 100 : 0;
+                   return (
+                  <div key={m.id} className="p-3 border border-border-subtle rounded-md bg-surface-dim group hover:border-blue-500/30 transition-colors flex flex-col">
                     <div className="flex justify-between items-start mb-1">
                       <h4 className="font-medium text-sm text-strong truncate pr-2">{m.name}</h4>
                       <div className="flex space-x-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -290,7 +406,7 @@ export default function Planning() {
                       </div>
                     </div>
                     {m.description && <p className="text-xs text-subtle mb-2 line-clamp-2">{m.description}</p>}
-                    <div className="flex justify-between items-center text-xs">
+                    <div className="flex justify-between items-center text-xs mb-2">
                       <span className={`px-2 py-0.5 rounded-full ${
                         m.status === 'completed' ? 'bg-green-500/10 text-green-500' :
                         m.status === 'active' ? 'bg-blue-500/10 text-blue-500' :
@@ -305,13 +421,52 @@ export default function Planning() {
                         </span>
                       )}
                     </div>
+                    
+                    {mTasks.length > 0 && (
+                      <div className="mt-auto pt-2 border-t border-border-subtle">
+                         <div className="flex justify-between items-center text-[10px] text-muted mb-1">
+                           <span>{completedTasks}/{mTasks.length} tasks</span>
+                           <span>{Math.round(progress)}%</span>
+                         </div>
+                         <div className="w-full bg-surface h-1.5 rounded overflow-hidden">
+                           <div className={`h-full ${progress === 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${progress}%` }} />
+                         </div>
+                      </div>
+                    )}
                   </div>
-                ))}
+                )})}
               </div>
             )}
           </div>
         </div>
+
+        <div className="lg:col-span-3">
+           <div className="bg-surface p-6 border border-border-subtle rounded-lg shadow-sm">
+             <h2 className="text-lg font-medium text-strong mb-4 flex items-center space-x-2">
+               <GitBranch size={20} className="text-emerald-500" />
+               <span>Task Dependencies Timeline</span>
+             </h2>
+             <div className="h-[400px]">
+               <TaskTimelineD3 tasks={tasks} width={1000} onTaskClick={handleTaskClick} />
+             </div>
+           </div>
+        </div>
       </div>
+
+      {isTaskModalOpen && editingTask && (
+        <TaskModal
+          task={editingTask}
+          projectId={projectId || undefined}
+          onClose={() => {
+            setIsTaskModalOpen(false);
+            setEditingTask(null);
+            fetchTasks(); // fetch any updates made inside the modal
+          }}
+          onSave={handleSaveTask}
+          users={users}
+          tasks={tasks}
+        />
+      )}
 
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">

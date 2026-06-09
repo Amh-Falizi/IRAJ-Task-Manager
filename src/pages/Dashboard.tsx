@@ -12,22 +12,27 @@ export default function Dashboard() {
   const { user, token } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const fetchData = async () => {
     try {
-      const [tasksRes, usersRes] = await Promise.all([
+      const [tasksRes, usersRes, projectsRes] = await Promise.all([
         fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } })
+        fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } })
       ]);
-      const [tasksData, usersData] = await Promise.all([
+      const [tasksData, usersData, projectsData] = await Promise.all([
         tasksRes.json(),
-        usersRes.json()
+        usersRes.json(),
+        projectsRes.json()
       ]);
       setTasks(tasksData);
       setUsers(usersData);
+      setProjects(projectsData);
     } catch (err) {
       console.error(err);
     } finally {
@@ -112,8 +117,12 @@ export default function Dashboard() {
     }
   });
 
-  const myTasks = tasks.filter(t => t.assigneeId === user?.id);
-  const totalTasks = tasks.length;
+  const filteredTasks = selectedProjectId === 'all' 
+    ? tasks 
+    : tasks.filter(t => t.projectId === selectedProjectId);
+
+  const myTasks = filteredTasks.filter(t => t.assigneeId === user?.id);
+  const totalTasks = filteredTasks.length;
 
   const defaultColumns = [
     { id: 'todo', title: 'To Do', color: '#94a3b8' },
@@ -124,8 +133,8 @@ export default function Dashboard() {
 
   const activeColumns = columns || defaultColumns;
 
-  const statusData = activeColumns.map((col, index) => {
-    const value = tasks.filter(t => t.status === col.id).length;
+  const statusData = activeColumns.map((col: any, index: number) => {
+    const value = filteredTasks.filter(t => t.status === col.id).length;
     // give generic stable colors for custom columns
     const fallbackColors = ['#94a3b8', '#3b82f6', '#eab308', '#10b981', '#a855f7', '#ec4899', '#f97316', '#14b8a6'];
     return {
@@ -133,18 +142,18 @@ export default function Dashboard() {
       value,
       color: col.color || fallbackColors[index % fallbackColors.length]
     };
-  }).filter(d => d.value > 0);
+  }).filter((d: { value: number }) => d.value > 0);
 
-  const completedTasks = tasks.filter(t => t.status === 'done' || t.status === (activeColumns[activeColumns.length - 1]?.id)).length;
-  const inProgress = tasks.filter(t => t.status !== 'todo' && t.status !== activeColumns[0]?.id && t.status !== 'done' && t.status !== activeColumns[activeColumns.length - 1]?.id).length;
-  const urgentTasks = tasks.filter(t => t.priority === 'urgent' && t.status !== 'done' && t.status !== activeColumns[activeColumns.length - 1]?.id).length;
+  const completedTasks = filteredTasks.filter(t => t.status === 'done' || t.status === (activeColumns[activeColumns.length - 1]?.id)).length;
+  const inProgress = filteredTasks.filter(t => t.status !== 'todo' && t.status !== activeColumns[0]?.id && t.status !== 'done' && t.status !== activeColumns[activeColumns.length - 1]?.id).length;
+  const urgentTasks = filteredTasks.filter(t => t.priority === 'urgent' && t.status !== 'done' && t.status !== activeColumns[activeColumns.length - 1]?.id).length;
 
   const burnDownData = React.useMemo(() => {
     const data = [];
     const now = new Date();
     const daysToLookBack = 14;
     
-    const total = tasks.length;
+    const total = filteredTasks.length;
     
     for(let i = daysToLookBack; i >= 0; i--) {
        const date = new Date(now);
@@ -162,7 +171,7 @@ export default function Dashboard() {
        });
     }
     return data;
-  }, [tasks.length]);
+  }, [filteredTasks.length]);
 
 
   const CustomTooltip = ({ active, payload }: any) => {
@@ -190,6 +199,18 @@ export default function Dashboard() {
           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-500 border border-green-500/20">ACTIVE</span>
         </div>
         <div className="flex items-center space-x-6">
+          {projects.length > 0 && (
+            <select
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+              className="text-xs bg-surface border border-border-subtle text-strong px-2 py-1 rounded focus:outline-none focus:border-blue-500"
+            >
+              <option value="all">All Projects</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          )}
           <div className="flex items-center space-x-4 text-xs">
             <div className="flex items-center space-x-2">
               <span className="text-subtle">Role:</span>
