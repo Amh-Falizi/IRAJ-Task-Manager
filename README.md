@@ -17,7 +17,7 @@ A comprehensive full-stack task management and progress tracking application des
 - **Frontend**: React (v19) + Vite, TypeScript, Tailwind CSS, Lucide React (for UI design)
 - **Visuals & Charts**: React Flow (`@xyflow/react`), Dagre, Recharts
 - **Backend Application**: Node.js + Express.js API
-- **Database Architecture**: SQLite (local schema storage)
+- **Database Architecture**: PostgreSQL (via `pg`) with seamless fallback to local SQLite (`sqlite3`) for zero-config development.
 - **AI Tooling**: Google Gemini (`@google/genai`) for intelligent string and branch generation features
 
 ## Development Requirements 
@@ -34,7 +34,22 @@ To get up and running, ensure you have the following installed:
    ```
 
 2. **Setup your Environment**  
-   Create a `.env` file using the parameters in `.env.example` (if present) for authentication keys and the Gemini API key.
+   Create a `.env` file at the root of the project with the following configuration:
+   ```env
+   # GEMINI_API_KEY: Required for AI generation features
+   GEMINI_API_KEY="YOUR_API_KEY"
+
+   # APP_URL: URL where the app is hosted (used for callbacks and links)
+   APP_URL="http://localhost:3000"
+
+   # DATABASE_URL: Connect to a PostgreSQL instance (falls back to SQLite if omitted)
+   DATABASE_URL="postgres://user:password@localhost:5432/dbname"
+
+   # Local Docker Postgres Configuration (Optional: for docker-compose)
+   POSTGRES_USER="user"
+   POSTGRES_PASSWORD="password"
+   POSTGRES_DB="dbname"
+   ```
 
 3. **Start the Development Server**
    Start both the Vite SPA and Express backend server smoothly using `tsx`:
