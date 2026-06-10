@@ -7,6 +7,7 @@ import { Link } from 'react-router';
 import { cn } from '../lib/utils';
 import TaskModal from '../components/TaskModal';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { HelpIcon } from '../components/Tooltip';
 
 export default function Dashboard() {
   const { user, token } = useAuth();
@@ -247,19 +248,21 @@ export default function Dashboard() {
       {/* Dashboard View */}
       <div className="flex-1 p-6 flex flex-col space-y-6 overflow-y-auto">
         {/* Top Row: Stats */}
-        <div className="grid grid-cols-4 gap-4 shrink-0">
-          <div className="bg-surface border border-border-subtle p-4 rounded-lg">
+        <div className="tour-dashboard-stats grid grid-cols-4 gap-4 shrink-0">
+          <div className="bg-surface border border-border-subtle p-4 rounded-lg relative group">
             <div className="text-[10px] text-subtle font-bold uppercase mb-1 tracking-wider flex items-center gap-2">
               <FileText size={14} /> Total Tasks
+              <HelpIcon text="Total number of tasks assigned to your current context" className="ml-auto" />
             </div>
             <div className="flex items-end space-x-2">
               <div className="text-2xl font-mono text-strong">{totalTasks}</div>
             </div>
           </div>
           
-          <div className="bg-surface border border-border-subtle p-4 rounded-lg">
+          <div className="bg-surface border border-border-subtle p-4 rounded-lg relative group">
             <div className="text-[10px] text-subtle font-bold uppercase mb-1 tracking-wider flex items-center gap-2">
               <CheckCircle2 size={14} /> Completed
+              <HelpIcon text="Number of completed tasks for your current context" className="ml-auto" />
             </div>
             <div className="text-2xl font-mono text-strong">{completedTasks}</div>
             {totalTasks > 0 && (
@@ -269,16 +272,18 @@ export default function Dashboard() {
             )}
           </div>
 
-          <div className="bg-surface border border-border-subtle p-4 rounded-lg">
+          <div className="bg-surface border border-border-subtle p-4 rounded-lg relative group">
             <div className="text-[10px] text-subtle font-bold uppercase mb-1 tracking-wider flex items-center gap-2">
               <Clock size={14} /> In Progress
+              <HelpIcon text="Active tasks that are currently being worked on" className="ml-auto" />
             </div>
             <div className="text-2xl font-mono text-strong">{inProgress}</div>
           </div>
 
-          <div className="bg-surface border border-border-subtle p-4 rounded-lg">
+          <div className="bg-surface border border-border-subtle p-4 rounded-lg relative group">
             <div className="text-[10px] text-subtle font-bold uppercase mb-1 tracking-wider flex items-center gap-2">
               <AlertCircle size={14} /> Urgent Pending
+              <HelpIcon text="Urgent tasks that require immediate attention" className="ml-auto" />
             </div>
             <div className="text-2xl font-mono text-strong">{urgentTasks}</div>
             {urgentTasks > 0 && (
@@ -294,9 +299,12 @@ export default function Dashboard() {
           {/* Left Column Container */}
           <div className="col-span-1 lg:col-span-7 flex flex-col space-y-6 min-h-0">
             {/* Task List */}
-            <div className="bg-surface border border-border-subtle rounded-lg flex flex-col overflow-hidden flex-1 min-h-[300px]">
+            <div className="tour-my-tasks bg-surface border border-border-subtle rounded-lg flex flex-col overflow-hidden flex-1 min-h-[300px]">
               <div className="px-4 py-3 shrink-0 border-b border-border-subtle flex items-center justify-between">
-                <h2 className="text-xs font-bold text-strong uppercase tracking-widest">My Assigned Tasks</h2>
+                <h2 className="text-xs font-bold text-strong uppercase tracking-widest flex items-center gap-2">
+                  My Assigned Tasks
+                  <HelpIcon text="Quick view of tasks explicitly assigned to you" />
+                </h2>
               </div>
               <div className="overflow-y-auto p-4 space-y-3 flex-1">
               {myTasks.length === 0 ? (
@@ -348,10 +356,13 @@ export default function Dashboard() {
             </div>
 
             {/* User Notes */}
-            <div className="bg-surface border border-border-subtle p-4 rounded-lg flex flex-col min-h-[200px] max-h-[300px] shrink-0">
+            <div className="tour-my-notes bg-surface border border-border-subtle p-4 rounded-lg flex flex-col min-h-[200px] max-h-[300px] shrink-0">
               <div className="flex items-center space-x-2 mb-4 shrink-0">
                 <Edit3 size={14} className="text-muted" />
-                <h2 className="text-[10px] font-bold text-subtle uppercase tracking-widest">My Notes</h2>
+                <h2 className="text-[10px] font-bold text-subtle uppercase tracking-widest flex items-center gap-2">
+                  My Notes
+                  <HelpIcon text="Personal scratchpad. Notes are private to you." />
+                </h2>
               </div>
               <div className="flex-1 flex flex-col w-full min-h-0">
                 <textarea 
@@ -368,7 +379,10 @@ export default function Dashboard() {
             <div className="bg-surface border border-border-subtle p-4 rounded-lg flex-1 flex flex-col min-h-0">
                <div className="flex items-center space-x-2 mb-4">
                  <PieChartIcon size={14} className="text-muted" />
-                 <h2 className="text-[10px] font-bold text-subtle uppercase tracking-widest">Task Distribution</h2>
+                 <h2 className="text-[10px] font-bold text-subtle uppercase tracking-widest flex items-center gap-2">
+                   Task Distribution
+                   <HelpIcon text="Breaks down tasks by their current status" />
+                 </h2>
                </div>
                
                <div className="flex-1 min-h-[200px] flex items-center justify-center relative">
@@ -417,7 +431,10 @@ export default function Dashboard() {
             <div className="bg-surface border border-border-subtle p-4 rounded-lg flex-1 flex flex-col min-h-0">
               <div className="flex items-center space-x-2 mb-4">
                 <Activity size={14} className="text-muted" />
-                <h2 className="text-[10px] font-bold text-subtle uppercase tracking-widest">Velocity & Burn-down</h2>
+                <h2 className="text-[10px] font-bold text-subtle uppercase tracking-widest flex items-center gap-2">
+                  Velocity & Burn-down
+                  <HelpIcon text="Tracks remaining work vs ideal trajectory over the last 14 days" />
+                </h2>
               </div>
               <div className="flex-1 min-h-[160px] w-full">
                 <ResponsiveContainer width="100%" height="100%">

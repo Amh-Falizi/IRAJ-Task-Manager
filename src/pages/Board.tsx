@@ -12,6 +12,7 @@ import TaskDiagram from '../components/TaskDiagram';
 import Markdown from 'react-markdown';
 import UserAvatar from '../components/UserAvatar';
 import { exportToCSV, exportToJSON } from '../lib/export';
+import { HelpIcon } from '../components/Tooltip';
 
 export interface Column {
   id: string;

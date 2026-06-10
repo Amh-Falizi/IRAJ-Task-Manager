@@ -8,6 +8,7 @@ import { cn } from '../lib/utils';
 import NotificationsDropdown from './NotificationsDropdown';
 
 import UserAvatar from './UserAvatar';
+import AppTour from './AppTour';
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -59,10 +60,11 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen bg-page-bg text-primary font-sans overflow-hidden transition-colors duration-200">
+      <AppTour />
       {/* Sidebar */}
       <aside 
         className={cn(
-          "flex flex-col py-6 border-r border-border-subtle bg-surface-dim transition-all duration-300 relative",
+          "tour-sidebar flex flex-col py-6 border-r border-border-subtle bg-surface-dim transition-all duration-300 relative",
           isExpanded ? "w-64 px-4" : "w-16 items-center px-0"
         )}
       >
@@ -128,7 +130,7 @@ export default function Layout() {
              
              <Link 
                to="/profile"
-               className={cn("hover:opacity-80 transition-opacity flex items-center mt-4", isExpanded ? "px-3 py-2 space-x-3 bg-surface border border-border-subtle rounded-lg" : "")} 
+               className={cn("tour-user-dropdown hover:opacity-80 transition-opacity flex items-center mt-4", isExpanded ? "px-3 py-2 space-x-3 bg-surface border border-border-subtle rounded-lg" : "")} 
                title={!isExpanded ? "Profile" : undefined}
              >
                <UserAvatar user={user} showTooltip={!isExpanded} />

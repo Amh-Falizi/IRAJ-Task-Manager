@@ -7,8 +7,6 @@ import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
 import { GoogleGenAI } from "@google/genai";
 import { Pool } from "pg";
-import { open } from "sqlite";
-import sqlite3 from "sqlite3";
 
 const app = express();
 const PORT = 3000;
@@ -17,7 +15,7 @@ const SECRET_KEY = process.env.SECRET_KEY || "super_secret_dev_key";
 app.use(express.json());
 
 // Initialize Database Storage
-const DATABASE_URL = process.env.DATABASE_URL || "postgres://user:password@localhost:5432/dbname";
+const DATABASE_URL = process.env.DATABASE_URL;
 
 interface DatabaseWrapper {
   exec(sql: string): Promise<void>;
@@ -64,56 +62,20 @@ class PgWrapper implements DatabaseWrapper {
   }
 }
 
-class SqliteWrapper implements DatabaseWrapper {
-  private db: any;
-  constructor(db: any) {
-    this.db = db;
-  }
-  async exec(sql: string) {
-    await this.db.exec(sql);
-  }
-  async run(sql: string, params: any[] = []) {
-    if (!Array.isArray(params)) params = [params];
-    await this.db.run(sql, ...params);
-  }
-  async get(sql: string, params: any | any[] = []) {
-    if (!Array.isArray(params)) params = [params];
-    return await this.db.get(sql, ...params);
-  }
-  async all(sql: string, params: any[] = []) {
-    if (!Array.isArray(params)) params = [params];
-    return await this.db.all(sql, ...params);
-  }
-}
-
 let dbPromise: Promise<DatabaseWrapper>;
 
 async function initDb(): Promise<DatabaseWrapper> {
-  let db: DatabaseWrapper;
-  const isDefaultPg = DATABASE_URL === "postgres://user:password@localhost:5432/dbname" || DATABASE_URL.includes("localhost");
-  
-  let usePg = false;
-  if (!isDefaultPg) {
-    try {
-      const pgTest = new PgWrapper(DATABASE_URL);
-      await pgTest.testConnection();
-      db = pgTest;
-      usePg = true;
-      console.log("Connected to PostgreSQL successfully");
-    } catch (e: any) {
-      console.warn("PostgreSQL connection failed, falling back to SQLite:", e.message);
-    }
-  } else {
-    console.log("Using default/invalid DATABASE_URL, falling back to SQLite");
+  if (!DATABASE_URL || DATABASE_URL === "postgres://user:password@localhost:5432/dbname") {
+    console.warn("WARNING: No valid DATABASE_URL provided. App requires a PostgreSQL connection string.");
   }
 
-  if (!usePg) {
-    const DB_FILE = path.join(process.cwd(), "database.sqlite");
-    const sqliteDb = await open({
-      filename: DB_FILE,
-      driver: sqlite3.Database
-    });
-    db = new SqliteWrapper(sqliteDb);
+  const db = new PgWrapper(DATABASE_URL || "postgres://user:password@localhost:5432/dbname");
+  
+  try {
+    await db.testConnection();
+    console.log("Connected to PostgreSQL successfully");
+  } catch (e: any) {
+    console.warn("PostgreSQL connection failed during init::", e.message);
   }
 
   try {

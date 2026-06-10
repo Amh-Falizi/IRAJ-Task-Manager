@@ -5,6 +5,7 @@ import { FolderKanban, Map, Milestone as MilestoneIcon, Plus, Calendar, Settings
 import { Project, Milestone, User, Task } from '../types';
 import TaskTimelineD3 from '../components/TaskTimelineD3';
 import TaskModal from '../components/TaskModal';
+import { HelpIcon } from '../components/Tooltip';
 
 export default function Planning() {
   const { token } = useAuth();
@@ -293,7 +294,10 @@ export default function Planning() {
     <div className="flex-1 flex flex-col p-8 bg-page-bg overflow-y-auto h-full relative">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-strong mb-1">Planning Mode</h1>
+          <h1 className="text-2xl font-semibold text-strong mb-1 flex items-center gap-2">
+            Planning Mode
+            <HelpIcon text="Define roadmap, epics, and milestones for tasks across your project" className="mt-1" />
+          </h1>
           <p className="text-sm text-subtle">Define roadmap, epics, and milestones for {project?.name}</p>
         </div>
         <button 
@@ -311,6 +315,7 @@ export default function Planning() {
             <h2 className="text-lg font-medium text-strong mb-4 flex items-center space-x-2">
               <Map size={20} className="text-blue-500" />
               <span>Roadmap Timeline</span>
+              <HelpIcon text="Visual representation of milestones over time" />
             </h2>
             <div className="min-w-[600px] mt-8 relative py-4">
                {milestones.length === 0 ? (
@@ -380,6 +385,7 @@ export default function Planning() {
             <h2 className="text-lg font-medium text-strong mb-4 flex items-center space-x-2 shrink-0">
               <MilestoneIcon size={20} className="text-purple-500" />
               <span>Upcoming Milestones</span>
+              <HelpIcon text="List of milestones chronologically or by status" />
             </h2>
             
             {milestones.length === 0 ? (
@@ -445,6 +451,7 @@ export default function Planning() {
              <h2 className="text-lg font-medium text-strong mb-4 flex items-center space-x-2">
                <GitBranch size={20} className="text-emerald-500" />
                <span>Task Dependencies Timeline</span>
+               <HelpIcon text="Scroll to pinch-to-zoom and drag to pan the interactive D3 dependency graph" />
              </h2>
              <div className="h-[400px]">
                <TaskTimelineD3 tasks={tasks} width={1000} onTaskClick={handleTaskClick} />
