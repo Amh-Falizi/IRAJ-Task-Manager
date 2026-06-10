@@ -78,7 +78,7 @@ export default function Layout() {
           {isExpanded ? "IRAJ" : "Σ"}
         </div>
 
-        <nav className="flex flex-col space-y-4">
+        <nav className="flex-1 overflow-y-auto px-2 flex flex-col space-y-1">
           {navItems.map((item) => {
             const isActive = location.pathname === item.href;
             const Icon = item.icon;
@@ -88,7 +88,7 @@ export default function Layout() {
                 to={item.href}
                 className={cn(
                   'flex items-center rounded-md transition-colors cursor-pointer',
-                  isExpanded ? 'px-3 py-2.5 space-x-3' : 'p-2 justify-center',
+                  isExpanded ? 'px-3 py-2 space-x-3' : 'p-2 justify-center mx-auto',
                   isActive
                     ? 'text-blue-500 bg-blue-500/10 font-medium'
                     : 'text-subtle hover:text-strong hover:bg-surface-accent/30'
@@ -102,8 +102,8 @@ export default function Layout() {
           })}
         </nav>
 
-        <div className="mt-auto flex flex-col space-y-4 w-full">
-          <div className={cn("flex w-full", isExpanded ? "flex-col space-y-2" : "flex-col items-center space-y-4")}>
+        <div className="mt-auto px-2 pt-4 flex flex-col space-y-1 w-full border-t border-border-subtle/50">
+          <div className={cn("flex w-full", isExpanded ? "flex-col space-y-1" : "flex-col items-center space-y-2")}>
              <button
                onClick={toggleTheme}
                className={cn("flex items-center text-subtle hover:text-strong rounded-md transition-colors hover:bg-surface-accent/30", isExpanded ? "px-3 py-2 space-x-3" : "p-2")}

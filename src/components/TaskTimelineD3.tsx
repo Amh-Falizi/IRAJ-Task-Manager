@@ -61,18 +61,21 @@ export default function TaskTimelineD3({ tasks, width = 800, onTaskClick }: Task
       .ticks(6)
       .tickFormat(d3.timeFormat("%b %d") as any);
       
-    svg.append('g')
+    const xAxisGroup = svg.append('g')
       .attr('class', 'x-axis')
-      .call(xAxis)
-      .selectAll('text')
-      .style('fill', 'var(--app-text-muted)')
-      .style('font-size', '11px')
-      .style('font-weight', '500')
-      .style('font-family', 'var(--font-sans)');
+      .call(xAxis);
       
-    svg.selectAll('.domain').attr('stroke', 'transparent'); // remove top horizontal line
-    svg.selectAll('.tick line').attr('stroke', 'var(--app-border-strong)').attr('opacity', 0.5)
-       .attr('y2', innerHeight + margin.top); // Draw grid lines
+    const styleXAxis = (g: any) => {
+      g.selectAll('text')
+        .style('fill', 'var(--app-text-muted)')
+        .style('font-size', '11px')
+        .style('font-weight', '500')
+        .style('font-family', 'var(--font-sans)');
+      g.selectAll('.domain').attr('stroke', 'transparent');
+      g.selectAll('.tick line').attr('stroke', 'var(--app-border-strong)').attr('opacity', 0.5).attr('y2', innerHeight + margin.top);
+    };
+    
+    styleXAxis(xAxisGroup);
 
     const yAxis = d3.axisLeft(y)
       .tickSizeOuter(0)
@@ -83,15 +86,16 @@ export default function TaskTimelineD3({ tasks, width = 800, onTaskClick }: Task
         return title;
       });
 
-    svg.append('g')
+    const yAxisGroup = svg.append('g')
       .attr('class', 'y-axis')
-      .call(yAxis)
-      .selectAll('text')
+      .call(yAxis);
+      
+    yAxisGroup.selectAll('text')
       .style('fill', 'var(--app-text-strong)')
       .style('font-size', '12px')
       .style('font-family', 'var(--font-sans)');
 
-    svg.selectAll('.y-axis .domain, .y-axis .tick line').remove();
+    yAxisGroup.selectAll('.y-axis .domain, .y-axis .tick line').remove();
 
     // Setup definitions for arrows
     svg.append("defs").append("marker")
@@ -239,6 +243,54 @@ export default function TaskTimelineD3({ tasks, width = 800, onTaskClick }: Task
       .on('click', (event, d: any) => {
         if (onTaskClick) onTaskClick(d.id);
       });
+
+    // Semantic Zoom & Pan
+    const zoom = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.5, 10])
+      .on("zoom", (event) => {
+        const t = event.transform;
+        
+        // Semantic zoom X
+        const newX = t.rescaleX(x);
+        
+        // Update x-axis
+        xAxisGroup.call(xAxis.scale(newX) as any);
+        styleXAxis(xAxisGroup);
+
+        // Pan Y (no zoom Y for the y-scale, just translation)
+        yAxisGroup.attr("transform", `translate(0, ${t.y})`);
+
+        // Update task bars (scale X, translate Y)
+        svg.selectAll<SVGRectElement, any>('.task-bar')
+          .attr('x', d => Math.max(0, newX(parseDate(d.createdAt))))
+          .attr('y', d => (y(d.id) || 0) + t.y)
+          .attr('width', d => {
+              const start = newX(parseDate(d.createdAt));
+              const end = newX(parseDate(d.deadline));
+              return Math.max(4, end - start);
+          });
+          
+        svg.selectAll<SVGRectElement, any>('.task-bg-bar')
+          .attr('y', d => (y(d.id) || 0) - y.bandwidth()*0.2 + t.y);
+
+        // Update links
+        svg.selectAll<SVGPathElement, any>('.dependency-line')
+          .attr('d', d => {
+             const startX = newX(parseDate(d.source.deadline));
+             const startY = y(d.source.id)! + y.bandwidth() / 2 + t.y;
+             const endX = newX(parseDate(d.target.createdAt));
+             const endY = y(d.target.id)! + y.bandwidth() / 2 + t.y;
+             return lineGen([
+                  {x: startX, y: startY},
+                  {x: startX + 10, y: startY},
+                  {x: startX + 10, y: endY},
+                  {x: endX - 5, y: endY}
+             ]);
+          });
+      });
+
+    d3.select<SVGSVGElement, unknown>(d3Container.current!.querySelector('svg')!)
+      .call(zoom);
 
   }, [tasks, width]);
 

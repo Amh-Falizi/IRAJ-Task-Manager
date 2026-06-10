@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Task, User } from '../types';
 import { format, isPast, isToday } from 'date-fns';
-import { CheckCircle2, Clock, AlertCircle, FileText, PieChart as PieChartIcon, Activity } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, FileText, PieChart as PieChartIcon, Activity, Edit3 } from 'lucide-react';
 import { Link } from 'react-router';
 import { cn } from '../lib/utils';
 import TaskModal from '../components/TaskModal';
@@ -17,6 +17,23 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [userNotes, setUserNotes] = useState("");
+
+  useEffect(() => {
+    if (user?.id) {
+      const savedNotes = localStorage.getItem(`user_notes_${user.id}`);
+      if (savedNotes) {
+        setUserNotes(savedNotes);
+      }
+    }
+  }, [user?.id]);
+
+  const handleNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setUserNotes(e.target.value);
+    if (user?.id) {
+      localStorage.setItem(`user_notes_${user.id}`, e.target.value);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -274,12 +291,14 @@ export default function Dashboard() {
 
         {/* Main Grid */}
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
-          {/* Task List */}
-          <div className="col-span-1 lg:col-span-7 bg-surface border border-border-subtle rounded-lg flex flex-col overflow-hidden">
-            <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between">
-              <h2 className="text-xs font-bold text-strong uppercase tracking-widest">My Assigned Tasks</h2>
-            </div>
-            <div className="overflow-y-auto p-4 space-y-3">
+          {/* Left Column Container */}
+          <div className="col-span-1 lg:col-span-7 flex flex-col space-y-6 min-h-0">
+            {/* Task List */}
+            <div className="bg-surface border border-border-subtle rounded-lg flex flex-col overflow-hidden flex-1 min-h-[300px]">
+              <div className="px-4 py-3 shrink-0 border-b border-border-subtle flex items-center justify-between">
+                <h2 className="text-xs font-bold text-strong uppercase tracking-widest">My Assigned Tasks</h2>
+              </div>
+              <div className="overflow-y-auto p-4 space-y-3 flex-1">
               {myTasks.length === 0 ? (
                 <div className="p-6 text-center text-subtle text-sm border border-dashed border-border-subtle rounded-lg">No tasks assigned to you.</div>
               ) : (
@@ -325,6 +344,23 @@ export default function Dashboard() {
                   </div>
                 ))
               )}
+            </div>
+            </div>
+
+            {/* User Notes */}
+            <div className="bg-surface border border-border-subtle p-4 rounded-lg flex flex-col min-h-[200px] max-h-[300px] shrink-0">
+              <div className="flex items-center space-x-2 mb-4 shrink-0">
+                <Edit3 size={14} className="text-muted" />
+                <h2 className="text-[10px] font-bold text-subtle uppercase tracking-widest">My Notes</h2>
+              </div>
+              <div className="flex-1 flex flex-col w-full min-h-0">
+                <textarea 
+                  className="flex-1 w-full bg-surface-dim border border-border-subtle rounded p-3 text-sm text-strong resize-none focus:outline-none focus:border-blue-500/50 transition-colors placeholder:text-muted"
+                  placeholder="Jot down your private notes, quick thoughts, or personal reminders here..."
+                  value={userNotes}
+                  onChange={handleNotesChange}
+                />
+              </div>
             </div>
           </div>
           
@@ -405,6 +441,7 @@ export default function Dashboard() {
                 </ResponsiveContainer>
               </div>
             </div>
+
           </div>
         </div>
       </div>
