@@ -1,3 +1,4 @@
+import config from "../config";
 import React, { useState, useEffect } from 'react';
 import { Task, User, Project } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -47,7 +48,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
   const [projectsList, setProjectsList] = useState<Project[]>([]);
   
   useEffect(() => {
-    fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${config.apiBaseUrl}/projects`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => res.json())
       .then(data => {
         setProjectsList(data);
@@ -60,7 +61,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
 
   useEffect(() => {
     if (formData.projectId) {
-      fetch(`/api/projects/${formData.projectId}/milestones`, { headers: { Authorization: `Bearer ${token}` } })
+      fetch(`${config.apiBaseUrl}/projects/${formData.projectId}/milestones`, { headers: { Authorization: `Bearer ${token}` } })
         .then(res => res.json())
         .then(data => {
           setMilestones(data);
@@ -90,9 +91,9 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
     if (isViewMode && task) {
       setLoadingDetails(true);
       Promise.all([
-        fetch(`/api/tasks/${task.id}/details`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+        fetch(`${config.apiBaseUrl}/tasks/${task.id}/details`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
         (task.projectId || projectId) 
-          ? fetch(`/api/projects/${task.projectId || projectId}/activity`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()) 
+          ? fetch(`${config.apiBaseUrl}/projects/${task.projectId || projectId}/activity`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()) 
           : Promise.resolve([])
       ])
       .then(([taskDetails, projectActivityData]) => {
@@ -108,7 +109,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
   const handleCreateComment = async () => {
     if (!newComment.trim() || !task) return;
     try {
-      const res = await fetch(`/api/tasks/${task.id}/comments`, {
+      const res = await fetch(`${config.apiBaseUrl}/tasks/${task.id}/comments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -120,7 +121,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
       setComments([...comments, comment]);
       setNewComment('');
       // Optionally reload activities since comment adds one
-      fetch(`/api/tasks/${task.id}/details`, { headers: { Authorization: `Bearer ${token}` } })
+      fetch(`${config.apiBaseUrl}/tasks/${task.id}/details`, { headers: { Authorization: `Bearer ${token}` } })
         .then(res => res.json())
         .then(data => setActivities(data.activities || []));
     } catch (err) {
@@ -131,7 +132,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
   const handleEditComment = async (commentId: string) => {
     if (!editCommentContent.trim() || !task) return;
     try {
-      const res = await fetch(`/api/tasks/${task.id}/comments/${commentId}`, {
+      const res = await fetch(`${config.apiBaseUrl}/tasks/${task.id}/comments/${commentId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -152,7 +153,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
 
     if (!task) return;
     try {
-      await fetch(`/api/tasks/${task.id}/comments/${commentId}`, {
+      await fetch(`${config.apiBaseUrl}/tasks/${task.id}/comments/${commentId}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`
@@ -195,7 +196,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
     if (!formData.title) return;
     setGeneratingBranch(true);
     try {
-      const res = await fetch('/api/tasks/branch', {
+      const res = await fetch(`${config.apiBaseUrl}/tasks/branch`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

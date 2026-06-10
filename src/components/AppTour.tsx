@@ -29,24 +29,49 @@ export default function AppTour() {
       disableBeacon: true,
     },
     {
-      target: '.tour-dashboard-stats',
-      content: 'Here you can view a quick summary of your workload and project health.',
-      placement: 'bottom',
-    },
-    {
-      target: '.tour-my-tasks',
-      content: 'Your assigned tasks appear here. Click on any task to view details or log hours.',
+      target: '.tour-nav-dashboard',
+      content: 'View a summary of your workload, upcoming deadlines, and recent activity here.',
       placement: 'right',
     },
     {
-      target: '.tour-my-notes',
-      content: 'Your personal scratchpad! Only you can see these notes.',
-      placement: 'left',
+      target: '.tour-nav-projects',
+      content: 'Manage all your projects here. You can group tasks into projects and track overall completion.',
+      placement: 'right',
+    },
+    {
+      target: '.tour-nav-planning',
+      content: 'Plan your project milestones and timelines using the Gantt-like view.',
+      placement: 'right',
+    },
+    {
+      target: '.tour-nav-task-board',
+      content: 'Organize tasks interactively. Drag and drop to move them across progress columns.',
+      placement: 'right',
+    },
+    {
+      target: '.tour-nav-task-graph',
+      content: 'See task dependencies and flow visually using a node-based graph.',
+      placement: 'right',
+    },
+    {
+      target: '.tour-nav-calendar',
+      content: 'Visualize all tasks and events on a monthly calendar, perfect for keeping track of deadlines.',
+      placement: 'right',
+    },
+    {
+      target: '.tour-nav-documents',
+      content: 'Create, edit, and organize project documentation seamlessly.',
+      placement: 'right',
+    },
+    {
+      target: '.tour-nav-teams',
+      content: 'Manage and collaborate with different teams in your organization.',
+      placement: 'right',
     },
     {
       target: '.tour-user-dropdown',
-      content: 'Update your profile and view your credentials from here.',
-      placement: 'left',
+      content: 'Update your profile here. Let\'s get started!',
+      placement: 'right',
     }
   ];
 

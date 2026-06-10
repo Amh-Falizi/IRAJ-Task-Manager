@@ -1,3 +1,4 @@
+import config from "../config";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { User } from '../types';
@@ -15,7 +16,7 @@ export default function UsersAdmin() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users', {
+      const res = await fetch(`${config.apiBaseUrl}/users`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -37,7 +38,7 @@ export default function UsersAdmin() {
     
     setMessage(null);
     try {
-      const res = await fetch(`/api/users/${userToDelete.id}`, {
+      const res = await fetch(`${config.apiBaseUrl}/users/${userToDelete.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });

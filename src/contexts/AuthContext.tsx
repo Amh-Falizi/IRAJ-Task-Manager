@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { User } from "../types";
+import config from "../config";
 
 interface AuthContextType {
   user: User | null;
@@ -19,7 +20,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (token) {
-      fetch("/api/auth/me", {
+      fetch(`${config.apiBaseUrl}/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       })
         .then((res) => {

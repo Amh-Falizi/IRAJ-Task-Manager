@@ -1,3 +1,4 @@
+import config from "../config";
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Task, User } from '../types';
@@ -39,9 +40,9 @@ export default function Dashboard() {
   const fetchData = async () => {
     try {
       const [tasksRes, usersRes, projectsRes] = await Promise.all([
-        fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } })
+        fetch(`${config.apiBaseUrl}/tasks`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${config.apiBaseUrl}/users`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${config.apiBaseUrl}/projects`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
       const [tasksData, usersData, projectsData] = await Promise.all([
         tasksRes.json(),
@@ -73,7 +74,7 @@ export default function Dashboard() {
 
   const handleSaveTask = async (taskData: Partial<Task>) => {
     const isEdit = !!selectedTask;
-    const url = isEdit ? `/api/tasks/${selectedTask!.id}` : '/api/tasks';
+    const url = isEdit ? `${config.apiBaseUrl}/tasks/${selectedTask!.id}` : `${config.apiBaseUrl}/tasks`;
     try {
       const res = await fetch(url, {
         method: isEdit ? 'PUT' : 'POST',
@@ -99,7 +100,7 @@ export default function Dashboard() {
 
   const handleUpdateTask = async (taskId: string, currentTask: Task, updates: Partial<Task>) => {
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await fetch(`${config.apiBaseUrl}/tasks/${taskId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -116,7 +117,7 @@ export default function Dashboard() {
   const handleDeleteTask = async (taskId: string) => {
 
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await fetch(`${config.apiBaseUrl}/tasks/${taskId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });

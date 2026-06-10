@@ -1,3 +1,4 @@
+import config from "../config";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { X, Activity, User, CheckCircle2, CircleDashed } from 'lucide-react';
@@ -52,7 +53,7 @@ export default function WorkloadModal({ projectId, projectName, onClose }: Workl
     let active = true;
     const fetchWorkload = async () => {
       try {
-        const res = await fetch(`/api/projects/${projectId}/workload`, {
+        const res = await fetch(`${config.apiBaseUrl}/projects/${projectId}/workload`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (res.ok && active) {

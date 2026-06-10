@@ -1,3 +1,4 @@
+import config from "../config";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSearchParams, Link, Navigate } from 'react-router';
@@ -47,7 +48,7 @@ export default function Planning() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${config.apiBaseUrl}/users`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         setUsers(await res.json());
       }
@@ -58,7 +59,7 @@ export default function Planning() {
 
   const fetchTasks = async () => {
     try {
-      const res = await fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${config.apiBaseUrl}/tasks`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         let allTasks = await res.json();
         // filter by project
@@ -102,7 +103,7 @@ export default function Planning() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch('/api/projects', {
+      const res = await fetch(`${config.apiBaseUrl}/projects`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -121,7 +122,7 @@ export default function Planning() {
 
   const fetchMilestones = async () => {
     try {
-      const res = await fetch(`/api/projects/${projectId}/milestones`, {
+      const res = await fetch(`${config.apiBaseUrl}/projects/${projectId}/milestones`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -139,8 +140,8 @@ export default function Planning() {
     try {
       const method = editMilestone ? 'PUT' : 'POST';
       const url = editMilestone 
-        ? `/api/milestones/${editMilestone.id}` 
-        : `/api/projects/${projectId}/milestones`;
+        ? `${config.apiBaseUrl}/milestones/${editMilestone.id}` 
+        : `${config.apiBaseUrl}/projects/${projectId}/milestones`;
 
       const res = await fetch(url, {
         method,
@@ -163,7 +164,7 @@ export default function Planning() {
   const handleDelete = async (id: string) => {
 
     try {
-      const res = await fetch(`/api/milestones/${id}`, {
+      const res = await fetch(`${config.apiBaseUrl}/milestones/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -207,7 +208,7 @@ export default function Planning() {
   const handleSaveTask = async (updatedTask: Partial<Task>) => {
     if (!editingTask) return;
     try {
-      const res = await fetch(`/api/tasks/${editingTask.id}`, {
+      const res = await fetch(`${config.apiBaseUrl}/tasks/${editingTask.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

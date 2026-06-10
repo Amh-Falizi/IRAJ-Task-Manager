@@ -1,3 +1,4 @@
+import config from "../config";
 import React, { useState } from 'react';
 import { User } from '../types';
 import { X, Save } from 'lucide-react';
@@ -28,7 +29,7 @@ export default function UserModal({ user, onClose, onSave }: UserModalProps) {
     setSaving(true);
     
     try {
-      const url = isEdit ? `/api/users/${user.id}` : '/api/users';
+      const url = isEdit ? `${config.apiBaseUrl}/users/${user.id}` : `${config.apiBaseUrl}/users`;
       const method = isEdit ? 'PUT' : 'POST';
       
       const payload: any = { ...formData };

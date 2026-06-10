@@ -1,3 +1,4 @@
+import config from "../config";
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Task, User, Project, Milestone } from '../types';
@@ -129,10 +130,10 @@ export default function Board() {
   const fetchData = async () => {
     try {
       const results = await Promise.all([
-        fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/milestones', { headers: { Authorization: `Bearer ${token}` } })
+        fetch(`${config.apiBaseUrl}/tasks`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${config.apiBaseUrl}/users`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${config.apiBaseUrl}/projects`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${config.apiBaseUrl}/milestones`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
       
       const tasksData: Task[] = await results[0].json();
@@ -303,7 +304,7 @@ export default function Board() {
     setTasks(tasks.map(t => t.id === taskId ? { ...t, status: targetStatus as any, orderIndex: newOrderIndex } : t));
     
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await fetch(`${config.apiBaseUrl}/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -333,7 +334,7 @@ export default function Board() {
 
   const handleSaveTask = async (taskData: Partial<Task>) => {
     const isEdit = !!editingTask;
-    const url = isEdit ? `/api/tasks/${editingTask!.id}` : '/api/tasks';
+    const url = isEdit ? `${config.apiBaseUrl}/tasks/${editingTask!.id}` : `${config.apiBaseUrl}/tasks`;
     const method = isEdit ? 'PUT' : 'POST';
 
     try {
@@ -360,7 +361,7 @@ export default function Board() {
 
   const handleUpdateTask = async (taskId: string, currentTask: Task, updates: Partial<Task>) => {
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await fetch(`${config.apiBaseUrl}/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -391,7 +392,7 @@ export default function Board() {
     try {
       const selectedTasks = tasks.filter(t => selectedTaskIds.has(t.id));
       await Promise.all(selectedTasks.map(t => 
-        fetch(`/api/tasks/${t.id}`, {
+        fetch(`${config.apiBaseUrl}/tasks/${t.id}`, {
           method: 'PUT',
           headers: { 
             'Content-Type': 'application/json',
@@ -409,7 +410,7 @@ export default function Board() {
 
   const handleDeleteTask = async (taskId: string) => {
 
-    await fetch(`/api/tasks/${taskId}`, {
+    await fetch(`${config.apiBaseUrl}/tasks/${taskId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` }
     });

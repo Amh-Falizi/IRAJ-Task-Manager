@@ -1,3 +1,4 @@
+import config from "../config";
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { User as UserIcon, Save } from 'lucide-react';
@@ -17,7 +18,7 @@ export default function Profile() {
     setSaving(true);
     setMessage(null);
     try {
-      const res = await fetch('/api/users/me', {
+      const res = await fetch(`${config.apiBaseUrl}/users/me`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

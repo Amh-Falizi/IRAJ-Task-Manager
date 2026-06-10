@@ -1,3 +1,4 @@
+import config from "../config";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Project, User } from '../types';
@@ -46,13 +47,13 @@ export default function Projects() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch('/api/projects', {
+      const res = await fetch(`${config.apiBaseUrl}/projects`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
         setProjects(await res.json());
       }
-      const usersRes = await fetch('/api/users', {
+      const usersRes = await fetch(`${config.apiBaseUrl}/users`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (usersRes.ok) {
@@ -172,7 +173,7 @@ export default function Projects() {
                           e.preventDefault();
 
                           try {
-                            const res = await fetch(`/api/projects/${project.id}`, {
+                            const res = await fetch(`${config.apiBaseUrl}/projects/${project.id}`, {
                               method: 'DELETE',
                               headers: { Authorization: `Bearer ${token}` }
                             });
@@ -345,7 +346,7 @@ function CreateProjectModal({ project, onClose, onSuccess }: { project?: Project
     
     setSubmitting(true);
     try {
-      const res = await fetch(project ? `/api/projects/${project.id}` : '/api/projects', {
+      const res = await fetch(project ? `${config.apiBaseUrl}/projects/${project.id}` : `${config.apiBaseUrl}/projects`, {
         method: project ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
