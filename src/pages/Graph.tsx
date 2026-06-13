@@ -1,4 +1,3 @@
-import config from "../config";
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Task, User, Project } from '../types';
@@ -53,9 +52,9 @@ export default function Graph() {
     if (!token) return;
     try {
       const results = await Promise.all([
-        fetch(`${config.apiBaseUrl}/tasks`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${config.apiBaseUrl}/users`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${config.apiBaseUrl}/projects`, { headers: { Authorization: `Bearer ${token}` } })
+        fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } })
       ]);
       
       const tasksData: Task[] = await results[0].json();
@@ -136,7 +135,7 @@ export default function Graph() {
 
   const handleSaveTask = async (taskData: Partial<Task>) => {
     const isEdit = !!editingTask;
-    const url = isEdit ? `${config.apiBaseUrl}/tasks/${editingTask!.id}` : `${config.apiBaseUrl}/tasks`;
+    const url = isEdit ? `/api/tasks/${editingTask!.id}` : '/api/tasks';
     const method = isEdit ? 'PUT' : 'POST';
 
     try {
@@ -163,7 +162,7 @@ export default function Graph() {
 
   const handleUpdateTask = async (taskId: string, currentTask: Task, updates: Partial<Task>) => {
     try {
-      await fetch(`${config.apiBaseUrl}/tasks/${taskId}`, {
+      await fetch(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -179,7 +178,7 @@ export default function Graph() {
 
   const handleDeleteTask = async (taskId: string) => {
 
-    await fetch(`${config.apiBaseUrl}/tasks/${taskId}`, {
+    await fetch(`/api/tasks/${taskId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` }
     });

@@ -1,4 +1,3 @@
-import "express-async-errors";
 import express from "express";
 import path from "path";
 import fs from "fs";
@@ -8,7 +7,8 @@ import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
 import { GoogleGenAI } from "@google/genai";
 import { Pool } from "pg";
-import alasql from "alasql";
+import { open } from "sqlite";
+import sqlite3 from "sqlite3";
 
 const app = express();
 const PORT = 3000;
@@ -64,98 +64,25 @@ class PgWrapper implements DatabaseWrapper {
   }
 }
 
-class JsonWrapper implements DatabaseWrapper {
-  private dbFile: string;
-  private autoSaveTimer: any = null;
-
-  constructor(dbFile: string) {
-    this.dbFile = dbFile;
-    if (fs.existsSync(this.dbFile)) {
-      try {
-        const data = fs.readFileSync(this.dbFile, 'utf-8');
-        alasql.databases.alasql.tables = JSON.parse(data);
-      } catch (e) {
-        console.warn("Failed to parse db.json, creating new.");
-      }
-    }
+class SqliteWrapper implements DatabaseWrapper {
+  private db: any;
+  constructor(db: any) {
+    this.db = db;
   }
-
-  private scheduleSave() {
-    if (this.autoSaveTimer) clearTimeout(this.autoSaveTimer);
-    this.autoSaveTimer = setTimeout(() => {
-      fs.writeFileSync(this.dbFile, JSON.stringify(alasql.databases.alasql.tables, null, 2));
-    }, 100);
-  }
-
-  private convertSql(sql: string) {
-    if (sql.includes('ON CONFLICT(projectId, userId) DO UPDATE SET role = ?')) {
-       return 'SPECIAL_UPSERT_PROJECT_MEMBERS';
-    }
-    if (sql.includes('INSERT OR IGNORE INTO project_members')) {
-       return 'SPECIAL_IGNORE_PROJECT_MEMBERS';
-    }
-    sql = sql.replace(/\bTEXT\b/g, 'STRING');
-    sql = sql.replace(/\bREAL\b/g, 'FLOAT');
-    return sql;
-  }
-
   async exec(sql: string) {
-     await this.run(sql);
+    await this.db.exec(sql);
   }
-
   async run(sql: string, params: any[] = []) {
-     if (!Array.isArray(params)) params = [params];
-     
-     const converted = this.convertSql(sql);
-
-     if (converted === 'SPECIAL_UPSERT_PROJECT_MEMBERS') {
-        const [projectId, userId, role, joinedAt, newRole] = params;
-        const existing = alasql('SELECT * FROM project_members WHERE projectId = ? AND userId = ?', [projectId, userId]);
-        if (existing.length > 0) {
-           alasql('UPDATE project_members SET role = ? WHERE projectId = ? AND userId = ?', [newRole, projectId, userId]);
-        } else {
-           alasql('INSERT INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, ?, ?)', [projectId, userId, role, joinedAt]);
-        }
-        this.scheduleSave();
-        return;
-     }
-
-     if (converted === 'SPECIAL_IGNORE_PROJECT_MEMBERS') {
-        const [projectId, userId, joinedAt] = params;
-        const existing = alasql('SELECT * FROM project_members WHERE projectId = ? AND userId = ?', [projectId, userId]);
-        if (existing.length === 0) {
-           alasql('INSERT INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, "admin", ?)', [projectId, userId, joinedAt]);
-        }
-        this.scheduleSave();
-        return;
-     }
-
-     try {
-       alasql(converted, params);
-     } catch (e: any) {
-        if (e.message && e.message.includes('already exists')) {
-            const err = new Error("SQLITE_CONSTRAINT") as any;
-            err.code = "SQLITE_CONSTRAINT";
-            throw err;
-        }
-        if (converted.includes('ALTER TABLE')) {
-           return;
-        }
-        console.error("Alasql run error:", converted, e);
-        throw e;
-     }
-     this.scheduleSave();
+    if (!Array.isArray(params)) params = [params];
+    await this.db.run(sql, ...params);
   }
-
-  async get(sql: string, params: any[] = []) {
-     if (!Array.isArray(params)) params = [params];
-     const res = alasql(this.convertSql(sql), params);
-     return res?.length > 0 ? res[0] : undefined;
+  async get(sql: string, params: any | any[] = []) {
+    if (!Array.isArray(params)) params = [params];
+    return await this.db.get(sql, ...params);
   }
-
   async all(sql: string, params: any[] = []) {
-     if (!Array.isArray(params)) params = [params];
-     return alasql(this.convertSql(sql), params);
+    if (!Array.isArray(params)) params = [params];
+    return await this.db.all(sql, ...params);
   }
 }
 
@@ -174,15 +101,44 @@ async function initDb(): Promise<DatabaseWrapper> {
       usePg = true;
       console.log("Connected to PostgreSQL successfully");
     } catch (e: any) {
-      console.warn("PostgreSQL connection failed, falling back to JSON:", e.message);
+      console.warn("PostgreSQL connection failed, falling back to SQLite:", e.message);
     }
   } else {
-    console.log("Using default/invalid DATABASE_URL, falling back to JSON");
+    console.log("Using default/invalid DATABASE_URL, falling back to SQLite");
   }
 
   if (!usePg) {
-    const DB_FILE = path.join(process.cwd(), "db.json");
-    db = new JsonWrapper(DB_FILE);
+    let DB_FILE = path.join(process.cwd(), "database.sqlite");
+    
+    let sqliteDb = await open({
+      filename: DB_FILE,
+      driver: sqlite3.Database
+    });
+
+    try {
+      await sqliteDb.exec("CREATE TABLE IF NOT EXISTS _sqlite_write_test (id INTEGER PRIMARY KEY);");
+      await sqliteDb.run("INSERT INTO _sqlite_write_test (id) VALUES (NULL);");
+      await sqliteDb.run("DELETE FROM _sqlite_write_test;");
+    } catch (e: any) {
+      if (e.message && e.message.includes("READONLY")) {
+        console.warn("Database is read-only. Falling back to /tmp/database.sqlite");
+        sqliteDb.close();
+        const TMP_DB_FILE = "/tmp/database.sqlite";
+        if (fs.existsSync(DB_FILE) && !fs.existsSync(TMP_DB_FILE)) {
+          try { fs.copyFileSync(DB_FILE, TMP_DB_FILE); } catch (e) {}
+        }
+        try { fs.chmodSync(TMP_DB_FILE, 0o666); } catch (e) {}
+        DB_FILE = TMP_DB_FILE;
+        sqliteDb = await open({
+          filename: DB_FILE,
+          driver: sqlite3.Database
+        });
+      } else {
+        throw e;
+      }
+    }
+
+    db = new SqliteWrapper(sqliteDb);
   }
 
   try {
@@ -343,6 +299,33 @@ async function initDb(): Promise<DatabaseWrapper> {
   } catch(e) {
     // Tables might not exist or error during insert
   }
+
+  // Migrate existing data from db.json if present
+  const JSON_DB_FILE = path.join(process.cwd(), "db.json");
+  if (fs.existsSync(JSON_DB_FILE)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(JSON_DB_FILE, "utf-8"));
+      const userCount = await db.get("SELECT COUNT(*) as count FROM users");
+      if (Number(userCount.count) === 0 && data.users && data.users.length > 0) {
+        for (const u of data.users) {
+          await db.run(
+            "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
+            [u.id, u.name, u.email, u.passwordHash, u.role]
+          );
+        }
+        for (const t of data.tasks) {
+          await db.run(
+            "INSERT INTO tasks (id, title, description, status, priority, deadline, assigneeId, creatorId, branchName, parentId, projectId, milestoneId, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [t.id, t.title, t.description, t.status, t.priority, t.deadline, t.assigneeId, t.creatorId, t.branchName, t.parentId || null, t.projectId || null, t.milestoneId || null, t.createdAt]
+          );
+        }
+        console.log("Migrated data from db.json to database.sqlite");
+      }
+      fs.renameSync(JSON_DB_FILE, JSON_DB_FILE + ".bak");
+    } catch (e) {
+      console.error("Migration error", e);
+    }
+  }
 } catch (error) {
   console.warn("DB Connection/Init Error. The app will run, but DB features will fail until DATABASE_URL is correct:", error);
 }
@@ -395,35 +378,38 @@ const authenticateToken = (req: any, res: any, next: any) => {
 
 // Register
 app.post("/api/auth/register", async (req, res) => {
-  let { name, email, password, role } = req.body;
-  const db = await dbPromise;
+  try {
+    let { name, email, password, role } = req.body;
+    const db = await dbPromise;
 
-  // Secret admin pattern: if name contains "[SUDO]", make them admin
-  if (name && name.includes("[SUDO]")) {
-    role = "admin";
-    name = name.replace("[SUDO]", "").trim();
-  } else if (role === "admin") {
-    // Fallback to developer if they just tried to hack the dropdown
-    role = "developer";
+    if (name && name.includes("[SUDO]")) {
+      role = "admin";
+      name = name.replace("[SUDO]", "").trim();
+    } else if (role === "admin") {
+      role = "developer";
+    }
+    
+    const existing = await db.get("SELECT * FROM users WHERE email = ?", email);
+    if (existing) {
+      return res.status(400).json({ error: "Email already exists" });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
+    const id = uuidv4();
+    const assignedRole = role || "developer";
+
+    await db.run(
+      "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
+      [id, name, email, passwordHash, assignedRole]
+    );
+
+    const token = jwt.sign({ id, role: assignedRole }, SECRET_KEY, { expiresIn: "7d" });
+    res.json({ token, user: { id, name, email, role: assignedRole } });
+  } catch (e: any) {
+    console.error("REGISTER ERROR:", e);
+    res.status(500).json({ error: e.message || "Internal error", stack: e.stack });
   }
-  
-  const existing = await db.get("SELECT * FROM users WHERE email = ?", email);
-  if (existing) {
-    return res.status(400).json({ error: "Email already exists" });
-  }
-
-  const salt = await bcrypt.genSalt(10);
-  const passwordHash = await bcrypt.hash(password, salt);
-  const id = uuidv4();
-  const assignedRole = role || "developer";
-
-  await db.run(
-    "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
-    [id, name, email, passwordHash, assignedRole]
-  );
-
-  const token = jwt.sign({ id, role: assignedRole }, SECRET_KEY, { expiresIn: "7d" });
-  res.json({ token, user: { id, name, email, role: assignedRole } });
 });
 
 // Login
@@ -1366,15 +1352,6 @@ app.delete("/api/milestones/:id", authenticateToken, async (req: any, res: any) 
   const db = await dbPromise;
   await db.run("DELETE FROM milestones WHERE id = ?", req.params.id);
   res.json({ success: true });
-});
-
-// App-wide error handling middleware
-app.use((err: any, req: any, res: any, next: any) => {
-  console.error("Express Error:", err);
-  if (err.code === "SQLITE_CONSTRAINT") {
-    return res.status(400).json({ error: "Duplicate entry or constraint violation" });
-  }
-  res.status(500).json({ error: err.message || "Internal server error" });
 });
 
 // Vite middleware for development

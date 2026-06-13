@@ -1,4 +1,3 @@
-import config from "../config";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { User } from '../types';
@@ -18,7 +17,7 @@ export default function ProjectActivityModal({ projectId, projectName, users, on
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${config.apiBaseUrl}/projects/${projectId}/activity`, {
+    fetch(`/api/projects/${projectId}/activity`, {
        headers: { Authorization: `Bearer ${token}` }
     })
     .then(res => res.json())

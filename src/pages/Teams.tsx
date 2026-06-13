@@ -1,4 +1,3 @@
-import config from "../config";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Team, TeamMember, User, Project } from '../types';
@@ -19,11 +18,11 @@ export default function Teams() {
   // Data fetching
   const fetchTeams = async () => {
     try {
-      const pRes = await fetch(`${config.apiBaseUrl}/projects`, { headers: { Authorization: `Bearer ${token}` }});
+      const pRes = await fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` }});
       if (pRes.ok) {
         setProjects(await pRes.json());
       }
-      const res = await fetch(`${config.apiBaseUrl}/teams`, {
+      const res = await fetch('/api/teams', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -107,7 +106,7 @@ export default function Teams() {
                               e.preventDefault();
 
                               try {
-                                const res = await fetch(`${config.apiBaseUrl}/teams/${team.id}`, {
+                                const res = await fetch(`/api/teams/${team.id}`, {
                                   method: 'DELETE',
                                   headers: { Authorization: `Bearer ${token}` }
                                 });
@@ -187,7 +186,7 @@ function CreateTeamModal({ team, onClose, onSuccess }: { team?: Team | null, onC
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetch(`${config.apiBaseUrl}/projects`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(setProjects)
       .catch(console.error);
@@ -198,7 +197,7 @@ function CreateTeamModal({ team, onClose, onSuccess }: { team?: Team | null, onC
     if (!name.trim()) return;
     setSubmitting(true);
     try {
-      const res = await fetch(team ? `${config.apiBaseUrl}/teams/${team.id}` : `${config.apiBaseUrl}/teams`, {
+      const res = await fetch(team ? `/api/teams/${team.id}` : '/api/teams', {
         method: team ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ name, description, projectId: projectId || undefined })
@@ -333,10 +332,10 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
     setLoading(true);
     try {
       const [membersRes, usersRes, teamProjectsRes, allProjectsRes] = await Promise.all([
-        fetch(`${config.apiBaseUrl}/teams/${team.id}/members`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${config.apiBaseUrl}/users`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${config.apiBaseUrl}/teams/${team.id}/projects`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${config.apiBaseUrl}/projects`, { headers: { Authorization: `Bearer ${token}` } })
+        fetch(`/api/teams/${team.id}/members`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`/api/teams/${team.id}/projects`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } })
       ]);
       
       if (membersRes.ok && usersRes.ok && teamProjectsRes.ok && allProjectsRes.ok) {
@@ -361,7 +360,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
     if (!userToAdd) return;
     setAddingUser(true);
     try {
-      const res = await fetch(`${config.apiBaseUrl}/teams/${team.id}/members`, {
+      const res = await fetch(`/api/teams/${team.id}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ userId: userToAdd })
@@ -383,7 +382,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
   const handleRemoveMember = async (userId: string) => {
 
     try {
-      const res = await fetch(`${config.apiBaseUrl}/teams/${team.id}/members/${userId}`, {
+      const res = await fetch(`/api/teams/${team.id}/members/${userId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -400,7 +399,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
     if (!projectToAdd) return;
     setAddingProject(true);
     try {
-      const res = await fetch(`${config.apiBaseUrl}/teams/${team.id}/projects`, {
+      const res = await fetch(`/api/teams/${team.id}/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ projectId: projectToAdd })
@@ -422,7 +421,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
   const handleRemoveProject = async (projectId: string) => {
 
     try {
-      const res = await fetch(`${config.apiBaseUrl}/teams/${team.id}/projects/${projectId}`, {
+      const res = await fetch(`/api/teams/${team.id}/projects/${projectId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -437,7 +436,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
   const handleDeleteTeam = async () => {
 
     try {
-      const res = await fetch(`${config.apiBaseUrl}/teams/${team.id}`, {
+      const res = await fetch(`/api/teams/${team.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });

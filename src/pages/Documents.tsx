@@ -1,4 +1,3 @@
-import config from "../config";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSearchParams, Link, Navigate } from 'react-router';
@@ -35,7 +34,7 @@ export default function Documents() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch(`${config.apiBaseUrl}/projects`, {
+      const res = await fetch('/api/projects', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -54,7 +53,7 @@ export default function Documents() {
 
   const fetchDocuments = async () => {
     try {
-      const res = await fetch(`${config.apiBaseUrl}/projects/${projectId}/documents`, {
+      const res = await fetch(`/api/projects/${projectId}/documents`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -90,8 +89,8 @@ export default function Documents() {
     try {
       const method = documentId && documentId !== 'new' ? 'PUT' : 'POST';
       const url = documentId && documentId !== 'new' 
-        ? `${config.apiBaseUrl}/documents/${documentId}` 
-        : `${config.apiBaseUrl}/projects/${projectId}/documents`;
+        ? `/api/documents/${documentId}` 
+        : `/api/projects/${projectId}/documents`;
         
       const res = await fetch(url, {
         method,
@@ -120,7 +119,7 @@ export default function Documents() {
     e.preventDefault();
     e.stopPropagation();
     try {
-      const res = await fetch(`${config.apiBaseUrl}/documents/${id}`, {
+      const res = await fetch(`/api/documents/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });

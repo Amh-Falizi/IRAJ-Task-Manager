@@ -1,4 +1,3 @@
-import config from "../config";
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Clock, AlertTriangle, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -41,7 +40,7 @@ export default function NotificationsDropdown({ expanded }: { expanded?: boolean
     const fetchTasks = async () => {
       if (!token || !user) return;
       try {
-        const res = await fetch(`${config.apiBaseUrl}/tasks`, {
+        const res = await fetch('/api/tasks', {
           headers: { Authorization: `Bearer ${token}` },
           signal: abortController.signal
         });

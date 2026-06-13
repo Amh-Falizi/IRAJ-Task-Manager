@@ -20,16 +20,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (token) {
-      fetch(`${config.apiBaseUrl}/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
+      if (!user) {
+        setLoading(true);
+      }
+      fetch('/api/auth/me', {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        },
       })
-        .then((res) => {
+        .then(async (res) => {
           if (res.ok) return res.json();
+          const text = await res.text();
+          console.error("Auth /me failed:", res.status, text);
           throw new Error("Invalid token");
         })
         .then((data) => setUser(data))
-        .catch(() => {
+        .catch((err) => {
+          console.error("Auth context catch:", err);
           setToken(null);
+          setUser(null);
           localStorage.removeItem("token");
         })
         .finally(() => setLoading(false));

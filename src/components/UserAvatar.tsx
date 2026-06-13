@@ -1,7 +1,6 @@
 import React from 'react';
 import { cn, getUserColor } from '../lib/utils';
 import { User } from '../types';
-import { Tooltip } from './Tooltip';
 
 interface UserAvatarProps {
   user: User | { name: string; email?: string } | string | null | undefined;
@@ -22,21 +21,12 @@ export default function UserAvatar({ user, className, showTooltip = true }: User
   const initial = name ? name.charAt(0).toUpperCase() : '?';
   const colorClass = getUserColor(name);
 
-  const avatar = (
+  return (
     <div 
       className={cn("w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-sm", colorClass, className)}
+      title={showTooltip ? name : undefined}
     >
       {initial}
     </div>
   );
-
-  if (showTooltip && name) {
-    return (
-      <Tooltip content={name} position="top" asChild>
-        {avatar}
-      </Tooltip>
-    );
-  }
-
-  return avatar;
 }

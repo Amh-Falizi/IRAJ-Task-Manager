@@ -1,4 +1,3 @@
-import config from "../config";
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Navigate, Link } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
@@ -39,9 +38,9 @@ export default function CalendarView() {
   const fetchData = async () => {
     try {
       const [tasksRes, usersRes, projectsRes] = await Promise.all([
-        fetch(`${config.apiBaseUrl}/tasks`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${config.apiBaseUrl}/users`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${config.apiBaseUrl}/projects`, { headers: { Authorization: `Bearer ${token}` } })
+        fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } })
       ]);
       const tasksData = await tasksRes.json();
       const usersData = await usersRes.json();
@@ -70,7 +69,7 @@ export default function CalendarView() {
 
   const handleUpdateTask = async (taskId: string, currentTask: Task, updates: Partial<Task>) => {
     try {
-      await fetch(`${config.apiBaseUrl}/tasks/${taskId}`, {
+      await fetch(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -86,7 +85,7 @@ export default function CalendarView() {
 
   const handleSaveTask = async (taskData: Partial<Task>) => {
     const isEdit = !!selectedTask;
-    const url = isEdit ? `${config.apiBaseUrl}/tasks/${selectedTask!.id}` : `${config.apiBaseUrl}/tasks`;
+    const url = isEdit ? `/api/tasks/${selectedTask!.id}` : '/api/tasks';
     const method = isEdit ? 'PUT' : 'POST';
 
     try {
@@ -116,7 +115,7 @@ export default function CalendarView() {
   const handleDeleteTask = async (taskId: string) => {
 
     try {
-      await fetch(`${config.apiBaseUrl}/tasks/${taskId}`, {
+      await fetch(`/api/tasks/${taskId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });

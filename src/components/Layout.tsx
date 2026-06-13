@@ -84,14 +84,12 @@ export default function Layout() {
           {navItems.map((item) => {
             const isActive = location.pathname === item.href;
             const Icon = item.icon;
-            const tourClass = `tour-nav-${item.name.toLowerCase().replace(/\s+/g, '-')}`;
             return (
               <Link
                 key={item.name}
                 to={item.href}
                 className={cn(
                   'flex items-center rounded-md transition-colors cursor-pointer',
-                  tourClass,
                   isExpanded ? 'px-3 py-2 space-x-3' : 'p-2 justify-center mx-auto',
                   isActive
                     ? 'text-blue-500 bg-blue-500/10 font-medium'

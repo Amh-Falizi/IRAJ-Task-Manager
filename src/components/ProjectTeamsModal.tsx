@@ -1,4 +1,3 @@
-import config from "../config";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Project, Team } from '../types';
@@ -23,7 +22,7 @@ export default function ProjectTeamsModal({ project, onClose }: Props) {
   const fetchTeams = async () => {
     try {
       // Fetch all teams
-      const allRes = await fetch(`${config.apiBaseUrl}/teams`, { headers: { Authorization: `Bearer ${token}` } });
+      const allRes = await fetch('/api/teams', { headers: { Authorization: `Bearer ${token}` } });
       if (allRes.ok) {
         const data: Team[] = await allRes.json();
         setAllTeams(data);
@@ -45,7 +44,7 @@ export default function ProjectTeamsModal({ project, onClose }: Props) {
     if (!addingName.trim()) return;
     setCreating(true);
     try {
-      const res = await fetch(`${config.apiBaseUrl}/teams`, {
+      const res = await fetch('/api/teams', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ name: addingName, description: addingDesc, projectId: project.id })
@@ -70,7 +69,7 @@ export default function ProjectTeamsModal({ project, onClose }: Props) {
     if (!addingExisting) return;
     
     try {
-      const res = await fetch(`${config.apiBaseUrl}/teams/${addingExisting}`, {
+      const res = await fetch(`/api/teams/${addingExisting}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ projectId: project.id })
@@ -87,7 +86,7 @@ export default function ProjectTeamsModal({ project, onClose }: Props) {
   const handleRemoveFromProject = async (teamId: string) => {
     if (!confirm('Are you sure you want to remove this team from the project? (It will become a global team).')) return;
     try {
-      const res = await fetch(`${config.apiBaseUrl}/teams/${teamId}`, {
+      const res = await fetch(`/api/teams/${teamId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ projectId: null })
