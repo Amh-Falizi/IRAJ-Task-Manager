@@ -5,6 +5,7 @@ import { FolderKanban, FileText, Plus, ChevronLeft, Save, Trash2, Edit3, X } fro
 import { Project, Document } from '../types';
 import Markdown from 'react-markdown';
 import MDEditor from '@uiw/react-md-editor';
+import { EmptyState } from '../components/EmptyState';
 
 export default function Documents() {
   const { token } = useAuth();
@@ -332,21 +333,16 @@ export default function Documents() {
         ) : (
           // Empty State
           <div className="flex-1 flex items-center justify-center">
-            <div className="text-center max-w-sm">
-              <div className="mx-auto w-12 h-12 bg-blue-500/10 text-blue-500 flex items-center justify-center rounded-full mb-4">
-                <FileText size={24} />
-              </div>
-              <h3 className="text-lg font-medium text-strong mb-2">Select or create a document</h3>
-              <p className="text-sm text-subtle mb-6">Capture PRDs, architecture notes, and meeting summaries.</p>
-              <Link 
-                to={`/documents?projectId=${projectId}&documentId=new`}
-                onClick={() => startEdit()}
-                className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
-              >
-                <Plus size={16} />
-                <span>New Document</span>
-              </Link>
-            </div>
+            <EmptyState
+              icon={FileText}
+              title="Select or create a document"
+              description="Capture PRDs, architecture notes, and meeting summaries."
+              actionText="New Document"
+              onAction={() => {
+                startEdit();
+                setSearchParams({ projectId: projectId || '', documentId: 'new' });
+              }}
+            />
           </div>
         )}
       </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { Project, User } from '../types';
 import { FolderKanban, Plus, X, Trash2, Calendar, LayoutDashboard, Activity, Clock, Download, Users } from 'lucide-react';
 import { format } from 'date-fns';
@@ -10,9 +11,12 @@ import ProjectMembersModal from '../components/ProjectMembersModal';
 import ProjectTeamsModal from '../components/ProjectTeamsModal';
 import Markdown from 'react-markdown';
 import { exportToCSV, exportToJSON } from '../lib/export';
+import { EmptyState } from '../components/EmptyState';
+import { Tooltip } from '../components/Tooltip';
 
 export default function Projects() {
   const { token, user: currentUser } = useAuth();
+  const { success, error, info } = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,10 +125,14 @@ export default function Projects() {
         {loading ? (
           <div className="text-subtle text-sm">Loading projects...</div>
         ) : projects.length === 0 ? (
-          <div className="text-center text-subtle py-20 bg-surface rounded-xl border border-border-subtle border-dashed">
-            <FolderKanban size={48} className="mx-auto mb-4 text-border-strong" />
-            <h3 className="text-lg font-medium text-primary mb-2">No projects yet</h3>
-            <p className="text-sm">Create a new project to start organizing tasks.</p>
+          <div className="flex-1 flex items-center justify-center h-full min-h-[400px]">
+            <EmptyState 
+              icon={FolderKanban}
+              title="No projects yet"
+              description="Create a new project to start organizing tasks and collaborating with your team."
+              actionText={(currentUser?.role === 'admin' || currentUser?.role === 'manager') ? "New Project" : undefined}
+              onAction={() => setShowCreateModal(true)}
+            />
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -206,60 +214,65 @@ export default function Projects() {
                     {format(new Date(project.createdAt), 'MMM d, yyyy')}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedProject(project);
-                        setIsMembersModalOpen(true);
-                      }}
-                      className="flex items-center space-x-1.5 text-xs text-muted hover:text-strong font-medium bg-surface-dim hover:bg-surface-accent px-2.5 py-1.5 rounded transition-colors border border-border-subtle"
-                    >
-                      <Users size={14} />
-                      <span>Members</span>
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedProject(project);
-                        setIsProjectTeamsModalOpen(true);
-                      }}
-                      className="flex items-center space-x-1.5 text-xs text-muted hover:text-strong font-medium bg-surface-dim hover:bg-surface-accent px-2.5 py-1.5 rounded transition-colors border border-border-subtle"
-                    >
-                      <Users size={14} />
-                      <span>Teams</span>
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedProject(project);
-                        setIsWorkloadModalOpen(true);
-                      }}
-                      className="flex items-center space-x-1.5 text-xs text-muted hover:text-strong font-medium bg-surface-dim hover:bg-surface-accent px-2.5 py-1.5 rounded transition-colors border border-border-subtle"
-                    >
-                      <Activity size={14} />
-                      <span>Workload</span>
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedProject(project);
-                        setIsActivityModalOpen(true);
-                      }}
-                      className="flex items-center space-x-1.5 text-xs text-muted hover:text-strong font-medium bg-surface-dim hover:bg-surface-accent px-2.5 py-1.5 rounded transition-colors border border-border-subtle"
-                    >
-                      <Clock size={14} />
-                      <span>Activity</span>
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/board?projectId=${project.id}`);
-                      }}
-                      className="flex items-center space-x-1.5 text-xs text-blue-400 hover:text-blue-300 font-medium bg-blue-500/10 hover:bg-blue-500/20 px-2.5 py-1.5 rounded transition-colors"
-                    >
-                      <LayoutDashboard size={14} />
-                      <span>Board</span>
-                    </button>
+                    <Tooltip content="Members" position="bottom">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedProject(project);
+                          setIsMembersModalOpen(true);
+                        }}
+                        className="flex items-center space-x-1.5 text-xs text-muted hover:text-strong font-medium bg-surface-dim hover:bg-surface-accent px-2.5 py-1.5 rounded transition-colors border border-border-subtle"
+                      >
+                        <Users size={14} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="Teams" position="bottom">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedProject(project);
+                          setIsProjectTeamsModalOpen(true);
+                        }}
+                        className="flex items-center space-x-1.5 text-xs text-muted hover:text-strong font-medium bg-surface-dim hover:bg-surface-accent px-2.5 py-1.5 rounded transition-colors border border-border-subtle"
+                      >
+                        <Users size={14} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="Workload" position="bottom">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedProject(project);
+                          setIsWorkloadModalOpen(true);
+                        }}
+                        className="flex items-center space-x-1.5 text-xs text-muted hover:text-strong font-medium bg-surface-dim hover:bg-surface-accent px-2.5 py-1.5 rounded transition-colors border border-border-subtle"
+                      >
+                        <Activity size={14} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="Activity logs" position="bottom">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedProject(project);
+                          setIsActivityModalOpen(true);
+                        }}
+                        className="flex items-center space-x-1.5 text-xs text-muted hover:text-strong font-medium bg-surface-dim hover:bg-surface-accent px-2.5 py-1.5 rounded transition-colors border border-border-subtle"
+                      >
+                        <Clock size={14} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="Task Board" position="bottom">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/board?projectId=${project.id}`);
+                        }}
+                        className="flex items-center space-x-1.5 text-xs text-blue-400 hover:text-blue-300 font-medium bg-blue-500/10 hover:bg-blue-500/20 px-2.5 py-1.5 rounded transition-colors"
+                      >
+                        <LayoutDashboard size={14} />
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
               </div>

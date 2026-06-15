@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { Team, TeamMember, User, Project } from '../types';
 import { Users, Plus, X, Trash2, Shield, FolderKanban } from 'lucide-react';
 import { format } from 'date-fns';
 import Markdown from 'react-markdown';
 import UserAvatar from '../components/UserAvatar';
 import SearchableSelect from '../components/SearchableSelect';
+import { EmptyState } from '../components/EmptyState';
 
 export default function Teams() {
   const { token, user: currentUser } = useAuth();
+  const { success, error, info } = useToast();
   const [teams, setTeams] = useState<Team[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,10 +66,15 @@ export default function Teams() {
           {loading ? (
             <div className="text-subtle text-sm">Loading teams...</div>
           ) : teams.length === 0 ? (
-            <div className="text-center text-subtle py-12">
-              <Users size={48} className="mx-auto mb-4 opacity-50" />
-              <p>No teams available.</p>
-            </div>
+              <div className="flex-1 flex flex-col items-center justify-center min-h-[400px]">
+                <EmptyState 
+                  icon={Users}
+                  title="No teams available"
+                  description="There are no development teams available yet. Create a team to organize your members and assign them to projects."
+                  actionText={(currentUser?.role === 'admin' || currentUser?.role === 'manager') ? "New Team" : undefined}
+                  onAction={() => setShowCreateModal(true)}
+                />
+              </div>
           ) : (
             <div className={selectedTeam ? "space-y-3" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"}>
               {teams.map(team => (

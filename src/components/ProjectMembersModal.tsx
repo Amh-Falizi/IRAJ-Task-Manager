@@ -161,21 +161,21 @@ export default function ProjectMembersModal({ project, allUsers, onClose }: Prop
               {/* Project Owner */}
               <div className="bg-surface-dim border border-border-subtle rounded p-3 flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  <UserAvatar name={allUsers.find(u => u.id === project.ownerId)?.name || 'Owner'} size="md" />
+                  <UserAvatar user={allUsers.find(u => u.id === project.ownerId)?.name || 'Owner'} className="w-10 h-10 text-sm" />
                   <div>
                     <h3 className="text-sm font-bold">{allUsers.find(u => u.id === project.ownerId)?.name || 'Unknown'} <span className="text-xs font-normal text-muted ml-2">(Owner)</span></h3>
                     <p className="text-xs text-subtle">{allUsers.find(u => u.id === project.ownerId)?.email}</p>
                   </div>
                 </div>
                 <div>
-                  <Shield size={16} className="text-blue-500" title="Project Owner" />
+                  <Shield size={16} className="text-blue-500" />
                 </div>
               </div>
 
               {members.filter(m => m.id !== project.ownerId).map(member => (
                 <div key={member.id} className="bg-surface border border-border-subtle rounded p-3 flex items-center justify-between group">
                   <div className="flex items-center space-x-3">
-                    <UserAvatar name={member.name} size="md" />
+                    <UserAvatar user={member.name} className="w-10 h-10 text-sm" />
                     <div>
                       <h3 className="text-sm font-bold">{member.name}</h3>
                       <p className="text-xs text-subtle">{member.email}</p>

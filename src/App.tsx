@@ -2,6 +2,8 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { ToastProvider } from './contexts/ToastContext';
+import { TooltipProvider } from './components/Tooltip';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Board from './pages/Board';
@@ -33,31 +35,34 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            
-            <Route path="/" element={
-              <ProtectedRoute>
-                <Layout />
-              </ProtectedRoute>
-            }>
-              <Route index element={<Dashboard />} />
-              <Route path="projects" element={<Projects />} />
-              <Route path="board" element={<Board />} />
-              <Route path="graph" element={<Graph />} />
-              <Route path="calendar" element={<CalendarView />} />
-              <Route path="teams" element={<Teams />} />
-              <Route path="documents" element={<Documents />} />
-              <Route path="planning" element={<Planning />} />
-              <Route path="profile" element={<Profile />} />
-              <Route path="admin/users" element={<UsersAdmin />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
+      <ToastProvider>
+        <TooltipProvider>
+          <AuthProvider>
+            <BrowserRouter>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/" element={
+                  <ProtectedRoute>
+                    <Layout />
+                  </ProtectedRoute>
+                }>
+                  <Route index element={<Dashboard />} />
+                  <Route path="projects" element={<Projects />} />
+                  <Route path="board" element={<Board />} />
+                  <Route path="graph" element={<Graph />} />
+                  <Route path="calendar" element={<CalendarView />} />
+                  <Route path="teams" element={<Teams />} />
+                  <Route path="documents" element={<Documents />} />
+                  <Route path="planning" element={<Planning />} />
+                  <Route path="profile" element={<Profile />} />
+                  <Route path="admin/users" element={<UsersAdmin />} />
+                </Route>
+              </Routes>
+            </BrowserRouter>
+          </AuthProvider>
+        </TooltipProvider>
+      </ToastProvider>
     </ThemeProvider>
   );
 }

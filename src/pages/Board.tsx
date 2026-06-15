@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { Task, User, Project, Milestone } from '../types';
 import TaskModal from '../components/TaskModal';
 import WorkloadModal from '../components/WorkloadModal';
@@ -12,7 +13,8 @@ import TaskDiagram from '../components/TaskDiagram';
 import Markdown from 'react-markdown';
 import UserAvatar from '../components/UserAvatar';
 import { exportToCSV, exportToJSON } from '../lib/export';
-import { HelpIcon } from '../components/Tooltip';
+import { HelpIcon, Tooltip } from '../components/Tooltip';
+import { EmptyState } from '../components/EmptyState';
 
 export interface Column {
   id: string;
@@ -39,6 +41,7 @@ const priorityWeight = {
 
 export default function Board() {
   const { token, user } = useAuth();
+  const { success, error, info } = useToast();
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('projectId');
   
@@ -252,7 +255,7 @@ export default function Board() {
         return dep && dep.status !== 'done';
       });
       if (pendingDeps.length > 0) {
-        alert(`Cannot complete task. ${pendingDeps.length} dependencies are still pending.`);
+        error(`Cannot complete task. ${pendingDeps.length} dependencies are still pending.`);
         return;
       }
     }
@@ -348,13 +351,14 @@ export default function Board() {
       if (res.ok) {
         setIsModalOpen(false);
         fetchData();
+        success(editingTask ? 'Task updated' : 'Task created');
       } else {
         const errData = await res.text();
-        alert(`Failed to save task: ${errData}`);
+        error(`Failed to save task: ${errData}`);
       }
     } catch (err: any) {
       console.error(err);
-      alert(`Error saving task: ${err.message}`);
+      error(`Error saving task: ${err.message}`);
     }
   };
 
@@ -369,7 +373,13 @@ export default function Board() {
         body: JSON.stringify({ ...currentTask, ...updates })
       });
       fetchData();
+      if (updates.status === 'done') {
+        success('Task completed');
+      } else {
+        success(updates.orderIndex !== undefined && Object.keys(updates).length === 1 ? 'Task reordered' : 'Task updated');
+      }
     } catch (err) {
+      error('Failed to update task');
       console.error(err);
     }
   };
@@ -402,18 +412,30 @@ export default function Board() {
       ));
       setSelectedTaskIds(new Set());
       fetchData();
+      if (updates.status === 'done') {
+        success('Tasks completed');
+      } else {
+        success('Tasks updated');
+      }
     } catch (err) {
+      error('Bulk update failed');
       console.error('Bulk update failed', err);
     }
   };
 
   const handleDeleteTask = async (taskId: string) => {
 
-    await fetch(`/api/tasks/${taskId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    fetchData();
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      fetchData();
+      success('Task deleted');
+    } catch (err) {
+      error('Failed to delete task');
+      console.error(err);
+    }
   };
 
   if (loading) return <div className="p-8 text-primary">Loading board...</div>;
@@ -466,7 +488,7 @@ export default function Board() {
 
   return (
     <div className="flex-1 flex flex-col p-6 min-h-0 bg-page-bg">
-      <div className="flex justify-between items-start lg:items-center mb-6 shrink-0 flex-col lg:flex-row gap-4">
+      <div className="tour-board-header flex justify-between items-start lg:items-center mb-6 shrink-0 flex-col lg:flex-row gap-4">
         <div>
           {project ? (
             <>
@@ -602,13 +624,15 @@ export default function Board() {
               </>
             )}
           </div>
-          <button
-            onClick={handleCreateTask}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-strong text-xs font-bold rounded shadow-lg transition-colors flex items-center space-x-2"
-          >
-            <Plus size={14} />
-            <span>NEW TASK</span>
-          </button>
+          <Tooltip content="Create a new task with keyboard shortcut: c" position="bottom">
+            <button
+              onClick={handleCreateTask}
+              className="tour-new-task px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-strong text-xs font-bold rounded shadow-lg transition-colors flex items-center space-x-2"
+            >
+              <Plus size={14} />
+              <span>NEW TASK</span>
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -665,20 +689,22 @@ export default function Board() {
                   </span>
                 </div>
                 <div className="flex flex-row items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => handleCreateTaskInColumn(column.id)}
-                    className="text-subtle hover:text-strong"
-                    title={`Add Task to ${column.title}`}
-                  >
-                    <Plus size={16} />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteColumn(column.id)}
-                    className="text-subtle hover:text-red-400"
-                    title={`Delete ${column.title}`}
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  <Tooltip content={`Add Task to ${column.title}`} position="top">
+                    <button
+                      onClick={() => handleCreateTaskInColumn(column.id)}
+                      className="text-subtle hover:text-strong"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </Tooltip>
+                  <Tooltip content={`Delete ${column.title}`} position="top">
+                    <button
+                      onClick={() => handleDeleteColumn(column.id)}
+                      className="text-subtle hover:text-red-400"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
 

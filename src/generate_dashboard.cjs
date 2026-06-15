@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from 'react';
+const fs = require('fs');
+
+const content = `import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { Task, User } from '../types';
@@ -12,9 +14,6 @@ import { HelpIcon, Tooltip } from '../components/Tooltip';
 import { EmptyState } from '../components/EmptyState';
 import { CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 
 type WidgetType = 'stats' | 'my_tasks' | 'analytics' | 'my_notes' | 'recent_activity';
 
@@ -43,84 +42,6 @@ const colSpanClass: Record<number, string> = {
   4: "lg:col-span-4"
 };
 
-function SortableWidget({ 
-  widget, 
-  isEditLayout, 
-  renderWidgetContent, 
-  toggleVisible, 
-  updateSize 
-}: { 
-  widget: Widget, 
-  isEditLayout: boolean, 
-  renderWidgetContent: (type: WidgetType) => React.ReactNode,
-  toggleVisible: (id: string) => void,
-  updateSize: (id: string, colSpan: number) => void
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: widget.id });
-
-  const style = {
-    transform: CSS.Translate.toString(transform),
-    transition,
-    zIndex: isDragging ? 50 : 1,
-    position: 'relative' as const,
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "relative flex flex-col outline-none",
-        colSpanClass[widget.colSpan] || "col-span-12",
-        isEditLayout ? "min-h-[200px]" : (widget.type === 'analytics' || widget.type === 'my_tasks' ? "min-h-[400px]" : "min-h-[300px]"),
-        widget.type === 'stats' && !isEditLayout && "min-h-0 h-auto",
-        !widget.visible && isEditLayout && "opacity-40 grayscale",
-        isDragging && "opacity-50 ring-2 ring-blue-500 rounded-lg shadow-2xl"
-      )}
-    >
-      {isEditLayout && (
-        <div className="absolute inset-0 z-50 bg-black/40 xl:backdrop-blur-[2px] border-2 border-blue-500/50 border-dashed rounded-xl flex flex-col items-center justify-center p-4 m-0.5">
-          <h3 
-            className="font-bold text-white text-sm mb-4 shadow-sm cursor-grab active:cursor-grabbing px-10 py-4 bg-transparent w-full flex items-center justify-center hover:bg-white/5 rounded transition-colors touch-none" 
-            {...attributes} 
-            {...listeners}
-          >
-            <Layout size={16} className="mr-2 opacity-50" />
-            {widget.title}
-          </h3>
-          <div className="flex items-center gap-2 bg-surface p-2 rounded-lg shadow-2xl border border-border-subtle" onPointerDown={e => e.stopPropagation()}>
-            <button onClick={() => toggleVisible(widget.id)} className="p-2 bg-surface hover:bg-surface-accent rounded text-strong transition-colors" title={widget.visible ? "Hide Widget" : "Show Widget"}>
-              {widget.visible ? <Eye size={16}/> : <EyeOff size={16} className="text-red-400"/>}
-            </button>
-            <div className="w-px h-6 bg-border-subtle mx-1" />
-            <select 
-              value={widget.colSpan} 
-              onChange={(e) => updateSize(widget.id, parseInt(e.target.value))}
-              className="p-1 px-2 text-xs font-medium bg-surface border border-border-subtle hover:border-blue-500 text-strong rounded transition-colors focus:outline-none cursor-pointer"
-              title="Widget Size"
-            >
-              <option value={12}>100% Width</option>
-              <option value={8}>Large (8 cols)</option>
-              <option value={7}>Wide (7 cols)</option>
-              <option value={6}>Half (6 cols)</option>
-              <option value={5}>Narrow (5 cols)</option>
-              <option value={4}>Small (4 cols)</option>
-            </select>
-          </div>
-        </div>
-      )}
-      {renderWidgetContent(widget.type)}
-    </div>
-  );
-}
-
 export default function Dashboard() {
   const { user, token } = useAuth();
   const { success, error, info } = useToast();
@@ -136,42 +57,15 @@ export default function Dashboard() {
 
   const [widgets, setWidgets] = useState<Widget[]>([]);
   const [isEditLayout, setIsEditLayout] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 5 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (over && active.id !== over.id) {
-      setWidgets((items) => {
-        const oldIndex = items.findIndex(item => item.id === active.id);
-        const newIndex = items.findIndex(item => item.id === over.id);
-
-        const newWidgets = arrayMove(items, oldIndex, newIndex);
-        if (user?.id) {
-          localStorage.setItem(`dashboard_layout_${user.id}`, JSON.stringify(newWidgets));
-        }
-        return newWidgets;
-      });
-    }
-  };
 
   useEffect(() => {
     if (user?.id) {
-      const savedNotes = localStorage.getItem(`user_notes_${user.id}`);
+      const savedNotes = localStorage.getItem(\`user_notes_\${user.id}\`);
       if (savedNotes) {
         setUserNotes(savedNotes);
       }
 
-      const savedLayout = localStorage.getItem(`dashboard_layout_${user.id}`);
+      const savedLayout = localStorage.getItem(\`dashboard_layout_\${user.id}\`);
       if (savedLayout) {
         try {
           const parsed = JSON.parse(savedLayout) as Widget[];
@@ -189,17 +83,8 @@ export default function Dashboard() {
   const saveWidgets = (newWidgets: Widget[]) => {
     setWidgets(newWidgets);
     if (user?.id) {
-      localStorage.setItem(`dashboard_layout_${user.id}`, JSON.stringify(newWidgets));
+      localStorage.setItem(\`dashboard_layout_\${user.id}\`, JSON.stringify(newWidgets));
     }
-  };
-
-  const resetLayout = () => {
-    setIsResetting(true);
-    setTimeout(() => {
-      saveWidgets(DEFAULT_WIDGETS);
-      success('Layout reset to default');
-      setIsResetting(false);
-    }, 250);
   };
 
   const toggleVisible = (id: string) => {
@@ -227,16 +112,16 @@ export default function Dashboard() {
   const handleNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setUserNotes(e.target.value);
     if (user?.id) {
-      localStorage.setItem(`user_notes_${user.id}`, e.target.value);
+      localStorage.setItem(\`user_notes_\${user.id}\`, e.target.value);
     }
   };
 
   const fetchData = async () => {
     try {
       const [tasksRes, usersRes, projectsRes] = await Promise.all([
-        fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } })
+        fetch('/api/tasks', { headers: { Authorization: \`Bearer \${token}\` } }),
+        fetch('/api/users', { headers: { Authorization: \`Bearer \${token}\` } }),
+        fetch('/api/projects', { headers: { Authorization: \`Bearer \${token}\` } })
       ]);
       const [tasksData, usersData, projectsData] = await Promise.all([
         tasksRes.json(),
@@ -268,13 +153,13 @@ export default function Dashboard() {
 
   const handleSaveTask = async (taskData: Partial<Task>) => {
     const isEdit = !!selectedTask;
-    const url = isEdit ? `/api/tasks/${selectedTask!.id}` : '/api/tasks';
+    const url = isEdit ? \`/api/tasks/\${selectedTask!.id}\` : '/api/tasks';
     try {
       const res = await fetch(url, {
         method: isEdit ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          Authorization: \`Bearer \${token}\`
         },
         body: JSON.stringify(taskData)
       });
@@ -285,21 +170,21 @@ export default function Dashboard() {
         success(isEdit ? 'Task updated' : 'Task created');
       } else {
         const errData = await res.text();
-        error(`Failed to save task: ${errData}`);
+        error(\`Failed to save task: \${errData}\`);
       }
     } catch (err: any) {
       console.error(err);
-      error(`Error saving task: ${err.message}`);
+      error(\`Error saving task: \${err.message}\`);
     }
   };
 
   const handleUpdateTask = async (taskId: string, currentTask: Task, updates: Partial<Task>) => {
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await fetch(\`/api/tasks/\${taskId}\`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          Authorization: \`Bearer \${token}\`
         },
         body: JSON.stringify({ ...currentTask, ...updates })
       });
@@ -317,9 +202,9 @@ export default function Dashboard() {
 
   const handleDeleteTask = async (taskId: string) => {
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await fetch(\`/api/tasks/\${taskId}\`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: \`Bearer \${token}\` }
       });
       fetchData();
       success('Task deleted');
@@ -431,38 +316,34 @@ export default function Dashboard() {
   const renderStats = () => (
     <div className="tour-dashboard-stats grid grid-cols-2 lg:grid-cols-4 gap-4 w-full h-full">
       <div className="bg-surface border border-border-subtle p-4 rounded-lg relative group h-full flex flex-col justify-center">
-        <div className="text-[10px] text-subtle font-bold uppercase mb-1 tracking-wider flex items-center justify-between">
-          <div className="flex items-center gap-2"><FileText size={14} /> Total Tasks</div>
-          <HelpIcon text="Total cumulative number of tasks in the current project or view." />
+        <div className="text-[10px] text-subtle font-bold uppercase mb-1 tracking-wider flex items-center gap-2">
+          <FileText size={14} /> Total Tasks
         </div>
         <div className="text-2xl font-mono text-strong">{totalTasks}</div>
       </div>
       
       <div className="bg-surface border border-border-subtle p-4 rounded-lg relative group h-full flex flex-col justify-center">
-        <div className="text-[10px] text-subtle font-bold uppercase mb-1 tracking-wider flex items-center justify-between">
-          <div className="flex items-center gap-2"><CheckCircle2 size={14} /> Completed</div>
-          <HelpIcon text="Tasks that have been fully resolved or moved to a 'Done' column." />
+        <div className="text-[10px] text-subtle font-bold uppercase mb-1 tracking-wider flex items-center gap-2">
+          <CheckCircle2 size={14} /> Completed
         </div>
         <div className="text-2xl font-mono text-strong">{completedTasks}</div>
         {totalTasks > 0 && (
           <div className="w-full h-1 bg-surface-accent mt-3 rounded-full overflow-hidden shrink-0">
-            <div className="h-full bg-blue-500" style={{ width: `${(completedTasks/totalTasks)*100}%` }}></div>
+            <div className="h-full bg-blue-500" style={{ width: \`\${(completedTasks/totalTasks)*100}%\` }}></div>
           </div>
         )}
       </div>
 
       <div className="bg-surface border border-border-subtle p-4 rounded-lg relative group h-full flex flex-col justify-center">
-        <div className="text-[10px] text-subtle font-bold uppercase mb-1 tracking-wider flex items-center justify-between">
-          <div className="flex items-center gap-2"><Clock size={14} /> In Progress</div>
-          <HelpIcon text="Tasks currently being actively worked on." />
+        <div className="text-[10px] text-subtle font-bold uppercase mb-1 tracking-wider flex items-center gap-2">
+          <Clock size={14} /> In Progress
         </div>
         <div className="text-2xl font-mono text-strong">{inProgress}</div>
       </div>
 
       <div className="bg-surface border border-border-subtle p-4 rounded-lg relative group h-full flex flex-col justify-center">
-        <div className="text-[10px] text-subtle font-bold uppercase mb-1 tracking-wider flex items-center justify-between">
-          <div className="flex items-center gap-2"><AlertCircle size={14} /> Urgent</div>
-          <HelpIcon text="High priority tasks requiring immediate attention." />
+        <div className="text-[10px] text-subtle font-bold uppercase mb-1 tracking-wider flex items-center gap-2">
+          <AlertCircle size={14} /> Urgent
         </div>
         <div className="text-2xl font-mono text-strong">{urgentTasks}</div>
         {urgentTasks > 0 && (
@@ -480,7 +361,6 @@ export default function Dashboard() {
         <h2 className="text-xs font-bold text-strong uppercase tracking-widest flex items-center gap-2">
           My Assigned Tasks
         </h2>
-        <HelpIcon text="Tasks specifically assigned to you. Click on any task to view or edit details." />
       </div>
       <div className="overflow-y-auto p-4 space-y-3 flex-1">
       {myTasks.length === 0 ? (
@@ -540,14 +420,11 @@ export default function Dashboard() {
 
   const renderMyNotes = () => (
     <div className="tour-my-notes bg-surface border border-border-subtle p-4 rounded-lg flex flex-col w-full h-full">
-      <div className="flex items-center justify-between mb-4 shrink-0">
-        <div className="flex items-center space-x-2">
-          <Edit3 size={14} className="text-muted" />
-          <h2 className="text-[10px] font-bold text-subtle uppercase tracking-widest flex items-center gap-2">
-            My Notes
-          </h2>
-        </div>
-        <HelpIcon text="A private scratchpad for your personal use. Stored locally in your browser." />
+      <div className="flex items-center space-x-2 mb-4 shrink-0">
+        <Edit3 size={14} className="text-muted" />
+        <h2 className="text-[10px] font-bold text-subtle uppercase tracking-widest flex items-center gap-2">
+          My Notes
+        </h2>
       </div>
       <div className="flex-1 flex flex-col w-full min-h-0">
         <textarea 
@@ -562,19 +439,16 @@ export default function Dashboard() {
 
   const renderRecentActivity = () => {
     const recentActivity = tasks.slice()
-      .sort((a,b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      .sort((a,b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
       .slice(0, 10);
       
     return (
       <div className="bg-surface border border-border-subtle p-4 rounded-lg flex flex-col w-full h-full overflow-hidden">
-        <div className="flex items-center justify-between mb-4 shrink-0">
-          <div className="flex items-center space-x-2">
-            <Clock size={14} className="text-muted" />
-            <h2 className="text-[10px] font-bold text-subtle uppercase tracking-widest flex items-center gap-2">
-              Recent Activity
-            </h2>
-          </div>
-          <HelpIcon text="The most recently updated tasks across the platform." />
+        <div className="flex items-center space-x-2 mb-4 shrink-0">
+          <Clock size={14} className="text-muted" />
+          <h2 className="text-[10px] font-bold text-subtle uppercase tracking-widest flex items-center gap-2">
+            Recent Activity
+          </h2>
         </div>
         <div className="flex-1 overflow-y-auto space-y-4">
           {recentActivity.length === 0 ? (
@@ -599,14 +473,11 @@ export default function Dashboard() {
   const renderAnalytics = () => (
     <div className="bg-surface border border-border-subtle rounded-lg flex flex-col w-full h-full overflow-hidden">
       <div className="p-4 border-b border-border-subtle shrink-0">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2">
-            <Activity size={14} className="text-muted" />
-            <h2 className="text-[10px] font-bold text-subtle uppercase tracking-widest flex items-center gap-2">
-              Analytics
-            </h2>
-          </div>
-          <HelpIcon text="Visualize task distribution and trends across different dimensions." />
+        <div className="flex items-center space-x-2 mb-4">
+          <Activity size={14} className="text-muted" />
+          <h2 className="text-[10px] font-bold text-subtle uppercase tracking-widest flex items-center gap-2">
+            Analytics
+          </h2>
         </div>
         <div className="flex space-x-2 overflow-x-auto hide-scrollbar">
           <button onClick={() => setActiveChart('status')} className={cn("px-3 py-1.5 text-[10px] font-bold uppercase rounded transition-colors whitespace-nowrap border", activeChart === 'status' ? "bg-blue-500/10 text-blue-500 border-blue-500/30" : "bg-surface-dim text-subtle border-transparent hover:text-strong hover:bg-surface-accent")}>Status</button>
@@ -641,7 +512,7 @@ export default function Dashboard() {
                     stroke="none"
                   >
                     {statusData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
+                      <Cell key={\`cell-\${index}\`} fill={entry.color} />
                     ))}
                   </Pie>
                   <RechartsTooltip content={<CustomTooltip />} />
@@ -688,7 +559,7 @@ export default function Dashboard() {
                     stroke="none"
                   >
                     {priorityData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
+                      <Cell key={\`cell-\${index}\`} fill={entry.color} />
                     ))}
                   </Pie>
                   <RechartsTooltip content={<CustomTooltip />} />
@@ -802,14 +673,6 @@ export default function Dashboard() {
         </div>
         
         <div className="flex items-center space-x-4">
-          {isEditLayout && (
-            <button
-              onClick={resetLayout}
-              className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded transition-colors border bg-surface-dim hover:bg-surface-accent text-strong border-border-subtle hover:text-red-400 hover:border-red-500/50 flex items-center gap-2"
-            >
-              Restore Defaults
-            </button>
-          )}
           <button 
             onClick={() => setIsEditLayout(!isEditLayout)}
             className={cn(
@@ -869,39 +732,67 @@ export default function Dashboard() {
             </motion.div>
           )}
 
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={widgets.map(w => w.id)} strategy={rectSortingStrategy}>
-              <div className={cn(
-                "grid grid-cols-1 lg:grid-cols-12 gap-6 w-full transition-all duration-300 ease-in-out origin-top",
-                isResetting ? "opacity-0 scale-[0.98] blur-[2px]" : "opacity-100 scale-100 blur-0"
-              )}>
-                {widgets.filter(w => isEditLayout || w.visible).map((w, index) => (
-                  <SortableWidget
-                    key={w.id}
-                    widget={w}
-                    isEditLayout={isEditLayout}
-                    renderWidgetContent={renderWidgetContent}
-                    toggleVisible={toggleVisible}
-                    updateSize={updateSize}
-                  />
-                ))}
-                
-                {widgets.filter(w => isEditLayout || w.visible).length === 0 && !isEditLayout && (
-                  <div className="col-span-12 flex flex-col items-center justify-center py-20 text-center">
-                    <Layout size={48} className="text-border-subtle mb-4" />
-                    <h3 className="text-lg font-bold text-strong mb-2">Clean Slate</h3>
-                    <p className="text-sm text-subtle mb-6">All dashboard widgets are currently hidden.</p>
-                    <button 
-                      onClick={() => setIsEditLayout(true)}
-                      className="px-4 py-2 bg-surface-dim hover:bg-surface-accent border border-border-subtle text-strong rounded font-medium transition-colors"
-                    >
-                      Edit Layout
-                    </button>
-                  </div>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
+            {widgets.filter(w => isEditLayout || w.visible).map((w, index) => (
+              <div 
+                key={w.id} 
+                className={cn(
+                  "relative flex flex-col outline-none transition-all duration-300",
+                  colSpanClass[w.colSpan] || "col-span-12",
+                  isEditLayout ? "min-h-[200px]" : "min-h-[300px]",
+                  w.type === 'stats' && !isEditLayout && "min-h-0 h-auto",
+                  !w.visible && isEditLayout && "opacity-40 grayscale"
                 )}
+              >
+                 {isEditLayout && (
+                   <div className="absolute inset-0 z-50 bg-black/40 backdrop-blur-[2px] border-2 border-blue-500/50 border-dashed rounded-xl flex flex-col items-center justify-center p-4 m-0.5">
+                     <h3 className="font-bold text-white text-sm mb-4 shadow-sm">{w.title}</h3>
+                     <div className="flex items-center gap-2 bg-surface p-2 rounded-lg shadow-2xl border border-border-subtle">
+                       <button onClick={() => toggleVisible(w.id)} className="p-2 bg-surface hover:bg-surface-accent rounded text-strong transition-colors" title={w.visible ? "Hide Widget" : "Show Widget"}>
+                         {w.visible ? <Eye size={16}/> : <EyeOff size={16} className="text-red-400"/>}
+                       </button>
+                       <div className="w-px h-6 bg-border-subtle mx-1" />
+                       <button disabled={index === 0} onClick={() => moveUp(index)} className="p-2 bg-surface hover:bg-surface-accent rounded text-strong disabled:opacity-30 transition-colors" title="Move Up/Left">
+                         <ArrowUp size={16}/>
+                       </button>
+                       <button disabled={index === widgets.length - 1} onClick={() => moveDown(index)} className="p-2 bg-surface hover:bg-surface-accent rounded text-strong disabled:opacity-30 transition-colors" title="Move Down/Right">
+                         <ArrowDown size={16}/>
+                       </button>
+                       <div className="w-px h-6 bg-border-subtle mx-1" />
+                       <select 
+                         value={w.colSpan} 
+                         onChange={(e) => updateSize(w.id, parseInt(e.target.value))}
+                         className="p-1 px-2 text-xs font-medium bg-surface border border-border-subtle hover:border-blue-500 text-strong rounded transition-colors focus:outline-none cursor-pointer"
+                         title="Widget Size"
+                       >
+                         <option value={12}>100% Width</option>
+                         <option value={8}>Large (8 cols)</option>
+                         <option value={7}>Wide (7 cols)</option>
+                         <option value={6}>Half (6 cols)</option>
+                         <option value={5}>Narrow (5 cols)</option>
+                         <option value={4}>Small (4 cols)</option>
+                       </select>
+                     </div>
+                   </div>
+                 )}
+                 {renderWidgetContent(w.type)}
               </div>
-            </SortableContext>
-          </DndContext>
+            ))}
+            
+            {widgets.filter(w => isEditLayout || w.visible).length === 0 && !isEditLayout && (
+              <div className="col-span-12 flex flex-col items-center justify-center py-20 text-center">
+                <Layout size={48} className="text-border-subtle mb-4" />
+                <h3 className="text-lg font-bold text-strong mb-2">Clean Slate</h3>
+                <p className="text-sm text-subtle mb-6">All dashboard widgets are currently hidden.</p>
+                <button 
+                  onClick={() => setIsEditLayout(true)}
+                  className="px-4 py-2 bg-surface-dim hover:bg-surface-accent border border-border-subtle text-strong rounded font-medium transition-colors"
+                >
+                  Edit Layout
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
       
@@ -934,3 +825,7 @@ export default function Dashboard() {
     </div>
   );
 }
+`;
+
+fs.writeFileSync('src/pages/Dashboard.tsx', content, 'utf8');
+console.log('Successfully generated new customizable Dashboard.');

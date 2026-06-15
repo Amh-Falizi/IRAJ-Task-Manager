@@ -45,6 +45,12 @@ export default function NotificationsDropdown({ expanded }: { expanded?: boolean
           signal: abortController.signal
         });
         if (!res.ok) return;
+        
+        const contentType = res.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          return;
+        }
+        
         const allTasks: Task[] = await res.json();
         
         // Filter tasks assigned to current user, not done, and deadline is approaching or passed

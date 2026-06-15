@@ -32,14 +32,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         },
       })
         .then(async (res) => {
-          if (res.ok) return res.json();
+          if (res.ok) {
+            const contentType = res.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+              throw new Error("Invalid token");
+            }
+            return res.json();
+          }
+          if (res.status === 401 || res.status === 403) {
+            throw new Error("Invalid token");
+          }
           const text = await res.text();
           console.error("Auth /me failed:", res.status, text);
           throw new Error("Invalid token");
         })
         .then((data) => setUser(data))
         .catch((err) => {
-          console.error("Auth context catch:", err);
+          if (err.message !== "Invalid token") {
+            console.error("Auth context catch:", err);
+          }
           setToken(null);
           setUser(null);
           localStorage.removeItem("token");

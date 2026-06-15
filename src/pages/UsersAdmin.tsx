@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { User } from '../types';
 import { Shield, UserCog, Plus, Edit2, Trash2 } from 'lucide-react';
 import UserModal from '../components/UserModal';
@@ -7,9 +8,9 @@ import UserAvatar from '../components/UserAvatar';
 
 export default function UsersAdmin() {
   const { token, user: currentUser } = useAuth();
+  const { success, error } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -33,9 +34,6 @@ export default function UsersAdmin() {
   }, [token]);
 
   const handleDeleteUser = async (userToDelete: User) => {
-
-    
-    setMessage(null);
     try {
       const res = await fetch(`/api/users/${userToDelete.id}`, {
         method: 'DELETE',
@@ -44,14 +42,14 @@ export default function UsersAdmin() {
       
       if (res.ok) {
         setUsers(users.filter(u => u.id !== userToDelete.id));
-        setMessage({ type: 'success', text: `User ${userToDelete.name} deleted successfully.` });
+        success(`User ${userToDelete.name} deleted successfully.`);
       } else {
         const data = await res.json();
-        setMessage({ type: 'error', text: data.error || 'Failed to delete user.' });
+        error(data.error || 'Failed to delete user.');
       }
     } catch (err) {
       console.error(err);
-      setMessage({ type: 'error', text: 'An unexpected error occurred.' });
+      error('An unexpected error occurred.');
     }
   };
 
@@ -86,12 +84,6 @@ export default function UsersAdmin() {
       </header>
 
       <div className="flex-1 overflow-y-auto p-6">
-        {message && (
-          <div className={`mb-6 p-3 rounded text-sm font-medium ${message.type === 'success' ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
-            {message.text}
-          </div>
-        )}
-
         <div className="bg-surface border border-border-subtle rounded-lg overflow-hidden">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -162,7 +154,7 @@ export default function UsersAdmin() {
           onSave={() => {
             setIsModalOpen(false);
             fetchUsers();
-            setMessage({ type: 'success', text: `User ${editingUser ? 'updated' : 'created'} successfully.` });
+            success(`User ${editingUser ? 'updated' : 'created'} successfully.`);
           }}
         />
       )}

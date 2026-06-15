@@ -235,7 +235,7 @@ export default function Graph() {
   }
 
   return (
-    <div className="flex-1 flex flex-col p-6 min-h-0 bg-page-bg">
+    <div className="tour-graph-view flex-1 flex flex-col p-6 min-h-0 bg-page-bg">
       <div className="flex justify-between items-start lg:items-center mb-6 shrink-0 flex-col lg:flex-row gap-4">
         <div>
           {project && (

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Task, User, Project } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { X, GitBranch, Loader2, Edit2, Calendar, Clock, CheckCircle2, Trash, Plus, FolderKanban } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { format } from 'date-fns';
@@ -25,6 +26,7 @@ interface TaskModalProps {
 
 export default function TaskModal({ task, users, tasks = [], columns, onClose, onSave, onUpdateTask, onDeleteTask, onCreateSubtask, parentId, projectId, initialStatus, initialDeadline }: TaskModalProps) {
   const { token, user } = useAuth();
+  const { success, error, info } = useToast();
   const isEdit = !!task;
   const [isViewMode, setIsViewMode] = useState(isEdit);
 
@@ -159,6 +161,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
         }
       });
       setComments(comments.filter(c => c.id !== commentId));
+      success('Comment deleted');
     } catch (err) {
       console.error(err);
     }
@@ -167,11 +170,11 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title?.trim()) {
-      alert("Please enter a Task Title.");
+      error("Please enter a Task Title.");
       return;
     }
     if (!formData.projectId) {
-      alert("Please select a Project. This is a mandatory field.");
+      error("Please select a Project. This is a mandatory field.");
       return;
     }
     if (formData.status === 'done') {
@@ -180,7 +183,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
          return dep && dep.status !== 'done';
        });
        if (pendingDeps.length > 0) {
-         alert(`Cannot complete task. ${pendingDeps.length} dependencies are still pending.`);
+         error(`Cannot complete task. ${pendingDeps.length} dependencies are still pending.`);
          return;
        }
     }
@@ -206,6 +209,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
       const data = await res.json();
       if (data.branchName) {
         setFormData(prev => ({ ...prev, branchName: data.branchName }));
+        success('Branch created successfully');
       }
     } catch (err) {
       console.error(err);

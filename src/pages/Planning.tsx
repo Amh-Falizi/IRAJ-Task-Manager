@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { useSearchParams, Link, Navigate } from 'react-router';
-import { FolderKanban, Map, Milestone as MilestoneIcon, Plus, Calendar, Settings, Trash2, Edit, GitBranch } from 'lucide-react';
+import { FolderKanban, Map, Milestone as MilestoneIcon, Plus, Calendar, Settings, Trash2, Edit, GitBranch, CheckCircle } from 'lucide-react';
 import { Project, Milestone, User, Task } from '../types';
 import TaskTimelineD3 from '../components/TaskTimelineD3';
 import TaskModal from '../components/TaskModal';
-import { HelpIcon } from '../components/Tooltip';
+import { HelpIcon, Tooltip } from '../components/Tooltip';
 
 export default function Planning() {
   const { token } = useAuth();
+  const { success, error, info } = useToast();
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('projectId');
   
@@ -290,8 +292,11 @@ export default function Planning() {
     return { left: `${Math.max(0, left)}%`, width: `${Math.max(0, width)}%` };
   };
 
+  const activeMilestones = milestones.filter(m => m.status !== 'completed');
+  const completedMilestones = milestones.filter(m => m.status === 'completed');
+
   return (
-    <div className="flex-1 flex flex-col p-8 bg-page-bg overflow-y-auto h-full relative">
+    <div className="tour-planning-view flex-1 flex flex-col p-8 bg-page-bg overflow-y-auto h-full relative">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-strong mb-1 flex items-center gap-2">
@@ -300,13 +305,15 @@ export default function Planning() {
           </h1>
           <p className="text-sm text-subtle">Define roadmap, epics, and milestones for {project?.name}</p>
         </div>
-        <button 
-          onClick={() => openModal()}
-          className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center space-x-2 transition-colors"
-        >
-          <Plus size={16} />
-          <span>New Milestone</span>
-        </button>
+        <Tooltip content="Create a new milestone for the project" position="bottom">
+          <button 
+            onClick={() => openModal()}
+            className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center space-x-2 transition-colors"
+          >
+            <Plus size={16} />
+            <span>New Milestone</span>
+          </button>
+        </Tooltip>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -385,16 +392,16 @@ export default function Planning() {
             <h2 className="text-lg font-medium text-strong mb-4 flex items-center space-x-2 shrink-0">
               <MilestoneIcon size={20} className="text-purple-500" />
               <span>Upcoming Milestones</span>
-              <HelpIcon text="List of milestones chronologically or by status" />
+              <HelpIcon text="List of active or pending milestones" />
             </h2>
             
-            {milestones.length === 0 ? (
+            {activeMilestones.length === 0 ? (
               <div className="text-center py-8 text-sm text-subtle border border-dashed border-border-subtle rounded shrink-0">
-                No milestones defined yet.
+                No active milestones.
               </div>
             ) : (
               <div className="space-y-3 flex-1 overflow-y-auto pr-2">
-                {milestones.map(m => {
+                {activeMilestones.map(m => {
                    const mTasks = tasks.filter(t => t.milestoneId === m.id);
                    const completedTasks = mTasks.filter(t => t.status === 'done').length;
                    const progress = mTasks.length > 0 ? (completedTasks / mTasks.length) * 100 : 0;
@@ -439,6 +446,52 @@ export default function Planning() {
                          </div>
                       </div>
                     )}
+                  </div>
+                )})}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-surface p-6 border border-border-subtle rounded-lg shadow-sm flex flex-col max-h-[500px]">
+            <h2 className="text-lg font-medium text-strong mb-4 flex items-center space-x-2 shrink-0">
+              <CheckCircle size={20} className="text-green-500" />
+              <span>Completed Milestones</span>
+            </h2>
+            
+            {completedMilestones.length === 0 ? (
+              <div className="text-center py-8 text-sm text-subtle border border-dashed border-border-subtle rounded shrink-0">
+                No completed milestones.
+              </div>
+            ) : (
+              <div className="space-y-3 flex-1 overflow-y-auto pr-2">
+                {completedMilestones.map(m => {
+                   const mTasks = tasks.filter(t => t.milestoneId === m.id);
+                   const completedTasks = mTasks.filter(t => t.status === 'done').length;
+                   const progress = mTasks.length > 0 ? (completedTasks / mTasks.length) * 100 : 0;
+                   return (
+                  <div key={m.id} className="p-3 border border-border-subtle rounded-md bg-surface-dim group hover:border-green-500/30 transition-colors flex flex-col opacity-75 hover:opacity-100">
+                    <div className="flex justify-between items-start mb-1">
+                      <h4 className="font-medium text-sm text-strong truncate pr-2 line-through">{m.name}</h4>
+                      <div className="flex space-x-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={(e) => { e.stopPropagation(); e.preventDefault(); openModal(m); }} className="p-1 hover:bg-surface rounded text-muted hover:text-blue-400">
+                          <Edit size={12} />
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); e.preventDefault(); handleDelete(m.id); }} className="p-1 hover:bg-surface rounded text-muted hover:text-red-400">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center text-xs mb-2 mt-2">
+                      <span className="px-2 py-0.5 rounded-full bg-green-500/10 text-green-500">
+                        {m.status}
+                      </span>
+                      {m.endDate && (
+                        <span className="flex items-center text-muted">
+                          <Calendar size={10} className="mr-1" />
+                          {new Date(m.endDate).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )})}
               </div>

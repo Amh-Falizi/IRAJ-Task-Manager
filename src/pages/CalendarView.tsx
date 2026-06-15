@@ -18,6 +18,7 @@ import {
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, CheckCircle2, Plus, FolderKanban } from 'lucide-react';
 import { cn } from '../lib/utils';
 import TaskModal from '../components/TaskModal';
+import { Tooltip } from '../components/Tooltip';
 
 export default function CalendarView() {
   const { token } = useAuth();
@@ -253,28 +254,34 @@ export default function CalendarView() {
         </div>
 
         <div className="flex items-center space-x-4">
-          <button 
-            onClick={today}
-            className="px-4 py-2 bg-surface border border-border-subtle hover:bg-surface-accent text-strong text-xs font-bold rounded transition-colors uppercase tracking-widest"
-          >
-            Today
-          </button>
-          <div className="flex items-center bg-surface border border-border-subtle rounded">
+          <Tooltip content="Jump to current date" position="bottom">
             <button 
-              onClick={prevMonth}
-              className="p-2 hover:bg-surface-accent text-muted hover:text-strong transition-colors"
+              onClick={today}
+              className="px-4 py-2 bg-surface border border-border-subtle hover:bg-surface-accent text-strong text-xs font-bold rounded transition-colors uppercase tracking-widest"
             >
-              <ChevronLeft size={20} />
+              Today
             </button>
+          </Tooltip>
+          <div className="flex items-center bg-surface border border-border-subtle rounded">
+            <Tooltip content="Previous Month" position="bottom">
+              <button 
+                onClick={prevMonth}
+                className="p-2 hover:bg-surface-accent text-muted hover:text-strong transition-colors"
+              >
+                <ChevronLeft size={20} />
+              </button>
+            </Tooltip>
             <div className="px-4 py-2 font-bold text-strong w-40 text-center uppercase tracking-widest text-sm">
               {format(currentDate, 'MMMM yyyy')}
             </div>
-            <button 
-              onClick={nextMonth}
-              className="p-2 hover:bg-surface-accent text-muted hover:text-strong transition-colors"
-            >
-              <ChevronRight size={20} />
-            </button>
+            <Tooltip content="Next Month" position="bottom">
+              <button 
+                onClick={nextMonth}
+                className="p-2 hover:bg-surface-accent text-muted hover:text-strong transition-colors"
+              >
+                <ChevronRight size={20} />
+              </button>
+            </Tooltip>
           </div>
         </div>
       </header>
