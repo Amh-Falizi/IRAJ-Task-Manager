@@ -3,6 +3,7 @@ export interface User {
   name: string;
   email: string;
   role: "admin" | "manager" | "developer" | "viewer" | "member";
+  skills?: string[];
 }
 
 export interface Task {

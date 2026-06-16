@@ -290,6 +290,10 @@ async function initDb(): Promise<DatabaseWrapper> {
     // Column might already exist
   }
 
+  try {
+    await db.exec("ALTER TABLE users ADD COLUMN skills TEXT DEFAULT '[]';");
+  } catch (e) {}
+
   // Backfill project members for existing projects if they don't have members
   try {
     const existingProjects = await db.all("SELECT id, ownerId, createdAt FROM projects");
@@ -341,6 +345,7 @@ interface User {
   email: string;
   passwordHash: string;
   role: "admin" | "manager" | "developer";
+  skills?: string;
 }
 
 interface Task {
@@ -429,24 +434,79 @@ app.post("/api/auth/login", async (req, res) => {
 // Get Me
 app.get("/api/auth/me", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
-  const user = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", req.user.id);
+  const user = await db.get("SELECT id, name, email, role, skills FROM users WHERE id = ?", req.user.id);
   if (!user) return res.sendStatus(404);
-  res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+  res.json({ id: user.id, name: user.name, email: user.email, role: user.role, skills: user.skills ? JSON.parse(user.skills) : [] });
 });
 
+// Update Profile
 app.put("/api/users/me", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
-  const { name } = req.body;
+  const { name, skills } = req.body;
   if (!name) {
     return res.status(400).json({ error: "Name is required." });
   }
 
-  await db.run(
-    "UPDATE users SET name = ? WHERE id = ?",
-    [name, req.user.id]
-  );
-  const updatedUser = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", req.user.id);
-  res.json(updatedUser);
+  if (skills !== undefined) {
+    await db.run(
+      "UPDATE users SET name = ?, skills = ? WHERE id = ?",
+      [name, JSON.stringify(skills), req.user.id]
+    );
+  } else {
+    await db.run(
+      "UPDATE users SET name = ? WHERE id = ?",
+      [name, req.user.id]
+    );
+  }
+  
+  const updatedUser = await db.get("SELECT id, name, email, role, skills FROM users WHERE id = ?", req.user.id);
+  res.json({ ...updatedUser, skills: updatedUser.skills ? JSON.parse(updatedUser.skills) : [] });
+});
+
+// Change Password
+app.put("/api/users/me/password", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const { currentPassword, newPassword } = req.body;
+  
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: "Current and new passwords are required." });
+  }
+
+  const user = await db.get("SELECT passwordHash FROM users WHERE id = ?", req.user.id);
+  if (!user || !(await bcrypt.compare(currentPassword, user.passwordHash))) {
+    return res.status(400).json({ error: "Incorrect current password." });
+  }
+
+  const salt = await bcrypt.genSalt(10);
+  const passwordHash = await bcrypt.hash(newPassword, salt);
+  await db.run("UPDATE users SET passwordHash = ? WHERE id = ?", [passwordHash, req.user.id]);
+  
+  res.json({ success: true });
+});
+
+// User Stats
+app.get("/api/users/me/stats", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const tasksCount = await db.get("SELECT COUNT(*) as count FROM tasks WHERE assigneeId = ?", req.user.id);
+  const projectsCountQuery = req.user.role === 'admin' 
+    ? "SELECT COUNT(*) as count FROM projects" 
+    : "SELECT COUNT(DISTINCT projectId) as count FROM project_members WHERE userId = ?";
+  const projectsCount = await db.get(projectsCountQuery, req.user.role === 'admin' ? [] : [req.user.id]);
+  
+  const recentActivity = await db.all(`
+    SELECT a.*, t.title as taskTitle
+    FROM task_activities a
+    JOIN tasks t ON a.taskId = t.id
+    WHERE a.userId = ?
+    ORDER BY a.createdAt DESC
+    LIMIT 10
+  `, [req.user.id]);
+
+  res.json({
+    tasks: tasksCount ? tasksCount.count : 0,
+    projects: projectsCount ? projectsCount.count : 0,
+    recentActivity
+  });
 });
 
 // Get Users (for assigning tasks)

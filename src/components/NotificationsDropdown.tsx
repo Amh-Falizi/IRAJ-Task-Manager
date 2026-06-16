@@ -146,31 +146,27 @@ export default function NotificationsDropdown({ expanded }: { expanded?: boolean
   };
 
   return (
-    <div className={cn("relative", expanded ? "w-full" : "")} ref={dropdownRef}>
+    <div className="relative w-full h-full" ref={dropdownRef}>
       <button 
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={cn(
-          "text-subtle hover:text-strong rounded-md transition-colors relative flex items-center",
-          expanded ? "w-full px-1 py-0 space-x-3 hover:bg-transparent" : "p-2 hover:bg-surface-accent/30"
-        )}
+        className="text-subtle hover:text-strong rounded-md transition-colors relative flex items-center w-full h-full overflow-hidden hover:bg-surface-accent/30"
         title={!expanded ? "Notifications" : undefined}
       >
-        <div className="relative">
+        <div className="relative flex items-center justify-center w-10 h-10 shrink-0">
           <Bell size={20} className="shrink-0" />
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-surface-dim"></span>
+            <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-surface-dim"></span>
           )}
         </div>
-        {expanded && (
-          <span className="text-sm font-medium flex-1 text-left flex items-center justify-between">
-            Notifications
-            {unreadCount > 0 && (
-              <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                {unreadCount}
-              </span>
-            )}
-          </span>
-        )}
+        <span className={cn("text-sm font-medium transition-all duration-300 whitespace-nowrap flex items-center justify-between", expanded ? "opacity-100 max-w-full flex-1 pr-2" : "opacity-0 max-w-0")}>
+          Notifications
+          {unreadCount > 0 && (
+            <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-2">
+              {unreadCount}
+            </span>
+          )}
+        </span>
       </button>
 
       {isOpen && (
