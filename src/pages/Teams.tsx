@@ -52,7 +52,7 @@ export default function Teams() {
         {(currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-strong px-4 py-2 rounded font-medium transition-colors text-sm"
+            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md shadow hover:scale-105 font-bold transition-all text-sm"
           >
             <Plus size={16} />
             <span>New Team</span>

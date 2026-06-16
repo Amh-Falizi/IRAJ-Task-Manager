@@ -352,7 +352,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                             {onCreateSubtask && (
                                <button 
                                  onClick={() => onCreateSubtask(task.id)} 
-                                 className="flex items-center space-x-1 text-[9px] font-bold bg-surface border border-border-subtle px-2 py-0.5 rounded text-muted hover:text-strong transition-colors uppercase tracking-wider"
+                                 className="flex items-center space-x-1 text-[9px] font-bold bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded text-blue-500 hover:bg-blue-500 hover:text-white transition-all hover:scale-105 uppercase tracking-wider"
                                >
                                  <Plus size={10} />
                                  <span>Add Subtask</span>

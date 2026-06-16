@@ -146,7 +146,7 @@ export default function ProjectMembersModal({ project, allUsers, onClose }: Prop
               <button
                 type="submit"
                 disabled={!selectedUserId || adding}
-                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-strong px-4 py-2 rounded text-sm font-medium flex items-center space-x-2 h-[38px]"
+                className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-2 rounded-md shadow hover:scale-105 transition-all text-sm font-bold flex items-center space-x-2 h-[38px]"
               >
                 <UserPlus size={16} />
                 <span>Add</span>

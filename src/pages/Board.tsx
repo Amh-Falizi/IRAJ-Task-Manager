@@ -627,7 +627,7 @@ export default function Board() {
           <Tooltip content="Create a new task with keyboard shortcut: c" position="bottom">
             <button
               onClick={handleCreateTask}
-              className="tour-new-task px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-strong text-xs font-bold rounded shadow-lg transition-colors flex items-center space-x-2"
+              className="tour-new-task px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow hover:scale-105 transition-all flex items-center space-x-2"
             >
               <Plus size={14} />
               <span>NEW TASK</span>
@@ -692,7 +692,7 @@ export default function Board() {
                   <Tooltip content={`Add Task to ${column.title}`} position="top">
                     <button
                       onClick={() => handleCreateTaskInColumn(column.id)}
-                      className="text-subtle hover:text-strong"
+                      className="bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white p-1 rounded transition-colors"
                     >
                       <Plus size={16} />
                     </button>
@@ -990,8 +990,8 @@ export default function Board() {
             </div>
           );
         })}
-        <div className="w-80 flex-shrink-0 flex items-center justify-center border border-dashed border-border-subtle hover:border-blue-500/50 rounded-lg bg-surface-dim hover:bg-surface-accent transition-colors cursor-pointer" onClick={handleAddColumn}>
-          <div className="flex items-center space-x-2 text-subtle hover:text-strong">
+        <div className="w-80 flex-shrink-0 flex items-center justify-center border border-dashed border-border-subtle hover:border-blue-500 hover:bg-blue-500/5 rounded-lg bg-surface-dim transition-colors cursor-pointer group" onClick={handleAddColumn}>
+          <div className="flex items-center space-x-2 text-subtle group-hover:text-blue-500 transition-colors">
             <Plus size={16} />
             <span className="text-xs font-bold uppercase tracking-widest">New Column</span>
           </div>

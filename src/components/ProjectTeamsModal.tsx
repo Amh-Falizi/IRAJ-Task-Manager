@@ -126,7 +126,7 @@ export default function ProjectTeamsModal({ project, onClose }: Props) {
               <button 
                 type="submit" 
                 disabled={creating || !addingName.trim()} 
-                className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-2 rounded text-sm font-medium flex items-center gap-2 shrink-0"
+                className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-2 rounded-md shadow hover:scale-105 transition-all text-sm font-bold flex items-center gap-2 shrink-0"
               >
                 <Plus size={16} /> Add Team
               </button>

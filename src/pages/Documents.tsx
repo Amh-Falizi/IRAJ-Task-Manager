@@ -197,7 +197,7 @@ export default function Documents() {
             <Link 
               to={`/documents?projectId=${projectId}&documentId=new`}
               onClick={() => startEdit()}
-              className="text-blue-400 hover:text-blue-300 p-1 hover:bg-blue-500/10 rounded transition-colors"
+              className="bg-blue-600 text-white hover:bg-blue-500 p-1.5 rounded shadow hover:scale-105 transition-all"
               title="New Document"
             >
               <Plus size={16} />

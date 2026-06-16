@@ -337,7 +337,7 @@ export default function CalendarView() {
                      </div>
                      <button
                        onClick={(e) => handleCreateTask(e, day)}
-                       className="p-1 text-muted hover:text-strong hover:bg-surface-accent/50 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                       className="p-1 bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white rounded shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:scale-110"
                        title="Add Task"
                      >
                        <Plus size={12} />

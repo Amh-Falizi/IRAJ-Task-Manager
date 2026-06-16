@@ -291,7 +291,7 @@ export default function Graph() {
           </div>
           <button
             onClick={handleCreateTask}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-strong text-xs font-bold rounded shadow-lg transition-colors flex items-center space-x-2"
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow hover:scale-105 transition-all flex items-center space-x-2"
           >
             <Plus size={14} />
             <span>NEW TASK</span>

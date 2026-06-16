@@ -199,10 +199,20 @@ export default function Profile() {
               <h2 className="text-xl font-bold text-strong">{user?.name}</h2>
               <p className="text-sm text-muted mb-4">{user?.email}</p>
 
-              <div className={`w-full flex items-center justify-center space-x-2 border rounded py-2 text-xs font-bold uppercase tracking-wider mb-6 ${roleInfo.bg} ${roleInfo.border} ${roleInfo.color}`}>
+              <div className={`w-full flex items-center justify-center space-x-2 border rounded py-2 text-xs font-bold uppercase tracking-wider ${skills.length > 0 ? 'mb-4' : 'mb-6'} ${roleInfo.bg} ${roleInfo.border} ${roleInfo.color}`}>
                 <RoleIcon size={14} />
                 <span>{roleInfo.label}</span>
               </div>
+
+              {skills.length > 0 && (
+                <div className="flex flex-wrap justify-center gap-1.5 mb-6">
+                  {skills.map(skill => (
+                    <span key={skill.id} className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 bg-surface-dim border border-border-subtle rounded text-subtle">
+                      {skill.name}
+                    </span>
+                  ))}
+                </div>
+              )}
 
               <div className="w-full grid grid-cols-2 gap-4 border-t border-border-subtle pt-6">
                 <div className="flex flex-col items-center">
@@ -561,7 +571,7 @@ export default function Profile() {
                         <button
                           type="submit"
                           disabled={!newSkill.trim()}
-                          className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          className="bg-blue-600 text-white p-2 rounded-md shadow hover:bg-blue-500 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                         >
                           <Plus size={20} />
                         </button>

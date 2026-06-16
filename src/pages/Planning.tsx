@@ -308,7 +308,7 @@ export default function Planning() {
         <Tooltip content="Create a new milestone for the project" position="bottom">
           <button 
             onClick={() => openModal()}
-            className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center space-x-2 transition-colors"
+            className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md shadow hover:scale-105 transition-all text-sm font-bold flex items-center space-x-2"
           >
             <Plus size={16} />
             <span>New Milestone</span>

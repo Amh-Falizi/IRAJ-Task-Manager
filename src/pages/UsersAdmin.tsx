@@ -77,7 +77,7 @@ export default function UsersAdmin() {
         </div>
         <button
           onClick={() => { setEditingUser(undefined); setIsModalOpen(true); }}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-2"
+          className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md shadow hover:scale-105 text-xs font-bold uppercase tracking-widest transition-all flex items-center gap-2"
         >
           <Plus size={16} /> Add User
         </button>
