@@ -15,6 +15,7 @@ import compression from "compression";
 import rateLimit from "express-rate-limit";
 
 const app = express();
+app.set("trust proxy", 1); // Trust first proxy for rate limiting (Cloud Run/Nginx)
 const PORT = 3000;
 
 // Security: Generate a secure secret if none is provided via environment
@@ -40,6 +41,8 @@ const apiLimiter = rateLimit({
   max: 1000, // Limit each IP to 1000 requests per `window` (here, per 15 minutes)
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req, res) => req.ip || "",
+  validate: { xForwardedForHeader: false },
   message: { error: "Too many requests from this IP, please try again after 15 minutes" }
 });
 
@@ -50,6 +53,8 @@ app.use("/api/", apiLimiter);
 const authLimiter = rateLimit({
   windowMs: 60 * 1000 * 60, // 1 hour window
   max: 200, // start blocking after 200 requests
+  keyGenerator: (req, res) => req.ip || "",
+  validate: { xForwardedForHeader: false },
   message: { error: "Too many auth attempts from this IP, please try again after an hour" }
 });
 app.use("/api/auth/", authLimiter);
