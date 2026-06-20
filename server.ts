@@ -5,16 +5,56 @@ import { createServer as createViteServer } from "vite";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
+import crypto from "crypto";
 import { GoogleGenAI } from "@google/genai";
 import { Pool } from "pg";
 import { open } from "sqlite";
 import sqlite3 from "sqlite3";
+import helmet from "helmet";
+import compression from "compression";
+import rateLimit from "express-rate-limit";
 
 const app = express();
 const PORT = 3000;
-const SECRET_KEY = process.env.SECRET_KEY || "super_secret_dev_key";
 
-app.use(express.json());
+// Security: Generate a secure secret if none is provided via environment
+const FALLBACK_SECRET = crypto.randomBytes(64).toString('hex');
+const SECRET_KEY = process.env.SECRET_KEY || FALLBACK_SECRET;
+
+if (!process.env.SECRET_KEY) {
+  console.warn("WARNING: SECRET_KEY is not set in the environment. Using a dynamically generated secret. Existing sessions will be invalidated if the server restarts.");
+}
+
+// Basic security headers
+app.use(helmet({
+  contentSecurityPolicy: false, // Disabled for local dev/vite HMR
+  crossOriginEmbedderPolicy: false // Disabled to allow images/assets from other origins if needed
+}));
+
+// Compress responses
+app.use(compression());
+
+// Basic Rate Limiting
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // Limit each IP to 1000 requests per `window` (here, per 15 minutes)
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests from this IP, please try again after 15 minutes" }
+});
+
+// Apply rate limiting to API routes
+app.use("/api/", apiLimiter);
+
+// Protect auth routes more strictly
+const authLimiter = rateLimit({
+  windowMs: 60 * 1000 * 60, // 1 hour window
+  max: 200, // start blocking after 200 requests
+  message: { error: "Too many auth attempts from this IP, please try again after an hour" }
+});
+app.use("/api/auth/", authLimiter);
+
+app.use(express.json({ limit: '10mb' })); // Limit body size to prevent payload bombing
 
 // Initialize Database Storage
 const DATABASE_URL = process.env.DATABASE_URL || "postgres://user:password@localhost:5432/dbname";

@@ -24,11 +24,14 @@
     "@xyflow/react": "^12.10.2",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
+    "compression": "^1.8.1",
     "d3": "^7.9.0",
     "dagre": "^0.8.5",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
@@ -47,6 +50,7 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
+    "@types/compression": "^1.8.1",
     "@types/d3": "^7.4.3",
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.10",
@@ -60,8 +64,5 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
-  },
-  "overrides": {
-    "node-domexception": "1.0.0" 
   }
 }
