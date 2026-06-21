@@ -41,7 +41,10 @@ export default function NotificationsDropdown({ expanded }: { expanded?: boolean
       if (!token || !user) return;
       try {
         const res = await fetch('/api/tasks', {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            'X-Silent-Fetch': 'true'
+          },
           signal: abortController.signal
         });
         if (!res.ok) return;

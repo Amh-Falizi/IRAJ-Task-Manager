@@ -423,6 +423,25 @@ export default function Board() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedTaskIds.size === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedTaskIds.size} tasks?`)) return;
+    try {
+      await Promise.all(Array.from(selectedTaskIds).map(id => 
+        fetch(`/api/tasks/${id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ));
+      setSelectedTaskIds(new Set());
+      fetchData();
+      success('Tasks deleted');
+    } catch (err) {
+      error('Bulk delete failed');
+      console.error('Bulk delete failed', err);
+    }
+  };
+
   const handleDeleteTask = async (taskId: string) => {
 
     try {
@@ -655,13 +674,33 @@ export default function Board() {
               onDrop={async (e) => {
                 e.preventDefault();
                 e.currentTarget.classList.remove('border-blue-500/50');
-                const taskId = e.dataTransfer.getData('taskId');
-                if (!taskId) return;
                 
-                handleDropTask(taskId, column.id);
+                const columnId = e.dataTransfer.getData('columnId');
+                const taskId = e.dataTransfer.getData('taskId');
+                
+                if (columnId && columnId !== column.id) {
+                  // Handle column reorder
+                  setColumns(prev => {
+                    const newColumns = [...prev];
+                    const sourceIdx = newColumns.findIndex(c => c.id === columnId);
+                    const targetIdx = newColumns.findIndex(c => c.id === column.id);
+                    const [dragged] = newColumns.splice(sourceIdx, 1);
+                    newColumns.splice(targetIdx, 0, dragged);
+                    return newColumns;
+                  });
+                } else if (taskId) {
+                  handleDropTask(taskId, column.id);
+                }
               }}
             >
-              <div className="px-4 py-3 flex justify-between items-center border-b border-border-subtle group">
+              <div 
+                className="px-4 py-3 flex justify-between items-center border-b border-border-subtle group cursor-move"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('columnId', column.id);
+                }}
+              >
                 <div className="flex items-center space-x-2 flex-1">
                   {editingColumnId === column.id ? (
                     <input
@@ -726,6 +765,9 @@ export default function Board() {
                       }}
                       onDragEnd={() => setDraggingTaskId(null)}
                       onDragOver={(e) => {
+                        if (e.dataTransfer.types.includes('columnid') || e.dataTransfer.types.includes('columnId')) {
+                          return;
+                        }
                         e.preventDefault();
                         e.stopPropagation();
                         e.dataTransfer.dropEffect = 'move';
@@ -744,6 +786,12 @@ export default function Board() {
                         e.currentTarget.style.borderBottomColor = '';
                       }}
                       onDrop={(e) => {
+                        const draggedColumnId = e.dataTransfer.getData('columnId');
+                        if (draggedColumnId) {
+                          // Allow it to bubble up to the column container
+                          return;
+                        }
+                        
                         e.preventDefault();
                         e.stopPropagation();
                         e.currentTarget.style.borderTopColor = '';
@@ -759,7 +807,7 @@ export default function Board() {
                       }}
                       onClick={() => handleEditTask(task)}
                       className={cn(
-                        "p-3 bg-surface-dim border rounded cursor-pointer hover:border-blue-500 transition-colors group flex flex-col",
+                        "task-card p-3 bg-surface-dim border rounded cursor-pointer hover:border-blue-500 transition-colors group flex flex-col",
                         draggingTaskId === task.id && "opacity-40",
                         task.priority === 'urgent' ? 'border-red-500/40' :
                         task.priority === 'high' ? 'border-amber-500/40' :
@@ -1028,10 +1076,9 @@ export default function Board() {
                value=""
              >
                <option value="" disabled hidden>Change Status...</option>
-               <option value="todo">To Do</option>
-               <option value="in_progress">In Progress</option>
-               <option value="review">Review</option>
-               <option value="done">Done</option>
+               {columns.map(c => (
+                 <option key={c.id} value={c.id}>{c.title}</option>
+               ))}
              </select>
 
              <select 
@@ -1056,6 +1103,17 @@ export default function Board() {
                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
              </select>
           </div>
+
+          <div className="w-px h-6 bg-surface-accent" />
+          
+          <button 
+            className="text-red-500 hover:text-red-400 hover:bg-red-500/10 px-3 py-1.5 rounded transition-colors flex items-center space-x-2"
+            onClick={handleBulkDelete}
+            title="Delete Selected"
+          >
+            <Trash2 size={16} />
+            <span className="text-xs font-medium uppercase font-bold">Delete</span>
+          </button>
 
           <div className="w-px h-6 bg-surface-accent" />
           

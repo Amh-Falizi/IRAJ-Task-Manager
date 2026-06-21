@@ -1,9 +1,10 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { TooltipProvider } from './components/Tooltip';
+import { LoadingProvider, useLoading } from './contexts/LoadingContext';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Board from './pages/Board';
@@ -32,13 +33,35 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RouteTransitionLoader() {
+  const location = useLocation();
+  const { setLoading } = useLoading();
+
+  useEffect(() => {
+    // Show loading on route change for a brief moment to ensure smooth visual transition
+    setLoading(true);
+    const timeout = setTimeout(() => {
+      setLoading(false);
+    }, 400);
+
+    return () => {
+      clearTimeout(timeout);
+      setLoading(false);
+    };
+  }, [location.pathname, setLoading]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <ThemeProvider>
       <ToastProvider>
         <TooltipProvider>
-          <AuthProvider>
-            <BrowserRouter>
+          <LoadingProvider>
+            <AuthProvider>
+              <BrowserRouter>
+                <RouteTransitionLoader />
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
@@ -60,7 +83,8 @@ export default function App() {
                 </Route>
               </Routes>
             </BrowserRouter>
-          </AuthProvider>
+            </AuthProvider>
+          </LoadingProvider>
         </TooltipProvider>
       </ToastProvider>
     </ThemeProvider>

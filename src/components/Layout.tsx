@@ -11,6 +11,7 @@ import NotificationsDropdown from './NotificationsDropdown';
 import { Tooltip } from './Tooltip';
 import UserAvatar from './UserAvatar';
 import WelcomeModal from './WelcomeModal';
+import GlobalSearch from './GlobalSearch';
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -294,7 +295,10 @@ export default function Layout() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 bg-page-bg transition-colors duration-200 overflow-hidden relative">
-        <div className="flex-1 w-full h-full flex flex-col min-h-0">
+        <header className="h-14 border-b border-border-subtle bg-surface flex items-center px-4 shrink-0 shadow-sm relative z-[100]">
+          <GlobalSearch />
+        </header>
+        <div className="flex-1 w-full h-full flex flex-col min-h-0 relative z-0">
           <Outlet />
         </div>
       </main>

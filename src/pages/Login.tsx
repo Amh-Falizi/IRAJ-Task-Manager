@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
-import { LayoutDashboard } from 'lucide-react';
+import { LayoutDashboard, Eye, EyeOff } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -55,13 +56,23 @@ export default function Login() {
 
           <div className="space-y-1">
             <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Authorization Key</label>
-            <input
-              type="password"
-              required
-              className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong placeholder-slate-600 focus:border-blue-500 focus:outline-none"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 pr-10 text-xs text-strong placeholder-slate-600 focus:border-blue-500 focus:outline-none"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted hover:text-strong focus:outline-none transition-colors"
+                onClick={() => setShowPassword(!showPassword)}
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           <button
@@ -71,6 +82,24 @@ export default function Login() {
             INITIALIZE SESSION
           </button>
         </form>
+
+        <div className="flex flex-col space-y-2 pt-4 border-t border-border-subtle">
+          <p className="text-[9px] text-subtle uppercase tracking-widest text-center">Quick Login (Testing)</p>
+          <div className="flex space-x-2">
+            <button 
+              onClick={() => { setEmail('admin@example.com'); setPassword('password123'); }}
+              className="flex-1 rounded bg-surface-dim border border-border-subtle py-1.5 text-[10px] text-muted hover:text-strong hover:bg-surface-accent transition-colors"
+            >
+              Admin
+            </button>
+            <button 
+              onClick={() => { setEmail('dev1@example.com'); setPassword('password123'); }}
+              className="flex-1 rounded bg-surface-dim border border-border-subtle py-1.5 text-[10px] text-muted hover:text-strong hover:bg-surface-accent transition-colors"
+            >
+              Developer
+            </button>
+          </div>
+        </div>
 
         <p className="text-center text-[10px] text-subtle uppercase tracking-widest pt-4 border-t border-border-subtle">
           No account?{' '}
