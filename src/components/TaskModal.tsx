@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Task, User, Project } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { X, GitBranch, Loader2, Edit2, Calendar, Clock, CheckCircle2, Trash, Plus, FolderKanban } from 'lucide-react';
+import { X, GitBranch, Edit2, Calendar, Clock, CheckCircle2, Trash, Plus, FolderKanban } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
@@ -405,7 +405,9 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                     <div className="space-y-4 flex flex-col h-full bg-surface rounded p-4 border border-border-subtle">
                        <div className="flex-1 overflow-y-auto space-y-4 min-h-[200px]">
                          {loadingDetails ? (
-                           <div className="flex items-center justify-center p-4"><Loader2 className="animate-spin text-subtle" size={20} /></div>
+                           <div className="flex items-center justify-center p-4">
+                             <span className="text-xs text-subtle uppercase tracking-widest font-bold animate-pulse">Loading...</span>
+                           </div>
                          ) : comments.length > 0 ? (
                             comments.map(c => {
                               const author = users.find(u => u.id === c.userId);
@@ -558,7 +560,9 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                   {activeTab === 'activity' && (
                     <div className="space-y-4 bg-surface rounded p-4 border border-border-subtle min-h-[200px]">
                       {loadingDetails ? (
-                        <div className="flex items-center justify-center p-4"><Loader2 className="animate-spin text-subtle" size={20} /></div>
+                        <div className="flex items-center justify-center p-4">
+                          <span className="text-xs text-subtle uppercase tracking-widest font-bold animate-pulse">Loading...</span>
+                        </div>
                       ) : activities.length > 0 ? (
                         <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border-strong before:to-transparent">
                           {activities.map(a => {
@@ -588,7 +592,9 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                   {activeTab === 'project_activity' && (
                     <div className="space-y-4 bg-surface rounded p-4 border border-border-subtle min-h-[200px]">
                       {loadingDetails ? (
-                        <div className="flex items-center justify-center p-4"><Loader2 className="animate-spin text-subtle" size={20} /></div>
+                        <div className="flex items-center justify-center p-4">
+                          <span className="text-xs text-subtle uppercase tracking-widest font-bold animate-pulse">Loading...</span>
+                        </div>
                       ) : projectActivities.length > 0 ? (
                         <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border-strong before:to-transparent">
                           {projectActivities.map(a => {
@@ -814,7 +820,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                     disabled={generatingBranch}
                     className="text-[9px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-1 rounded hover:bg-blue-500/20 disabled:opacity-50 flex items-center space-x-1 font-bold tracking-wider uppercase transition-colors"
                   >
-                    {generatingBranch ? <Loader2 size={10} className="animate-spin" /> : null}
+                    {generatingBranch ? <span className="text-[10px] text-blue-500 font-bold uppercase tracking-widest animate-pulse ml-2">Loading...</span> : null}
                     <span>Generate AI Branch</span>
                   </button>
                 )}

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
-import { LayoutDashboard, Eye, EyeOff } from 'lucide-react';
+import { LayoutDashboard, Eye, EyeOff, Gitlab } from 'lucide-react';
 
 export default function Register() {
   const [name, setName] = useState('');
@@ -12,6 +12,37 @@ export default function Register() {
   const [error, setError] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Validate origin is from an expected host (run.app or localhost)
+      const origin = event.origin;
+      if (!origin.endsWith('.run.app') && !origin.includes('localhost')) {
+        return;
+      }
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
+        login(event.data.token, event.data.user);
+        navigate('/');
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [login, navigate]);
+
+  const handleGitLabLogin = async () => {
+    try {
+      const res = await fetch(`/api/auth/gitlab/url?origin=${encodeURIComponent(window.location.origin)}`);
+      if (!res.ok) throw new Error('Failed to get GitLab auth URL');
+      const data = await res.json();
+      
+      const authWindow = window.open(data.url, 'gitlab_oauth', 'width=600,height=700');
+      if (!authWindow) {
+        alert('Please allow popups to sign in with GitLab.');
+      }
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,6 +136,15 @@ export default function Register() {
             className="w-full rounded bg-blue-600 px-4 py-2 text-[10px] font-bold tracking-wider text-strong hover:bg-blue-500 focus:outline-none transition-colors mt-2"
           >
             CREATE PROFILE
+          </button>
+
+          <button
+            type="button"
+            onClick={handleGitLabLogin}
+            className="w-full rounded bg-[#fc6d26] px-4 py-2 text-[10px] font-bold tracking-wider text-white hover:bg-[#e24329] focus:outline-none transition-colors flex items-center justify-center space-x-2 mt-2"
+          >
+            <Gitlab size={14} />
+            <span>CONTINUE WITH GITLAB</span>
           </button>
         </form>
 

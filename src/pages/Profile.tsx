@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { useToast } from "../contexts/ToastContext";
+import { cn, getUserColor, getUserGradient } from "../lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import {
   User as UserIcon,
@@ -180,7 +181,7 @@ export default function Profile() {
   return (
     <div className="flex-1 overflow-y-auto bg-page-bg">
       {/* Cover and header */}
-      <div className="relative h-48 bg-gradient-to-r from-blue-900 via-indigo-900 to-purple-900 flex-shrink-0">
+      <div className={`relative h-48 flex-shrink-0 ${getUserGradient(user?.name)}`}>
         <div className="absolute inset-0 bg-black/20" />
       </div>
 

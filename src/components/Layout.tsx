@@ -98,8 +98,8 @@ export default function Layout() {
         )}
       >
         <div className="flex flex-col w-full mb-8 shrink-0 space-y-3">
-          <div className={cn("bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold transition-all shrink-0", isExpanded ? "h-10 w-full text-lg" : "w-10 h-10 mx-auto")}>
-            {isExpanded ? "IRAJ" : "Σ"}
+          <div className={cn("bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold transition-all shrink-0 text-center", isExpanded ? "h-10 w-full text-sm leading-tight px-1" : "w-10 h-10 mx-auto")}>
+            {isExpanded ? "Anah Assistant" : "A"}
           </div>
           <Tooltip content={isExpanded ? "Collapse Sidebar" : "Expand Sidebar"} position="right">
             <button

@@ -14,6 +14,7 @@ import helmet from "helmet";
 import compression from "compression";
 import rateLimit from "express-rate-limit";
 import morgan from "morgan";
+import nodemailer from "nodemailer";
 
 const app = express();
 app.set("trust proxy", 1); // Trust first proxy for rate limiting (Cloud Run/Nginx)
@@ -298,6 +299,11 @@ async function initDb(): Promise<DatabaseWrapper> {
       content TEXT NOT NULL,
       createdAt TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS password_resets (
+      token TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      expiresAt INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS task_activities (
       id TEXT PRIMARY KEY,
       taskId TEXT NOT NULL,
@@ -494,6 +500,193 @@ app.post("/api/auth/login", async (req, res) => {
 
   const token = jwt.sign({ id: user.id, role: user.role }, SECRET_KEY, { expiresIn: "7d" });
   res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+});
+
+// Forgot Password
+app.post("/api/auth/forgot-password", async (req, res) => {
+  let { email } = req.body;
+  if (!email) return res.status(400).json({ error: "Email is required" });
+  email = email.toLowerCase().trim();
+
+  const db = await dbPromise;
+  const user = await db.get("SELECT * FROM users WHERE email = ? COLLATE NOCASE", email);
+  if (!user) {
+    // Return success to avoid email enumeration
+    return res.json({ message: "If that email is registered, a password reset link has been sent." });
+  }
+
+  const token = require('crypto').randomBytes(32).toString('hex');
+  const expiresAt = Date.now() + 3600000; // 1 hour token validity
+
+  await db.run("INSERT INTO password_resets (token, userId, expiresAt) VALUES (?, ?, ?)", [token, user.id, expiresAt]);
+
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const resetLink = `${protocol}://${host}/reset-password/${token}`;
+
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: parseInt(process.env.SMTP_PORT || '587'),
+        secure: process.env.SMTP_PORT === '465',
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+      });
+
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || '"Project Manager" <noreply@example.com>',
+        to: user.email,
+        subject: "Password Reset Request",
+        text: `You requested a password reset. Click this link to reset your password: ${resetLink}\n\nIf you did not request this, please ignore this email.`,
+        html: `<p>You requested a password reset.</p><p><a href="${resetLink}">Click here to reset your password</a></p><p>If you did not request this, please ignore this email.</p>`,
+      });
+
+      return res.json({ message: "If that email is registered, a password reset link has been sent." });
+    } catch (error) {
+      console.error("SMTP Error:", error);
+      return res.status(500).json({ error: "Failed to send email. Please contact an administrator." });
+    }
+  } else {
+    // No SMTP configured, fallback to returning the link for dev
+    console.log(`[DEV MODE] Password reset link for ${email}: ${resetLink}`);
+    return res.json({ message: "Password reset token generated (Dev Mode).", resetLink: resetLink });
+  }
+});
+
+// Reset Password
+app.post("/api/auth/reset-password", async (req, res) => {
+  const { token, newPassword } = req.body;
+  if (!token || !newPassword) return res.status(400).json({ error: "Token and new password are required" });
+
+  const db = await dbPromise;
+  const resetRecord = await db.get("SELECT * FROM password_resets WHERE token = ?", token);
+
+  if (!resetRecord || resetRecord.expiresAt < Date.now()) {
+    if (resetRecord) await db.run("DELETE FROM password_resets WHERE token = ?", token);
+    return res.status(400).json({ error: "Invalid or expired token" });
+  }
+
+  const salt = await bcrypt.genSalt(10);
+  const hash = await bcrypt.hash(newPassword, salt);
+
+  await db.run("UPDATE users SET passwordHash = ? WHERE id = ?", [hash, resetRecord.userId]);
+  await db.run("DELETE FROM password_resets WHERE token = ?", token);
+
+  res.json({ message: "Password has been successfully reset" });
+});
+
+// GitLab OAuth
+const getAppUrl = (req: any) => {
+  if (process.env.APP_URL) return process.env.APP_URL;
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  return `${protocol}://${host}`;
+};
+
+app.get("/api/auth/gitlab/url", (req, res) => {
+  // Use client's origin if provided via query, otherwise fallback to server host
+  const redirectUri = req.query.origin 
+    ? `${req.query.origin}/api/auth/gitlab/callback` 
+    : `${getAppUrl(req)}/api/auth/gitlab/callback`;
+
+  const params = new URLSearchParams({
+    client_id: process.env.GITLAB_CLIENT_ID || '',
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'read_user', // Requires 'read_user' scope for user profile info
+    state: redirectUri // pass redirectUri in state so callback has it
+  });
+
+  const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
+  res.json({ url: `${gitlabUrl}/oauth/authorize?${params.toString()}` });
+});
+
+app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
+  const { code, state } = req.query;
+  // Use the exact redirect_uri that was passed in the authorize request (from state)
+  const redirectUri = state || `${getAppUrl(req)}/api/auth/gitlab/callback`;
+
+  const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
+  const clientId = process.env.GITLAB_CLIENT_ID || '';
+  const clientSecret = process.env.GITLAB_CLIENT_SECRET || '';
+
+  try {
+    if (!code) throw new Error('No authorization code provided');
+    if (!clientId) throw new Error('GITLAB_CLIENT_ID not configured');
+
+    const tokenRes = await fetch(`${gitlabUrl}/oauth/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: redirectUri
+      })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok) throw new Error(tokenData.error_description || 'Failed to get token');
+
+    const userRes = await fetch(`${gitlabUrl}/api/v4/user`, {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+    });
+    const userData = await userRes.json();
+    if (!userRes.ok) throw new Error('Failed to get user data');
+    if (!userData.email) throw new Error('GitLab account has no email address. Please make sure your email is public/verified.');
+
+    const db = await dbPromise;
+    let user = await db.get("SELECT * FROM users WHERE email = ? COLLATE NOCASE", userData.email);
+
+    if (!user) {
+      const id = uuidv4();
+      const role = "developer";
+      // generate dummy password hash for oauth
+      const randomPassword = require('crypto').randomBytes(16).toString('hex');
+      const salt = await bcrypt.genSalt(10);
+      const hash = await bcrypt.hash(randomPassword, salt);
+      await db.run(
+        "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
+        [id, userData.name || userData.username || 'GitLab User', userData.email, hash, role]
+      );
+      user = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", id);
+    }
+
+    const token = jwt.sign({ id: user.id, role: user.role }, SECRET_KEY, { expiresIn: "7d" });
+
+    res.send(`
+      <html>
+        <body>
+          <script>
+            if (window.opener) {
+              window.opener.postMessage({ 
+                type: 'OAUTH_AUTH_SUCCESS', 
+                token: '${token}', 
+                user: ${JSON.stringify({id: user.id, name: user.name, email: user.email, role: user.role})} 
+              }, '*');
+              window.close();
+            } else {
+              window.location.href = '/';
+            }
+          </script>
+          <p>Authentication successful. Closing...</p>
+        </body>
+      </html>
+    `);
+
+  } catch (e: any) {
+    console.error("GitLab OAuth error:", e);
+    res.send(`
+      <html><body>
+        <p>OAuth Error: ${e.message}</p>
+        <p>Note: Ensure GITLAB_CLIENT_ID and GITLAB_CLIENT_SECRET are configured.</p>
+        <script>setTimeout(() => window.close(), 5000);</script>
+      </body></html>
+    `);
+  }
 });
 
 // Get Me

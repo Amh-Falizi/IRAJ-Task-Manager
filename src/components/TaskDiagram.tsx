@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useRef } from 'react';
 import { 
   ReactFlow, MiniMap, Controls, Background, useNodesState, useEdgesState, MarkerType, 
   Connection, addEdge, ReactFlowProvider, useReactFlow, Handle, Position
@@ -12,6 +12,7 @@ interface TaskDiagramProps {
   layoutKey?: string;
   onConnectTask?: (sourceId: string, targetId: string) => void;
   onReverseConnection?: (sourceId: string, targetId: string) => void;
+  onRemoveConnection?: (sourceId: string, targetId: string) => void;
   onTaskDoubleClick?: (taskId: string) => void;
 }
 
@@ -97,7 +98,7 @@ const nodeTypes = {
   customTaskNode: CustomTaskNode
 };
 
-function FlowLogic({ tasks, layoutKey, onConnectTask, onReverseConnection, onTaskDoubleClick }: TaskDiagramProps) {
+function FlowLogic({ tasks, layoutKey, onConnectTask, onReverseConnection, onRemoveConnection, onTaskDoubleClick }: TaskDiagramProps) {
   const { getIntersectingNodes } = useReactFlow();
   
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
@@ -213,12 +214,31 @@ function FlowLogic({ tasks, layoutKey, onConnectTask, onReverseConnection, onTas
     }
   }, [getIntersectingNodes, onConnectTask]);
 
+  const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const onEdgeClick = useCallback((_: React.MouseEvent, edge: any) => {
-    if (onReverseConnection) {
-      if (edge.id.startsWith('e-parent-')) return; // ignore subtask edges
-      onReverseConnection(edge.source, edge.target);
+    if (clickTimeoutRef.current) {
+      clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
     }
+    clickTimeoutRef.current = setTimeout(() => {
+      if (onReverseConnection) {
+        if (edge.id.startsWith('e-parent-')) return;
+        onReverseConnection(edge.source, edge.target);
+      }
+    }, 250);
   }, [onReverseConnection]);
+
+  const onEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: any) => {
+    if (clickTimeoutRef.current) {
+      clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
+    }
+    if (onRemoveConnection) {
+      if (edge.id.startsWith('e-parent-')) return;
+      onRemoveConnection(edge.source, edge.target);
+    }
+  }, [onRemoveConnection]);
 
   const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: any) => {
     if (onTaskDoubleClick) {
@@ -237,6 +257,7 @@ function FlowLogic({ tasks, layoutKey, onConnectTask, onReverseConnection, onTas
         onConnect={onConnect}
         onNodeDragStop={onNodeDragStop}
         onEdgeClick={onEdgeClick}
+        onEdgeDoubleClick={onEdgeDoubleClick}
         onNodeDoubleClick={onNodeDoubleClick}
         fitView
       >

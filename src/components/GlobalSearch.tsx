@@ -1,21 +1,33 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Search, FolderKanban, KanbanSquare, FileText, User as UserIcon, Loader2, X } from 'lucide-react';
-import { useNavigate } from 'react-router';
-import { cn } from '../lib/utils';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useState, useEffect, useRef } from "react";
+import {
+  Search,
+  FolderKanban,
+  KanbanSquare,
+  FileText,
+  User as UserIcon,
+  X,
+} from "lucide-react";
+import { useNavigate } from "react-router";
+import { cn } from "../lib/utils";
+import { motion, AnimatePresence } from "motion/react";
 
 interface SearchResult {
   id: string;
   title: string;
   description?: string;
-  type: 'project' | 'task' | 'document' | 'user';
+  type: "project" | "task" | "document" | "user";
   projectId?: string;
 }
 
 export default function GlobalSearch() {
-  const [query, setQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [results, setResults] = useState<{ projects: SearchResult[], tasks: SearchResult[], documents: SearchResult[], users: SearchResult[] } | null>(null);
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [results, setResults] = useState<{
+    projects: SearchResult[];
+    tasks: SearchResult[];
+    documents: SearchResult[];
+    users: SearchResult[];
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -38,19 +50,22 @@ export default function GlobalSearch() {
     const fetchResults = async () => {
       setIsLoading(true);
       try {
-        const token = localStorage.getItem('token');
-        const res = await fetch(`/api/search?q=${encodeURIComponent(debouncedQuery)}`, {
-          headers: { 
-            Authorization: `Bearer ${token}`,
-            'X-Silent-Fetch': 'true'
-          }
-        });
+        const token = localStorage.getItem("token");
+        const res = await fetch(
+          `/api/search?q=${encodeURIComponent(debouncedQuery)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "X-Silent-Fetch": "true",
+            },
+          },
+        );
         if (res.ok) {
           const data = await res.json();
           setResults(data);
         }
       } catch (e) {
-        console.error('Search error', e);
+        console.error("Search error", e);
       } finally {
         setIsLoading(false);
       }
@@ -61,41 +76,56 @@ export default function GlobalSearch() {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
         setIsOpen(false);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const handleSelect = (item: SearchResult) => {
     setIsOpen(false);
-    setQuery('');
-    
+    setQuery("");
+
     switch (item.type) {
-      case 'project':
+      case "project":
         navigate(`/projects?projectId=${item.id}`);
         break;
-      case 'task':
-        navigate(`/board${item.projectId ? `?projectId=${item.projectId}` : ''}`);
+      case "task":
+        navigate(
+          `/board${item.projectId ? `?projectId=${item.projectId}` : ""}`,
+        );
         break;
-      case 'document':
-        navigate(`/documents${item.projectId ? `?projectId=${item.projectId}` : ''}`);
+      case "document":
+        navigate(
+          `/documents${item.projectId ? `?projectId=${item.projectId}` : ""}`,
+        );
         break;
-      case 'user':
+      case "user":
         navigate(`/admin/users`);
         break;
     }
   };
 
-  const hasResults = results && (results.projects.length > 0 || results.tasks.length > 0 || results.documents.length > 0 || results.users.length > 0);
+  const hasResults =
+    results &&
+    (results.projects.length > 0 ||
+      results.tasks.length > 0 ||
+      results.documents.length > 0 ||
+      results.users.length > 0);
 
   return (
-    <div ref={containerRef} className="relative w-full max-w-md ml-4 z-50">
-      <div className="relative flex items-center w-full h-10 rounded-full bg-surface-dim border border-border-subtle hover:border-border-strong focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all">
-        <Search className="w-4 h-4 ml-3 text-muted" />
+    <div
+      ref={containerRef}
+      className="relative w-full max-w-md ml-4 z-50 flex items-center"
+    >
+      <div className="relative flex items-center w-full h-10 rounded-full bg-surface-dim border border-border-subtle hover:border-border-strong focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all overflow-hidden pl-3">
+        <Search className="w-4 h-4 text-muted shrink-0" />
         <input
           type="text"
           value={query}
@@ -105,13 +135,22 @@ export default function GlobalSearch() {
           }}
           onFocus={() => setIsOpen(true)}
           placeholder="Search projects, tasks, documents..."
-          className="flex-1 bg-transparent border-none focus:outline-none text-sm px-3 text-strong placeholder-muted h-full"
+          className="flex-1 bg-transparent border-none focus:outline-none text-sm px-3 text-strong placeholder-muted h-full w-full min-w-0"
         />
         {query && (
-          <button onClick={() => setQuery('')} className="mr-3 text-muted hover:text-strong transition-colors">
+          <button
+            onClick={() => setQuery("")}
+            className="mr-2 text-muted hover:text-strong transition-colors flex-shrink-0"
+          >
             <X size={14} />
           </button>
         )}
+        <button
+          onClick={() => setIsOpen(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 h-full rounded-r-full transition-colors shrink-0"
+        >
+          Search
+        </button>
       </div>
 
       <AnimatePresence>
@@ -125,13 +164,17 @@ export default function GlobalSearch() {
           >
             {isLoading && !results ? (
               <div className="flex items-center justify-center p-8">
-                <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                <span className="text-xs text-subtle font-bold uppercase tracking-widest animate-pulse">
+                  Searching...
+                </span>
               </div>
             ) : hasResults ? (
               <div className="flex flex-col">
                 {results?.projects.length > 0 && (
                   <div className="mb-2">
-                    <div className="px-3 py-1 text-xs font-semibold text-muted uppercase tracking-wider">Projects</div>
+                    <div className="px-3 py-1 text-xs font-semibold text-muted uppercase tracking-wider">
+                      Projects
+                    </div>
                     {results.projects.map((item) => (
                       <button
                         key={`project-${item.id}`}
@@ -140,8 +183,14 @@ export default function GlobalSearch() {
                       >
                         <FolderKanban className="w-4 h-4 text-blue-500 mr-3 shrink-0" />
                         <div className="flex flex-col overflow-hidden">
-                          <span className="text-sm font-medium text-strong truncate">{item.title}</span>
-                          {item.description && <span className="text-xs text-muted truncate">{item.description}</span>}
+                          <span className="text-sm font-medium text-strong truncate">
+                            {item.title}
+                          </span>
+                          {item.description && (
+                            <span className="text-xs text-muted truncate">
+                              {item.description}
+                            </span>
+                          )}
                         </div>
                       </button>
                     ))}
@@ -150,7 +199,9 @@ export default function GlobalSearch() {
 
                 {results?.tasks.length > 0 && (
                   <div className="mb-2">
-                    <div className="px-3 py-1 text-xs font-semibold text-muted uppercase tracking-wider">Tasks</div>
+                    <div className="px-3 py-1 text-xs font-semibold text-muted uppercase tracking-wider">
+                      Tasks
+                    </div>
                     {results.tasks.map((item) => (
                       <button
                         key={`task-${item.id}`}
@@ -159,8 +210,12 @@ export default function GlobalSearch() {
                       >
                         <KanbanSquare className="w-4 h-4 text-orange-500 mr-3 shrink-0" />
                         <div className="flex flex-col overflow-hidden">
-                          <span className="text-sm font-medium text-strong truncate">{item.title}</span>
-                          <span className="text-xs text-muted truncate">Go to Task Board</span>
+                          <span className="text-sm font-medium text-strong truncate">
+                            {item.title}
+                          </span>
+                          <span className="text-xs text-muted truncate">
+                            Go to Task Board
+                          </span>
                         </div>
                       </button>
                     ))}
@@ -169,7 +224,9 @@ export default function GlobalSearch() {
 
                 {results?.documents.length > 0 && (
                   <div className="mb-2">
-                    <div className="px-3 py-1 text-xs font-semibold text-muted uppercase tracking-wider">Documents</div>
+                    <div className="px-3 py-1 text-xs font-semibold text-muted uppercase tracking-wider">
+                      Documents
+                    </div>
                     {results.documents.map((item) => (
                       <button
                         key={`doc-${item.id}`}
@@ -178,8 +235,12 @@ export default function GlobalSearch() {
                       >
                         <FileText className="w-4 h-4 text-green-500 mr-3 shrink-0" />
                         <div className="flex flex-col overflow-hidden">
-                          <span className="text-sm font-medium text-strong truncate">{item.title}</span>
-                          <span className="text-xs text-muted truncate">Go to Documents</span>
+                          <span className="text-sm font-medium text-strong truncate">
+                            {item.title}
+                          </span>
+                          <span className="text-xs text-muted truncate">
+                            Go to Documents
+                          </span>
                         </div>
                       </button>
                     ))}
@@ -188,7 +249,9 @@ export default function GlobalSearch() {
 
                 {results?.users.length > 0 && (
                   <div>
-                    <div className="px-3 py-1 text-xs font-semibold text-muted uppercase tracking-wider">Users</div>
+                    <div className="px-3 py-1 text-xs font-semibold text-muted uppercase tracking-wider">
+                      Users
+                    </div>
                     {results.users.map((item) => (
                       <button
                         key={`user-${item.id}`}
@@ -197,8 +260,14 @@ export default function GlobalSearch() {
                       >
                         <UserIcon className="w-4 h-4 text-purple-500 mr-3 shrink-0" />
                         <div className="flex flex-col overflow-hidden">
-                          <span className="text-sm font-medium text-strong truncate">{item.title}</span>
-                          {item.description && <span className="text-xs text-muted truncate">{item.description}</span>}
+                          <span className="text-sm font-medium text-strong truncate">
+                            {item.title}
+                          </span>
+                          {item.description && (
+                            <span className="text-xs text-muted truncate">
+                              {item.description}
+                            </span>
+                          )}
                         </div>
                       </button>
                     ))}

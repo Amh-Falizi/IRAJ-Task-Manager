@@ -15,6 +15,8 @@ import Profile from './pages/Profile';
 import CalendarView from './pages/CalendarView';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import UsersAdmin from './pages/UsersAdmin';
 import Documents from './pages/Documents';
 import Planning from './pages/Planning';
@@ -33,26 +35,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function RouteTransitionLoader() {
-  const location = useLocation();
-  const { setLoading } = useLoading();
-
-  useEffect(() => {
-    // Show loading on route change for a brief moment to ensure smooth visual transition
-    setLoading(true);
-    const timeout = setTimeout(() => {
-      setLoading(false);
-    }, 400);
-
-    return () => {
-      clearTimeout(timeout);
-      setLoading(false);
-    };
-  }, [location.pathname, setLoading]);
-
-  return null;
-}
-
 export default function App() {
   return (
     <ThemeProvider>
@@ -61,10 +43,11 @@ export default function App() {
           <LoadingProvider>
             <AuthProvider>
               <BrowserRouter>
-                <RouteTransitionLoader />
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password/:token" element={<ResetPassword />} />
                 <Route path="/" element={
                   <ProtectedRoute>
                     <Layout />

@@ -250,6 +250,7 @@ export default function Graph() {
                 ) : (
                   'Project Task Graph'
                 )}
+                <span className="ml-2 font-normal opacity-75">(Drag a connection between tasks to add dependency. Double-click connection to remove.)</span>
               </div>
             </>
           )}
@@ -329,6 +330,13 @@ export default function Graph() {
                
                handleUpdateTask(targetId, targetTask, { dependencies: newTargetDeps });
                handleUpdateTask(sourceId, sourceTask, { dependencies: newSourceDeps });
+             }
+           }}
+           onRemoveConnection={(sourceId, targetId) => {
+             const targetTask = tasks.find(t => t.id === targetId);
+             if (targetTask) {
+               const deps = targetTask.dependencies || [];
+               handleUpdateTask(targetId, targetTask, { dependencies: deps.filter(id => id !== sourceId) });
              }
            }}
         />
