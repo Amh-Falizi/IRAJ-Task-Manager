@@ -17,6 +17,7 @@ export default function UserModal({ user, onClose, onSave }: UserModalProps) {
     name: user?.name || '',
     email: user?.email || '',
     role: user?.role || 'developer',
+    rolePrefix: user?.rolePrefix || '',
     password: ''
   });
   const [error, setError] = useState('');
@@ -101,7 +102,7 @@ export default function UserModal({ user, onClose, onSave }: UserModalProps) {
               <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Role</label>
               <select
                 className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-sm text-strong uppercase focus:border-blue-500 focus:outline-none appearance-none disabled:opacity-50"
-                value={formData.role}
+                 value={formData.role}
                 onChange={e => setFormData(p => ({ ...p, role: e.target.value as "admin" | "manager" | "developer" }))}
                 disabled={isSelf}
               >
@@ -110,6 +111,20 @@ export default function UserModal({ user, onClose, onSave }: UserModalProps) {
                 <option value="admin">Admin</option>
               </select>
             </div>
+
+            {(formData.role === 'developer' || formData.role === 'manager') && (
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Role Prefix Label</label>
+                <input
+                  type="text"
+                  className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-sm text-strong focus:border-blue-500 focus:outline-none"
+                  value={formData.rolePrefix}
+                  onChange={e => setFormData(p => ({ ...p, rolePrefix: e.target.value }))}
+                  placeholder={formData.role === 'manager' ? 'e.g. Engineering' : 'e.g. Lead'}
+                />
+                <p className="text-[10px] text-muted">A custom prefix before the role name (e.g., '{formData.rolePrefix || (formData.role === 'manager' ? 'Engineering' : 'Lead')}' {formData.role === 'manager' ? 'Manager' : 'Developer'})</p>
+              </div>
+            )}
             
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">

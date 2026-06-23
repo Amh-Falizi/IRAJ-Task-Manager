@@ -9,6 +9,9 @@ interface AuthContextType {
   logout: () => void;
   updateUser: (user: User) => void;
   loading: boolean;
+  settings: Record<string, string>;
+  refreshSettings: () => Promise<void>;
+  updateSettings: (newSettings: Record<string, string>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -17,6 +20,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
   const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState<Record<string, string>>({
+    manager_prefix: "Engineering",
+    developer_prefix: "Lead"
+  });
+
+  const refreshSettings = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/settings', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSettings(prev => ({ ...prev, ...data }));
+      }
+    } catch (err) {
+      console.error("Failed to load settings:", err);
+    }
+  };
+
+  const updateSettings = async (newSettings: Record<string, string>) => {
+    if (!token) return;
+    const res = await fetch('/api/settings', {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(newSettings)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setSettings(prev => ({ ...prev, ...data }));
+    } else {
+      const errorData = await res.json();
+      throw new Error(errorData.error || "Failed to update settings");
+    }
+  };
+
+  useEffect(() => {
+    if (token) {
+      refreshSettings();
+    }
+  }, [token]);
 
   useEffect(() => {
     if (token) {
@@ -78,7 +125,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, updateUser, loading }}>
+    <AuthContext.Provider value={{ user, token, login, logout, updateUser, loading, settings, refreshSettings, updateSettings }}>
       {children}
     </AuthContext.Provider>
   );

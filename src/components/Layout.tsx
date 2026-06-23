@@ -219,8 +219,8 @@ export default function Layout() {
           })}
         </nav>
 
-        <div className="mt-auto pt-4 flex flex-col space-y-1 w-full border-t border-border-subtle/50">
-          <div className={cn("tour-notifications flex transition-all duration-300 w-full h-10", isExpanded ? "hover:bg-surface-accent/50 rounded-md" : "")}>
+        <div className="mt-auto pt-4 flex flex-col space-y-1 w-full border-t border-border-subtle/50 shrink-0">
+          <div className={cn("tour-notifications flex transition-all duration-300 w-full h-10 shrink-0", isExpanded ? "hover:bg-surface-accent/50 rounded-md" : "")}>
             <NotificationsDropdown expanded={isExpanded} />
           </div>
 
@@ -230,12 +230,12 @@ export default function Layout() {
                 initial={{ opacity: 0, height: 0, marginBottom: 0 }}
                 animate={{ opacity: 1, height: 'auto', marginBottom: isExpanded ? 4 : 8 }}
                 exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                className={cn("flex w-full overflow-hidden flex-col", isExpanded ? "bg-surface/50 border border-border-subtle/30 rounded-lg p-1 space-y-1" : "space-y-2")}
+                className={cn("flex w-full overflow-hidden flex-col shrink-0", isExpanded ? "bg-surface/50 border border-border-subtle/30 rounded-lg p-1 space-y-1" : "space-y-2")}
               >
                  <Tooltip content={isExpanded ? undefined : `Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} position="right">
                    <button
                      onClick={toggleTheme}
-                     className={cn("tour-theme-toggle flex items-center text-subtle hover:text-strong rounded-md transition-all duration-300 hover:bg-surface-accent/50 overflow-hidden w-full h-10")}
+                     className={cn("tour-theme-toggle flex items-center text-subtle hover:text-strong rounded-md transition-all duration-300 hover:bg-surface-accent/50 overflow-hidden w-full h-10 shrink-0")}
                    >
                      <div className="flex items-center justify-center w-10 h-10 shrink-0">
                        {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
@@ -247,7 +247,7 @@ export default function Layout() {
                  <Tooltip content={isExpanded ? undefined : "Logout"} position="right">
                    <button
                      onClick={logout}
-                     className={cn("flex items-center text-subtle hover:text-red-500 rounded-md transition-all duration-300 hover:bg-red-500/10 overflow-hidden w-full h-10")}
+                     className={cn("flex items-center text-subtle hover:text-red-500 rounded-md transition-all duration-300 hover:bg-red-500/10 overflow-hidden w-full h-10 shrink-0")}
                    >
                      <div className="flex items-center justify-center w-10 h-10 shrink-0">
                        <LogOut size={18} />
@@ -262,7 +262,7 @@ export default function Layout() {
           <Tooltip content={isExpanded ? undefined : (isSettingsExpanded ? "Close Settings" : "Settings")} position="right">
             <button
               onClick={() => setIsSettingsExpanded(!isSettingsExpanded)}
-              className={cn("flex items-center text-subtle hover:text-strong rounded-md transition-all duration-300 hover:bg-surface-accent/30 overflow-hidden w-full h-10")}
+              className={cn("flex items-center text-subtle hover:text-strong rounded-md transition-all duration-300 hover:bg-surface-accent/30 overflow-hidden w-full h-10 shrink-0")}
             >
               <div className="flex items-center justify-center w-10 h-10 shrink-0">
                 <Settings size={20} className={cn("transition-transform duration-300", isSettingsExpanded && "rotate-90")} />
@@ -274,7 +274,7 @@ export default function Layout() {
             </button>
           </Tooltip>
 
-          <div className="flex w-full pt-2 transition-all duration-300">
+          <div className="flex w-full pt-2 transition-all duration-300 shrink-0">
              <Tooltip content={isExpanded ? undefined : "Profile"} position="right">
                <Link 
                  to="/profile"

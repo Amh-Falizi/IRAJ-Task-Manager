@@ -28,6 +28,10 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
   const { token, user } = useAuth();
   const { success, error, info } = useToast();
   const isEdit = !!task;
+  const isDeveloper = user?.role === 'developer';
+  const canEdit = isDeveloper 
+    ? (isEdit && user?.id === task?.assigneeId)
+    : (user?.role === 'admin' || user?.role === 'manager' || user?.id === task?.creatorId || user?.id === task?.assigneeId);
   const [isViewMode, setIsViewMode] = useState(isEdit);
 
   const getStatusTitle = (id: string) => columns?.find(c => c.id === id)?.title || id.replace('_', ' ');
@@ -255,7 +259,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
               </div>
             </div>
             <div className="flex items-center space-x-2 shrink-0">
-              {onDeleteTask && (user?.role === 'admin' || user?.role === 'manager' || user?.id === task.creatorId) && (
+              {onDeleteTask && !isDeveloper && (user?.role === 'admin' || user?.role === 'manager' || user?.id === task.creatorId) && (
                 <button
                   onClick={() => {
                     onDeleteTask(task.id);
@@ -268,7 +272,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                   <span>Delete</span>
                 </button>
               )}
-              {(user?.role === 'admin' || user?.role === 'manager' || user?.id === task.creatorId || user?.id === task.assigneeId) && (
+              {canEdit && (
                 <button 
                   onClick={() => setIsViewMode(false)} 
                   className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 rounded border border-blue-500/20 transition-colors uppercase text-[10px] font-bold tracking-widest"
@@ -318,7 +322,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                     <div className="space-y-6">
                       <div>
                         <h3 className="text-[10px] font-bold text-subtle uppercase tracking-widest mb-3 border-b border-border-subtle pb-1">Description</h3>
-                        <div className="prose prose-invert prose-sm max-w-none text-primary">
+                        <div className="prose dark:prose-invert prose-sm max-w-none text-primary">
                           {task.description ? (
                             <Markdown>{task.description}</Markdown>
                           ) : (
@@ -349,7 +353,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                         <div>
                           <div className="flex justify-between items-center mb-3 border-b border-border-subtle pb-1">
                             <h3 className="text-[10px] font-bold text-subtle uppercase tracking-widest">Subtasks ({subtasks.length})</h3>
-                            {onCreateSubtask && (
+                            {onCreateSubtask && !isDeveloper && (
                                <button 
                                  onClick={() => onCreateSubtask(task.id)} 
                                  className="flex items-center space-x-1 text-[9px] font-bold bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded text-blue-500 hover:bg-blue-500 hover:text-white transition-all hover:scale-105 uppercase tracking-wider"
@@ -470,7 +474,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                                           onChange={e => setEditCommentContent(e.target.value)}
                                         />
                                         {editCommentPreviewMode && (
-                                          <div className="w-1/2 overflow-y-auto prose prose-invert prose-sm max-w-none p-2 rounded border border-border-subtle bg-surface-dim text-primary font-sans h-full">
+                                          <div className="w-1/2 overflow-y-auto prose dark:prose-invert prose-sm max-w-none p-2 rounded border border-border-subtle bg-surface-dim text-primary font-sans h-full">
                                             {editCommentContent ? (
                                               <Markdown>{editCommentContent}</Markdown>
                                             ) : (
@@ -496,7 +500,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                                       </div>
                                     </div>
                                   ) : (
-                                    <div className="prose prose-invert prose-sm max-w-none text-primary">
+                                    <div className="prose dark:prose-invert prose-sm max-w-none text-primary">
                                       <Markdown>{c.content}</Markdown>
                                     </div>
                                   )}
@@ -535,7 +539,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                              onChange={e => setNewComment(e.target.value)}
                            />
                            {newCommentPreviewMode && (
-                             <div className="w-1/2 overflow-y-auto prose prose-invert prose-sm max-w-none p-2 rounded border border-border-subtle bg-surface-dim text-primary font-sans h-full">
+                             <div className="w-1/2 overflow-y-auto prose dark:prose-invert prose-sm max-w-none p-2 rounded border border-border-subtle bg-surface-dim text-primary font-sans h-full">
                                {newComment ? (
                                  <Markdown>{newComment}</Markdown>
                                ) : (
@@ -684,11 +688,11 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
           <div className="space-y-1">
-            <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Task Title</label>
+            <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block font-sans">Task Title</label>
             <input
               required
               type="text"
-              className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong placeholder-slate-600 focus:border-blue-500 focus:outline-none"
+              className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong placeholder-slate-600 focus:border-blue-500 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
               value={formData.title}
               onChange={e => setFormData(p => ({ ...p, title: e.target.value }))}
             />
@@ -696,7 +700,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-1">
-              <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Status</label>
+              <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block font-sans">Status</label>
               <select
                 className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong uppercase focus:border-blue-500 focus:outline-none appearance-none"
                 value={formData.status}
@@ -714,9 +718,10 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
             </div>
 
             <div className="space-y-1">
-              <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Priority</label>
+              <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block font-sans">Priority</label>
               <select
-                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong uppercase focus:border-blue-500 focus:outline-none appearance-none"
+                disabled={isDeveloper}
+                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong uppercase focus:border-blue-500 focus:outline-none appearance-none disabled:opacity-60 disabled:cursor-not-allowed"
                 value={formData.priority}
                 onChange={e => setFormData(p => ({ ...p, priority: e.target.value as any }))}
               >
@@ -728,9 +733,10 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
             </div>
 
             <div className="space-y-1">
-              <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Assignee</label>
+              <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block font-sans">Assignee</label>
               <select
-                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong uppercase focus:border-blue-500 focus:outline-none appearance-none"
+                disabled={isDeveloper}
+                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong uppercase focus:border-blue-500 focus:outline-none appearance-none disabled:opacity-60 disabled:cursor-not-allowed"
                 value={formData.assigneeId || ''}
                 onChange={e => setFormData(p => ({ ...p, assigneeId: e.target.value }))}
               >
@@ -742,9 +748,10 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
             </div>
 
             <div className="space-y-1">
-              <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Project</label>
+              <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block font-sans">Project</label>
               <select
-                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong focus:border-blue-500 focus:outline-none appearance-none"
+                disabled={isDeveloper}
+                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong focus:border-blue-500 focus:outline-none appearance-none disabled:opacity-60 disabled:cursor-not-allowed"
                 value={formData.projectId || ''}
                 onChange={e => setFormData(p => ({ ...p, projectId: e.target.value, milestoneId: null }))}
                 required
@@ -757,12 +764,12 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
             </div>
 
             <div className="space-y-1">
-              <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Milestone</label>
+              <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block font-sans">Milestone</label>
               <select
-                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong focus:border-blue-500 focus:outline-none appearance-none"
+                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong focus:border-blue-500 focus:outline-none appearance-none disabled:opacity-60 disabled:cursor-not-allowed"
                 value={formData.milestoneId || ''}
                 onChange={e => setFormData(p => ({ ...p, milestoneId: e.target.value }))}
-                disabled={!formData.projectId || milestones.length === 0}
+                disabled={isDeveloper || !formData.projectId || milestones.length === 0}
               >
                 <option value="">No Milestone</option>
                 {milestones.map(m => (
@@ -772,14 +779,20 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
             </div>
 
             <div className="space-y-1">
-              <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Deadline</label>
-              <input
-                type="date"
-                required
-                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong font-mono focus:border-blue-500 focus:outline-none"
-                value={formData.deadline}
-                onChange={e => setFormData(p => ({ ...p, deadline: e.target.value }))}
-              />
+              <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block font-sans">Deadline</label>
+              <div className="relative col-span-1">
+                <input
+                  type="date"
+                  required
+                  disabled={isDeveloper}
+                  className="w-full rounded bg-surface-dim border border-border-subtle pl-9 pr-3 py-2 text-xs text-strong font-mono focus:border-blue-500 focus:outline-none dark:[color-scheme:dark] disabled:opacity-60 disabled:cursor-not-allowed"
+                  value={formData.deadline}
+                  onChange={e => setFormData(p => ({ ...p, deadline: e.target.value }))}
+                />
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-subtle pointer-events-none">
+                  <Calendar size={12} />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -790,7 +803,8 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                   <label key={t.id} className="flex items-center space-x-2 text-xs text-strong p-1 hover:bg-surface rounded cursor-pointer">
                     <input 
                       type="checkbox" 
-                      className="rounded border-border-subtle bg-transparent"
+                      disabled={isDeveloper}
+                      className="rounded border-border-subtle bg-transparent disabled:opacity-60 disabled:cursor-not-allowed"
                       checked={formData.dependencies?.includes(t.id) || false}
                       onChange={(e) => {
                          const deps = formData.dependencies || [];
@@ -817,7 +831,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                   <button
                     type="button"
                     onClick={handleGenerateBranch}
-                    disabled={generatingBranch}
+                    disabled={isDeveloper || generatingBranch}
                     className="text-[9px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-1 rounded hover:bg-blue-500/20 disabled:opacity-50 flex items-center space-x-1 font-bold tracking-wider uppercase transition-colors"
                   >
                     {generatingBranch ? <span className="text-[10px] text-blue-500 font-bold uppercase tracking-widest animate-pulse ml-2">Loading...</span> : null}
@@ -831,7 +845,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
               className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 focus:border-blue-500 focus:outline-none font-mono text-xs text-blue-400 placeholder-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
               value={formData.branchName || ''}
               onChange={e => setFormData(p => ({ ...p, branchName: e.target.value }))}
-              disabled={!!(projectsList.find(p => p.id === formData.projectId)?.projectKey)}
+              disabled={isDeveloper || !!(projectsList.find(p => p.id === formData.projectId)?.projectKey)}
             />
           </div>
 
@@ -859,14 +873,14 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
             <div className={`flex-1 flex gap-4 min-h-0 ${previewMode ? 'h-64' : 'h-48'}`}>
               <div className={`flex flex-col h-full ${previewMode ? 'w-1/2' : 'w-full'}`}>
                 <textarea
-                  className="w-full h-full rounded bg-surface-dim border border-border-subtle px-3 py-3 focus:border-blue-500 focus:outline-none resize-none font-mono text-xs text-primary placeholder-slate-700"
+                  className="w-full h-full rounded bg-surface-dim border border-border-subtle px-3 py-3 focus:border-blue-500 focus:outline-none resize-none font-mono text-xs text-primary placeholder-slate-700 disabled:opacity-60 disabled:cursor-not-allowed"
                   value={formData.description}
                   onChange={e => setFormData(p => ({ ...p, description: e.target.value }))}
                   placeholder="Describe the task... Supports markdown format."
                 />
               </div>
               {previewMode && (
-                <div className="w-1/2 h-full overflow-y-auto prose prose-invert prose-sm max-w-none p-4 rounded border border-border-subtle bg-surface-dim text-primary font-sans text-sm">
+                <div className="w-1/2 h-full overflow-y-auto prose dark:prose-invert prose-sm max-w-none p-4 rounded border border-border-subtle bg-surface-dim text-primary font-sans text-sm">
                   {formData.description ? (
                     <Markdown>{formData.description}</Markdown>
                   ) : (

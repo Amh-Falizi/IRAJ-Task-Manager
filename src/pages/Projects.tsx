@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { Project, User } from '../types';
-import { FolderKanban, Plus, X, Trash2, Calendar, LayoutDashboard, Activity, Clock, Download, Users } from 'lucide-react';
+import { FolderKanban, Plus, X, Trash2, Calendar, LayoutDashboard, Activity, Clock, Download, Users, User as UserIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router';
 import WorkloadModal from '../components/WorkloadModal';
@@ -200,7 +200,7 @@ export default function Projects() {
                   )}
                 </div>
                 
-                <div className="text-xs text-muted mb-6 flex-1 min-h-[32px] prose prose-invert prose-sm prose-p:my-1 prose-h1:text-sm prose-h2:text-sm prose-h3:text-sm overflow-hidden text-ellipsis line-clamp-2 break-words">
+                <div className="text-xs text-muted mb-6 flex-1 min-h-[32px] prose dark:prose-invert prose-sm prose-p:my-1 prose-h1:text-sm prose-h2:text-sm prose-h3:text-sm overflow-hidden text-ellipsis line-clamp-2 break-words">
                   {project.description ? (
                     <Markdown>{project.description}</Markdown>
                   ) : (
@@ -223,7 +223,7 @@ export default function Projects() {
                         }}
                         className="flex items-center space-x-1.5 text-xs text-muted hover:text-strong font-medium bg-surface-dim hover:bg-surface-accent px-2.5 py-1.5 rounded transition-colors border border-border-subtle"
                       >
-                        <Users size={14} />
+                        <UserIcon size={14} />
                       </button>
                     </Tooltip>
                     <Tooltip content="Teams" position="bottom">
@@ -472,7 +472,7 @@ function CreateProjectModal({ project, onClose, onSuccess }: { project?: Project
                   className="w-full bg-surface-dim border border-border-subtle rounded px-3 py-2 text-strong font-mono focus:outline-none focus:border-blue-500 resize-none text-sm"
                 />
               ) : (
-                <div className="w-full h-[96px] overflow-y-auto prose prose-invert prose-sm max-w-none p-4 rounded border border-border-subtle bg-surface-dim text-primary font-sans text-sm">
+                <div className="w-full h-[96px] overflow-y-auto prose dark:prose-invert prose-sm max-w-none p-4 rounded border border-border-subtle bg-surface-dim text-primary font-sans text-sm">
                   {description ? (
                     <Markdown>{description}</Markdown>
                   ) : (

@@ -324,7 +324,7 @@ export default function Documents() {
                   </button>
                 </div>
                 
-                <div className="prose prose-invert prose-blue max-w-none text-sm text-subtle leading-relaxed">
+                <div className="prose dark:prose-invert prose-blue max-w-none text-sm text-subtle leading-relaxed">
                   <Markdown>{selectedDocument.content}</Markdown>
                 </div>
               </div>

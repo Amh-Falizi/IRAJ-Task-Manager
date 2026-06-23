@@ -244,7 +244,7 @@ export default function Graph() {
                 <Workflow size={20} className="text-blue-500" />
                 {project.name} <span className="text-sm font-normal text-subtle">Task Graph</span>
               </h1>
-              <div className="text-xs text-subtle mt-1 prose prose-invert prose-sm line-clamp-1">
+              <div className="text-xs text-subtle mt-1 prose dark:prose-invert prose-sm line-clamp-1">
                 {project.description ? (
                   <Markdown>{project.description}</Markdown>
                 ) : (
@@ -290,13 +290,15 @@ export default function Graph() {
               <option value="low" className="bg-surface">LOW</option>
             </select>
           </div>
-          <button
-            onClick={handleCreateTask}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow hover:scale-105 transition-all flex items-center space-x-2"
-          >
-            <Plus size={14} />
-            <span>NEW TASK</span>
-          </button>
+          {user?.role !== 'developer' && (
+            <button
+              onClick={handleCreateTask}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow hover:scale-105 transition-all flex items-center space-x-2"
+            >
+              <Plus size={14} />
+              <span>NEW TASK</span>
+            </button>
+          )}
         </div>
       </div>
 

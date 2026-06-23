@@ -297,7 +297,7 @@ export default function Planning() {
 
   return (
     <div className="tour-planning-view flex-1 flex flex-col p-8 bg-page-bg overflow-y-auto h-full relative">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-strong mb-1 flex items-center gap-2">
             Planning Mode
@@ -308,7 +308,7 @@ export default function Planning() {
         <Tooltip content="Create a new milestone for the project" position="bottom">
           <button 
             onClick={() => openModal()}
-            className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md shadow hover:scale-105 transition-all text-sm font-bold flex items-center space-x-2"
+            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md shadow hover:scale-[1.02] transition-all text-sm font-bold flex items-center justify-center space-x-2"
           >
             <Plus size={16} />
             <span>New Milestone</span>
@@ -555,24 +555,34 @@ export default function Planning() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-subtle uppercase tracking-wider mb-1">Start Date</label>
-                  <input
-                    type="date"
-                    value={formData.startDate}
-                    onChange={e => setFormData(p => ({ ...p, startDate: e.target.value }))}
-                    className="w-full bg-surface-dim border border-border-subtle rounded px-3 py-2 text-strong focus:outline-none focus:border-blue-500 text-sm [color-scheme:dark]"
-                  />
+                  <div className="relative">
+                    <input
+                      type="date"
+                      value={formData.startDate}
+                      onChange={e => setFormData(p => ({ ...p, startDate: e.target.value }))}
+                      className="w-full bg-surface-dim border border-border-subtle rounded pl-9 pr-3 py-2 text-strong focus:outline-none focus:border-blue-500 text-sm dark:[color-scheme:dark]"
+                    />
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-subtle pointer-events-none">
+                      <Calendar size={13} />
+                    </div>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-subtle uppercase tracking-wider mb-1">End Date</label>
-                  <input
-                    type="date"
-                    value={formData.endDate}
-                    onChange={e => setFormData(p => ({ ...p, endDate: e.target.value }))}
-                    className="w-full bg-surface-dim border border-border-subtle rounded px-3 py-2 text-strong focus:outline-none focus:border-blue-500 text-sm [color-scheme:dark]"
-                  />
+                  <div className="relative">
+                    <input
+                      type="date"
+                      value={formData.endDate}
+                      onChange={e => setFormData(p => ({ ...p, endDate: e.target.value }))}
+                      className="w-full bg-surface-dim border border-border-subtle rounded pl-9 pr-3 py-2 text-strong focus:outline-none focus:border-blue-500 text-sm dark:[color-scheme:dark]"
+                    />
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-subtle pointer-events-none">
+                      <Calendar size={13} />
+                    </div>
+                  </div>
                 </div>
               </div>
 

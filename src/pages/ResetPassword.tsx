@@ -12,7 +12,7 @@ export default function ResetPassword() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const navigate = useNavigate();
-  const { showToast } = useToast();
+  const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +35,7 @@ export default function ResetPassword() {
       if (!res.ok) throw new Error(data.error || 'Failed to reset password');
 
       setSuccess(true);
-      showToast("Password reset successfully. You can now login.", 'success');
+      toast("Password reset successfully. You can now login.", 'success');
       setTimeout(() => navigate('/login'), 2000);
     } catch (err: any) {
       setError(err.message);

@@ -139,8 +139,8 @@ export default function Profile() {
   const roleInfo = (() => {
     switch (user?.role) {
       case 'admin': return { label: 'Administrator', icon: Shield, color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20' };
-      case 'manager': return { label: 'Engineering Manager', icon: Briefcase, color: 'text-indigo-500', bg: 'bg-indigo-500/10', border: 'border-indigo-500/20' };
-      case 'developer': return { label: 'Lead Developer', icon: Code, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20' };
+      case 'manager': return { label: `${user?.rolePrefix || 'Engineering'} Manager`, icon: Briefcase, color: 'text-indigo-500', bg: 'bg-indigo-500/10', border: 'border-indigo-500/20' };
+      case 'developer': return { label: `${user?.rolePrefix || 'Lead'} Developer`, icon: Code, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20' };
       case 'viewer': return { label: 'QA Analyst', icon: Eye, color: 'text-teal-500', bg: 'bg-teal-500/10', border: 'border-teal-500/20' };
       default: return { label: 'Team Member', icon: UserIcon, color: 'text-slate-500', bg: 'bg-slate-500/10', border: 'border-slate-500/20' };
     }

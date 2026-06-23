@@ -4,6 +4,7 @@ export interface User {
   email: string;
   role: "admin" | "manager" | "developer" | "viewer" | "member";
   skills?: string[];
+  rolePrefix?: string;
 }
 
 export interface Task {

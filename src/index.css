@@ -56,3 +56,116 @@ html {
 #root {
   @apply h-full w-full flex flex-col;
 }
+
+/* Custom styling for ReactFlow Controls to make them beautiful and high-contrast in dark & light modes */
+.react-flow__controls {
+  @apply !border !shadow-lg !rounded-lg overflow-hidden transition-all duration-200;
+  border-color: var(--app-border-strong) !important;
+  background-color: var(--app-surface) !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5) !important;
+}
+
+.react-flow__controls-button {
+  background-color: var(--app-surface) !important;
+  border-bottom: 1px solid var(--app-border-subtle) !important;
+  color: var(--app-text-strong) !important;
+  transition: all 0.15s ease-in-out !important;
+  width: 28px !important;
+  height: 28px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
+
+.react-flow__controls-button:hover {
+  background-color: var(--app-surface-accent) !important;
+  color: var(--app-text-strong) !important;
+}
+
+.react-flow__controls-button svg {
+  fill: currentColor !important;
+  width: 14px !important;
+  height: 14px !important;
+  color: var(--app-text-strong) !important;
+  transition: color 0.15s ease-in-out !important;
+}
+
+.react-flow__controls-button:hover svg {
+  color: var(--app-text-strong) !important;
+}
+
+/* Ensure prose text colors are perfectly adapted to the light/dark themes */
+.prose {
+  color: var(--app-text-primary) !important;
+  max-width: none !important;
+}
+
+.prose p, 
+.prose li, 
+.prose ul, 
+.prose ol, 
+.prose span,
+.prose div,
+.prose-sm p,
+.prose-sm li {
+  color: var(--app-text-primary) !important;
+}
+
+.prose h1, 
+.prose h2, 
+.prose h3, 
+.prose h4, 
+.prose h5, 
+.prose h6,
+.prose-sm h1,
+.prose-sm h2,
+.prose-sm h3 {
+  color: var(--app-text-strong) !important;
+  font-weight: 600 !important;
+}
+
+.prose strong,
+.prose-sm strong {
+  color: var(--app-text-strong) !important;
+  font-weight: 700 !important;
+}
+
+.prose a,
+.prose-sm a {
+  color: #3b82f6 !important;
+  text-decoration: underline !important;
+}
+
+.prose code,
+.prose-sm code {
+  color: var(--app-text-strong) !important;
+  background-color: var(--app-surface-accent) !important;
+  padding: 2px 4px !important;
+  border-radius: 4px !important;
+  font-size: 0.875em !important;
+}
+
+.prose blockquote,
+.prose-sm blockquote {
+  color: var(--app-text-primary) !important;
+  border-left-color: var(--app-border-strong) !important;
+  padding-left: 1rem !important;
+  font-style: italic !important;
+}
+
+/* Ensure the calendar picker indicators are highly legible in light and dark themes */
+html.light input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.3) !important;
+  opacity: 0.8 !important;
+  cursor: pointer !important;
+}
+
+html.dark input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.9) !important;
+  opacity: 0.9 !important;
+  cursor: pointer !important;
+}

@@ -104,6 +104,22 @@ export default function Board() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [draggingColumnId, setDraggingColumnId] = useState<string | null>(null);
+
+  const handleColumnDragEnter = (targetColId: string) => {
+    if (!draggingColumnId || draggingColumnId === targetColId) return;
+    setColumns(prev => {
+      const sourceIdx = prev.findIndex(c => c.id === draggingColumnId);
+      const targetIdx = prev.findIndex(c => c.id === targetColId);
+      if (sourceIdx !== -1 && targetIdx !== -1) {
+        const newCols = [...prev];
+        const [dragged] = newCols.splice(sourceIdx, 1);
+        newCols.splice(targetIdx, 0, dragged);
+        return newCols;
+      }
+      return prev;
+    });
+  };
 
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
 
@@ -515,7 +531,7 @@ export default function Board() {
                 <FolderKanban size={20} className="text-blue-500" />
                 {project.name} <span className="text-sm font-normal text-subtle">Board</span>
               </h1>
-              <div className="text-xs text-subtle mt-1 prose prose-invert prose-sm line-clamp-1">
+              <div className="text-xs text-subtle mt-1 prose dark:prose-invert prose-sm line-clamp-1">
                 {project.description ? (
                   <Markdown>{project.description}</Markdown>
                 ) : (
@@ -643,15 +659,17 @@ export default function Board() {
               </>
             )}
           </div>
-          <Tooltip content="Create a new task with keyboard shortcut: c" position="bottom">
-            <button
-              onClick={handleCreateTask}
-              className="tour-new-task px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow hover:scale-105 transition-all flex items-center space-x-2"
-            >
-              <Plus size={14} />
-              <span>NEW TASK</span>
-            </button>
-          </Tooltip>
+          {user?.role !== 'developer' && (
+            <Tooltip content="Create a new task with keyboard shortcut: c" position="bottom">
+              <button
+                onClick={handleCreateTask}
+                className="tour-new-task px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow hover:scale-105 transition-all flex items-center space-x-2"
+              >
+                <Plus size={14} />
+                <span>NEW TASK</span>
+              </button>
+            </Tooltip>
+          )}
         </div>
       </div>
 
@@ -662,7 +680,12 @@ export default function Board() {
           return (
             <div 
               key={column.id} 
-              className="w-80 flex-shrink-0 flex flex-col bg-surface border border-border-subtle rounded-lg transition-colors"
+              className={`w-80 flex-shrink-0 flex flex-col bg-surface border rounded-lg transition-colors duration-200 ${draggingColumnId === column.id ? 'opacity-50 border-dashed border-blue-500' : 'border-border-subtle'} `}
+              onDragEnter={(e) => {
+                if (draggingColumnId) {
+                  handleColumnDragEnter(column.id);
+                }
+              }}
               onDragOver={(e) => {
                 e.preventDefault();
                 e.dataTransfer.dropEffect = 'move';
@@ -684,13 +707,16 @@ export default function Board() {
                     const newColumns = [...prev];
                     const sourceIdx = newColumns.findIndex(c => c.id === columnId);
                     const targetIdx = newColumns.findIndex(c => c.id === column.id);
-                    const [dragged] = newColumns.splice(sourceIdx, 1);
-                    newColumns.splice(targetIdx, 0, dragged);
+                    if (sourceIdx !== -1 && targetIdx !== -1) {
+                        const [dragged] = newColumns.splice(sourceIdx, 1);
+                        newColumns.splice(targetIdx, 0, dragged);
+                    }
                     return newColumns;
                   });
                 } else if (taskId) {
                   handleDropTask(taskId, column.id);
                 }
+                setDraggingColumnId(null);
               }}
             >
               <div 
@@ -699,6 +725,10 @@ export default function Board() {
                 onDragStart={(e) => {
                   e.dataTransfer.effectAllowed = 'move';
                   e.dataTransfer.setData('columnId', column.id);
+                  setTimeout(() => setDraggingColumnId(column.id), 0);
+                }}
+                onDragEnd={() => {
+                  setDraggingColumnId(null);
                 }}
               >
                 <div className="flex items-center space-x-2 flex-1">
@@ -728,14 +758,16 @@ export default function Board() {
                   </span>
                 </div>
                 <div className="flex flex-row items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Tooltip content={`Add Task to ${column.title}`} position="top">
-                    <button
-                      onClick={() => handleCreateTaskInColumn(column.id)}
-                      className="bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white p-1 rounded transition-colors"
-                    >
-                      <Plus size={16} />
-                    </button>
-                  </Tooltip>
+                  {user?.role !== 'developer' && (
+                    <Tooltip content={`Add Task to ${column.title}`} position="top">
+                      <button
+                        onClick={() => handleCreateTaskInColumn(column.id)}
+                        className="bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white p-1 rounded transition-colors"
+                      >
+                        <Plus size={16} />
+                      </button>
+                    </Tooltip>
+                  )}
                   <Tooltip content={`Delete ${column.title}`} position="top">
                     <button
                       onClick={() => handleDeleteColumn(column.id)}

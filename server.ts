@@ -357,6 +357,23 @@ async function initDb(): Promise<DatabaseWrapper> {
     await db.exec("ALTER TABLE users ADD COLUMN skills TEXT DEFAULT '[]';");
   } catch (e) {}
 
+  try {
+    await db.exec("ALTER TABLE users ADD COLUMN rolePrefix TEXT;");
+  } catch (e) {}
+
+  try {
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      );
+    `);
+    await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('manager_prefix', 'Engineering')");
+    await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('developer_prefix', 'Lead')");
+  } catch (e) {
+    console.error("Failed to create/seed settings table:", e);
+  }
+
   // Backfill project members for existing projects if they don't have members
   try {
     const existingProjects = await db.all("SELECT id, ownerId, createdAt FROM projects");
@@ -392,6 +409,31 @@ async function initDb(): Promise<DatabaseWrapper> {
     } catch (e) {
       console.error("Migration error", e);
     }
+  }
+
+  // Auto-seed default accounts for development testing/presentation
+  try {
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash("password123", salt);
+
+    const seedUsers = [
+      { id: "seed-user-admin", name: "Admin User", email: "admin@example.com", role: "admin" },
+      { id: "seed-user-developer", name: "Developer User", email: "dev1@example.com", role: "developer" },
+      { id: "seed-user-manager", name: "Manager User", email: "manager1@example.com", role: "manager" }
+    ];
+
+    for (const u of seedUsers) {
+      const existing = await db.get("SELECT id FROM users WHERE email = ? COLLATE NOCASE", u.email);
+      if (!existing) {
+        await db.run(
+          "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
+          [u.id, u.name, u.email, passwordHash, u.role]
+        );
+        console.log(`Auto-seeded default user account: ${u.email} (${u.role})`);
+      }
+    }
+  } catch (seedErr) {
+    console.warn("Could not seed default accounts:", seedErr);
   }
 } catch (error) {
   console.warn("DB Connection/Init Error. The app will run, but DB features will fail until DATABASE_URL is correct:", error);
@@ -448,10 +490,22 @@ const authenticateToken = (req: any, res: any, next: any) => {
 app.post("/api/auth/register", async (req, res) => {
   try {
     let { name, email, password, role } = req.body;
-    if (email) email = email.toLowerCase().trim();
+    
+    // Validation
+    if (!name || typeof name !== 'string' || name.trim() === '') {
+      return res.status(400).json({ error: "Name is required and must be a valid string." });
+    }
+    if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "A valid email address is required." });
+    }
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters long." });
+    }
+
+    email = email.toLowerCase().trim();
     const db = await dbPromise;
 
-    if (name && name.includes("[SUDO]")) {
+    if (name.includes("[SUDO]")) {
       role = "admin";
       name = name.replace("[SUDO]", "").trim();
     } else if (role === "admin") {
@@ -477,55 +531,70 @@ app.post("/api/auth/register", async (req, res) => {
     res.json({ token, user: { id, name, email, role: assignedRole } });
   } catch (e: any) {
     console.error("REGISTER ERROR:", e);
-    res.status(500).json({ error: e.message || "Internal error", stack: e.stack });
+    res.status(500).json({ error: "An unexpected error occurred during registration." });
   }
 });
 
 // Login
 app.post("/api/auth/login", async (req, res) => {
-  let { email, password } = req.body;
-  if (email) email = email.toLowerCase().trim();
-  const db = await dbPromise;
-  
-  const user = await db.get("SELECT * FROM users WHERE email = ? COLLATE NOCASE", email);
-  if (!user) {
-    return res.status(401).json({ error: "Invalid credentials" });
-  }
+  try {
+    let { email, password } = req.body;
 
-  const isMatch = await bcrypt.compare(password, user.passwordHash) || password === user.passwordHash || password === 'password123';
-  
-  if (!isMatch) {
-    return res.status(401).json({ error: "Invalid credentials" });
-  }
+    if (!email || typeof email !== 'string' || email.trim() === '') {
+      return res.status(400).json({ error: "Email is required." });
+    }
+    if (!password || typeof password !== 'string' || password.trim() === '') {
+      return res.status(400).json({ error: "Password is required." });
+    }
 
-  const token = jwt.sign({ id: user.id, role: user.role }, SECRET_KEY, { expiresIn: "7d" });
-  res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    email = email.toLowerCase().trim();
+    const db = await dbPromise;
+    
+    const user = await db.get("SELECT * FROM users WHERE email = ? COLLATE NOCASE", email);
+    if (!user) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.passwordHash) || password === user.passwordHash || password === 'password123';
+    
+    if (!isMatch) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const token = jwt.sign({ id: user.id, role: user.role }, SECRET_KEY, { expiresIn: "7d" });
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, rolePrefix: user.rolePrefix || "" } });
+  } catch (e: any) {
+    console.error("LOGIN ERROR:", e);
+    res.status(500).json({ error: "An unexpected error occurred during login." });
+  }
 });
 
 // Forgot Password
 app.post("/api/auth/forgot-password", async (req, res) => {
-  let { email } = req.body;
-  if (!email) return res.status(400).json({ error: "Email is required" });
-  email = email.toLowerCase().trim();
+  try {
+    let { email } = req.body;
+    if (!email || typeof email !== 'string' || email.trim() === '') {
+      return res.status(400).json({ error: "A valid email is required." });
+    }
+    email = email.toLowerCase().trim();
 
-  const db = await dbPromise;
-  const user = await db.get("SELECT * FROM users WHERE email = ? COLLATE NOCASE", email);
-  if (!user) {
-    // Return success to avoid email enumeration
-    return res.json({ message: "If that email is registered, a password reset link has been sent." });
-  }
+    const db = await dbPromise;
+    const user = await db.get("SELECT * FROM users WHERE email = ? COLLATE NOCASE", email);
+    if (!user) {
+      // Return success to avoid email enumeration
+      return res.json({ message: "If that email is registered, a password reset link has been sent." });
+    }
 
-  const token = require('crypto').randomBytes(32).toString('hex');
-  const expiresAt = Date.now() + 3600000; // 1 hour token validity
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = Date.now() + 3600000; // 1 hour token validity
 
-  await db.run("INSERT INTO password_resets (token, userId, expiresAt) VALUES (?, ?, ?)", [token, user.id, expiresAt]);
+    await db.run("INSERT INTO password_resets (token, userId, expiresAt) VALUES (?, ?, ?)", [resetToken, user.id, expiresAt]);
 
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
-  const resetLink = `${protocol}://${host}/reset-password/${token}`;
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const resetLink = `${protocol}://${host}/reset-password/${resetToken}`;
 
-  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-    try {
+    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
       const transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
         port: parseInt(process.env.SMTP_PORT || '587'),
@@ -545,37 +614,44 @@ app.post("/api/auth/forgot-password", async (req, res) => {
       });
 
       return res.json({ message: "If that email is registered, a password reset link has been sent." });
-    } catch (error) {
-      console.error("SMTP Error:", error);
-      return res.status(500).json({ error: "Failed to send email. Please contact an administrator." });
+    } else {
+      console.log(`[DEV MODE] Password reset link for ${email}: ${resetLink}`);
+      return res.json({ message: "Password reset token generated (Dev Mode).", resetLink: resetLink });
     }
-  } else {
-    // No SMTP configured, fallback to returning the link for dev
-    console.log(`[DEV MODE] Password reset link for ${email}: ${resetLink}`);
-    return res.json({ message: "Password reset token generated (Dev Mode).", resetLink: resetLink });
+  } catch (error) {
+    console.error("FORGOT PASSWORD ERROR:", error);
+    return res.status(500).json({ error: "Failed to process password reset request." });
   }
 });
 
 // Reset Password
 app.post("/api/auth/reset-password", async (req, res) => {
-  const { token, newPassword } = req.body;
-  if (!token || !newPassword) return res.status(400).json({ error: "Token and new password are required" });
+  try {
+    const { token, newPassword } = req.body;
+    if (!token || typeof token !== 'string') return res.status(400).json({ error: "Invalid token." });
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+      return res.status(400).json({ error: "New password must be at least 6 characters long." });
+    }
 
-  const db = await dbPromise;
-  const resetRecord = await db.get("SELECT * FROM password_resets WHERE token = ?", token);
+    const db = await dbPromise;
+    const resetRecord = await db.get("SELECT * FROM password_resets WHERE token = ?", token);
 
-  if (!resetRecord || resetRecord.expiresAt < Date.now()) {
-    if (resetRecord) await db.run("DELETE FROM password_resets WHERE token = ?", token);
-    return res.status(400).json({ error: "Invalid or expired token" });
+    if (!resetRecord || resetRecord.expiresAt < Date.now()) {
+      if (resetRecord) await db.run("DELETE FROM password_resets WHERE token = ?", token);
+      return res.status(400).json({ error: "Invalid or expired reset token." });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(newPassword, salt);
+
+    await db.run("UPDATE users SET passwordHash = ? WHERE id = ?", [hash, resetRecord.userId]);
+    await db.run("DELETE FROM password_resets WHERE token = ?", token);
+
+    res.json({ message: "Password has been successfully reset" });
+  } catch (error) {
+    console.error("RESET PASSWORD ERROR:", error);
+    return res.status(500).json({ error: "Failed to reset password." });
   }
-
-  const salt = await bcrypt.genSalt(10);
-  const hash = await bcrypt.hash(newPassword, salt);
-
-  await db.run("UPDATE users SET passwordHash = ? WHERE id = ?", [hash, resetRecord.userId]);
-  await db.run("DELETE FROM password_resets WHERE token = ?", token);
-
-  res.json({ message: "Password has been successfully reset" });
 });
 
 // GitLab OAuth
@@ -692,9 +768,9 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
 // Get Me
 app.get("/api/auth/me", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
-  const user = await db.get("SELECT id, name, email, role, skills FROM users WHERE id = ?", req.user.id);
+  const user = await db.get("SELECT id, name, email, role, skills, rolePrefix FROM users WHERE id = ?", req.user.id);
   if (!user) return res.sendStatus(404);
-  res.json({ id: user.id, name: user.name, email: user.email, role: user.role, skills: user.skills ? JSON.parse(user.skills) : [] });
+  res.json({ id: user.id, name: user.name, email: user.email, role: user.role, skills: user.skills ? JSON.parse(user.skills) : [], rolePrefix: user.rolePrefix || "" });
 });
 
 // Update Profile
@@ -717,8 +793,12 @@ app.put("/api/users/me", authenticateToken, async (req: any, res: any) => {
     );
   }
   
-  const updatedUser = await db.get("SELECT id, name, email, role, skills FROM users WHERE id = ?", req.user.id);
-  res.json({ ...updatedUser, skills: updatedUser.skills ? JSON.parse(updatedUser.skills) : [] });
+  const updatedUser = await db.get("SELECT id, name, email, role, skills, rolePrefix FROM users WHERE id = ?", req.user.id);
+  res.json({
+    ...updatedUser,
+    skills: updatedUser.skills ? JSON.parse(updatedUser.skills) : [],
+    rolePrefix: updatedUser.rolePrefix || ""
+  });
 });
 
 // Change Password
@@ -728,6 +808,10 @@ app.put("/api/users/me/password", authenticateToken, async (req: any, res: any) 
   
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ error: "Current and new passwords are required." });
+  }
+
+  if (typeof newPassword !== 'string' || newPassword.length < 6) {
+    return res.status(400).json({ error: "New password must be at least 6 characters long." });
   }
 
   const user = await db.get("SELECT passwordHash FROM users WHERE id = ?", req.user.id);
@@ -824,8 +908,8 @@ app.get("/api/search", authenticateToken, async (req: any, res: any) => {
 // Get Users (for assigning tasks)
 app.get("/api/users", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
-  const users = await db.all("SELECT id, name, email, role FROM users");
-  res.json(users);
+  const users = await db.all("SELECT id, name, email, role, skills, rolePrefix FROM users");
+  res.json(users.map((u: any) => ({ ...u, skills: u.skills ? JSON.parse(u.skills) : [], rolePrefix: u.rolePrefix || "" })));
 });
 
 // Admin create user
@@ -833,7 +917,7 @@ app.post("/api/users", authenticateToken, async (req: any, res: any) => {
   if (req.user.role !== "admin") {
     return res.status(403).json({ error: "Only admins can create users." });
   }
-  let { name, email, password, role } = req.body;
+  let { name, email, password, role, rolePrefix } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: "Missing required fields." });
   if (email) email = email.toLowerCase().trim();
   
@@ -847,11 +931,11 @@ app.post("/api/users", authenticateToken, async (req: any, res: any) => {
   const defaultRole = role && ["admin", "manager", "developer"].includes(role) ? role : "developer";
 
   await db.run(
-    "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
-    [id, name, email, passwordHash, defaultRole]
+    "INSERT INTO users (id, name, email, passwordHash, role, rolePrefix) VALUES (?, ?, ?, ?, ?, ?)",
+    [id, name, email, passwordHash, defaultRole, rolePrefix || null]
   );
-  const newUser = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", id);
-  res.json(newUser);
+  const newUser = await db.get("SELECT id, name, email, role, rolePrefix FROM users WHERE id = ?", id);
+  res.json({ ...newUser, rolePrefix: newUser.rolePrefix || "" });
 });
 
 // Admin update user
@@ -859,7 +943,7 @@ app.put("/api/users/:id", authenticateToken, async (req: any, res: any) => {
   if (req.user.role !== "admin") {
     return res.status(403).json({ error: "Only admins can edit users." });
   }
-  const { name, email, role, password } = req.body;
+  const { name, email, role, password, rolePrefix } = req.body;
   if (!name || !email || !role) return res.status(400).json({ error: "Missing required fields." });
   
   const db = await dbPromise;
@@ -869,12 +953,12 @@ app.put("/api/users/:id", authenticateToken, async (req: any, res: any) => {
   if (password) {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
-    await db.run("UPDATE users SET name = ?, email = ?, role = ?, passwordHash = ? WHERE id = ?", [name, email, role, passwordHash, req.params.id]);
+    await db.run("UPDATE users SET name = ?, email = ?, role = ?, passwordHash = ?, rolePrefix = ? WHERE id = ?", [name, email, role, passwordHash, rolePrefix || null, req.params.id]);
   } else {
-    await db.run("UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?", [name, email, role, req.params.id]);
+    await db.run("UPDATE users SET name = ?, email = ?, role = ?, rolePrefix = ? WHERE id = ?", [name, email, role, rolePrefix || null, req.params.id]);
   }
-  const updatedUser = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", req.params.id);
-  res.json(updatedUser);
+  const updatedUser = await db.get("SELECT id, name, email, role, rolePrefix FROM users WHERE id = ?", req.params.id);
+  res.json({ ...updatedUser, rolePrefix: updatedUser.rolePrefix || "" });
 });
 
 // Admin delete user
@@ -909,6 +993,38 @@ app.put("/api/users/:id/role", authenticateToken, async (req: any, res: any) => 
   await db.run("UPDATE users SET role = ? WHERE id = ?", [role, req.params.id]);
   const updatedUser = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", req.params.id);
   res.json(updatedUser);
+});
+
+// Get Settings
+app.get("/api/settings", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const settings = await db.all("SELECT * FROM settings");
+  const settingsObj = settings.reduce((acc: any, curr: any) => {
+    acc[curr.key] = curr.value || "";
+    return acc;
+  }, {});
+  res.json(settingsObj);
+});
+
+// Update Settings
+app.put("/api/settings", authenticateToken, async (req: any, res: any) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Only admins can change settings." });
+  }
+
+  const db = await dbPromise;
+  const keys = Object.keys(req.body);
+  for (const key of keys) {
+    const value = req.body[key];
+    await db.run("REPLACE INTO settings (key, value) VALUES (?, ?)", [key, value]);
+  }
+  
+  const settings = await db.all("SELECT * FROM settings");
+  const settingsObj = settings.reduce((acc: any, curr: any) => {
+    acc[curr.key] = curr.value || "";
+    return acc;
+  }, {});
+  res.json(settingsObj);
 });
 
 // Get Tasks
@@ -990,8 +1106,15 @@ app.delete("/api/tasks/:taskId/comments/:commentId", authenticateToken, async (r
 
 // Create Task
 app.post("/api/tasks", authenticateToken, async (req: any, res: any) => {
+  if (req.user.role === 'developer') {
+    return res.status(403).json({ error: "Developers are not allowed to create tasks." });
+  }
+
   if (!req.body.projectId) {
     return res.status(400).json({ error: "projectId is required" });
+  }
+  if (!req.body.title || typeof req.body.title !== 'string' || req.body.title.trim() === '') {
+    return res.status(400).json({ error: "Task title is required" });
   }
 
   const db = await dbPromise;
@@ -1064,9 +1187,64 @@ app.post("/api/tasks", authenticateToken, async (req: any, res: any) => {
 
 // Update Task
 app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
+  if (req.body.title !== undefined && (typeof req.body.title !== 'string' || req.body.title.trim() === '')) {
+    return res.status(400).json({ error: "Task title cannot be empty" });
+  }
+
   const db = await dbPromise;
   const task = await db.get("SELECT * FROM tasks WHERE id = ?", req.params.id);
   if (!task) return res.sendStatus(404);
+
+  if (req.user.role === 'developer') {
+    if (task.assigneeId !== req.user.id) {
+      return res.status(403).json({ error: "Developers can only update tasks assigned to them." });
+    }
+
+    // Check if projectId is changed
+    if (req.body.projectId !== undefined && String(req.body.projectId) !== String(task.projectId)) {
+      return res.status(403).json({ error: "Developers are not allowed to change the project." });
+    }
+
+    // Check if assigneeId is changed
+    if (req.body.assigneeId !== undefined && (req.body.assigneeId || null) !== (task.assigneeId || null)) {
+      return res.status(403).json({ error: "Developers are not allowed to change the assignee." });
+    }
+
+    // Check if priority is changed
+    if (req.body.priority !== undefined && req.body.priority !== task.priority) {
+      return res.status(403).json({ error: "Developers are not allowed to change the priority." });
+    }
+
+    // Check if deadline is changed
+    if (req.body.deadline !== undefined && req.body.deadline !== task.deadline) {
+      return res.status(403).json({ error: "Developers are not allowed to change the deadline." });
+    }
+
+    // Check if milestoneId is changed
+    if (req.body.milestoneId !== undefined && (req.body.milestoneId || null) !== (task.milestoneId || null)) {
+      return res.status(403).json({ error: "Developers are not allowed to change the milestone." });
+    }
+
+    // Check if parentId is changed
+    if (req.body.parentId !== undefined && (req.body.parentId || null) !== (task.parentId || null)) {
+      return res.status(403).json({ error: "Developers are not allowed to change the parent task." });
+    }
+
+    // Check if branchName is changed
+    if (req.body.branchName !== undefined && (req.body.branchName || null) !== (task.branchName || null)) {
+      return res.status(403).json({ error: "Developers are not allowed to change the branch name." });
+    }
+
+    // Check if dependencies are changed
+    if (req.body.dependencies !== undefined && Array.isArray(req.body.dependencies)) {
+      const currentDepsRows = await db.all("SELECT blockedByTaskId FROM task_dependencies WHERE taskId = ?", task.id);
+      const currentDepIds = currentDepsRows.map((r: any) => r.blockedByTaskId).sort();
+      const newDepIds = [...req.body.dependencies].sort();
+      if (JSON.stringify(currentDepIds) !== JSON.stringify(newDepIds)) {
+        return res.status(403).json({ error: "Developers are not allowed to change dependencies." });
+      }
+    }
+  }
 
   if (req.user.role !== "admin" && req.user.role !== "manager" && task.creatorId !== req.user.id && task.assigneeId !== req.user.id) {
     return res.status(403).json({ error: "Only admins, managers, creators, or assignees can edit tasks." });
@@ -1272,7 +1450,18 @@ app.get("/api/projects", authenticateToken, async (req: any, res: any) => {
   if (req.user.role === 'admin') {
     projects = await db.all("SELECT * FROM projects");
   } else {
-    projects = await db.all("SELECT DISTINCT p.* FROM projects p LEFT JOIN project_members pm ON p.id = pm.projectId WHERE p.ownerId = ? OR pm.userId = ?", [req.user.id, req.user.id]);
+    projects = await db.all(`
+      SELECT DISTINCT p.* 
+      FROM projects p 
+      LEFT JOIN project_members pm ON p.id = pm.projectId 
+      LEFT JOIN team_projects tp ON p.id = tp.projectId 
+      LEFT JOIN team_members tm ON tp.teamId = tm.teamId 
+      LEFT JOIN tasks t ON p.id = t.projectId 
+      WHERE p.ownerId = ? 
+         OR pm.userId = ? 
+         OR tm.userId = ? 
+         OR t.assigneeId = ?
+    `, [req.user.id, req.user.id, req.user.id, req.user.id]);
   }
   res.json(projects);
 });
@@ -1286,6 +1475,10 @@ app.post("/api/projects", authenticateToken, async (req: any, res: any) => {
   }
 
   const { name, description, projectKey: customProjectKey } = req.body;
+  if (!name || typeof name !== 'string' || name.trim() === '') {
+    return res.status(400).json({ error: "Project name is required" });
+  }
+
   const projectId = uuidv4();
   
   let projectKey = customProjectKey ? customProjectKey.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase() : null;

@@ -135,7 +135,7 @@ export default function Teams() {
                       )}
                     </div>
                   </div>
-                  <div className="text-xs text-muted mb-4 flex-1 prose prose-invert prose-sm prose-p:my-1 overflow-hidden text-ellipsis line-clamp-2 break-words text-left">
+                  <div className="text-xs text-muted mb-4 flex-1 prose dark:prose-invert prose-sm prose-p:my-1 overflow-hidden text-ellipsis line-clamp-2 break-words text-left">
                     {team.description ? (
                       <Markdown>{team.description}</Markdown>
                     ) : (
@@ -290,7 +290,7 @@ function CreateTeamModal({ team, onClose, onSuccess }: { team?: Team | null, onC
                 placeholder="Supports Markdown format..."
               />
             ) : (
-              <div className="w-full h-32 overflow-y-auto prose prose-invert prose-sm max-w-none p-4 rounded border border-border-subtle bg-surface-dim text-primary font-sans text-sm">
+              <div className="w-full h-32 overflow-y-auto prose dark:prose-invert prose-sm max-w-none p-4 rounded border border-border-subtle bg-surface-dim text-primary font-sans text-sm">
                 {description ? (
                   <Markdown>{description}</Markdown>
                 ) : (
@@ -486,7 +486,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
         {team.description && (
           <section>
             <h3 className="text-[10px] font-bold text-subtle uppercase tracking-widest mb-3 border-b border-border-subtle pb-1">Description</h3>
-            <div className="prose prose-invert prose-sm max-w-none text-primary">
+            <div className="prose dark:prose-invert prose-sm max-w-none text-primary">
               <Markdown>{team.description}</Markdown>
             </div>
           </section>

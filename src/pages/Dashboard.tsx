@@ -429,47 +429,51 @@ export default function Dashboard() {
   };
 
   const renderStats = () => (
-    <div className="tour-dashboard-stats grid grid-cols-2 lg:grid-cols-4 gap-4 w-full h-full">
-      <div className="bg-surface border border-border-subtle p-4 rounded-lg relative group h-full flex flex-col justify-center">
-        <div className="text-[10px] text-subtle font-bold uppercase mb-1 tracking-wider flex items-center justify-between">
-          <div className="flex items-center gap-2"><FileText size={14} /> Total Tasks</div>
+    <div className="tour-dashboard-stats grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full h-full">
+      <div className="bg-surface border border-border-subtle p-5 sm:p-6 rounded-xl relative group h-full flex flex-col justify-between min-h-[110px] shadow-sm hover:shadow transition-shadow">
+        <div className="text-[10px] text-subtle font-bold uppercase mb-2 tracking-wider flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-blue-500 font-semibold"><FileText size={14} /> Total Tasks</div>
           <HelpIcon text="Total cumulative number of tasks in the current project or view." />
         </div>
-        <div className="text-2xl font-mono text-strong">{totalTasks}</div>
+        <div className="text-3xl font-mono text-strong font-semibold mt-1">{totalTasks}</div>
       </div>
       
-      <div className="bg-surface border border-border-subtle p-4 rounded-lg relative group h-full flex flex-col justify-center">
-        <div className="text-[10px] text-subtle font-bold uppercase mb-1 tracking-wider flex items-center justify-between">
-          <div className="flex items-center gap-2"><CheckCircle2 size={14} /> Completed</div>
+      <div className="bg-surface border border-border-subtle p-5 sm:p-6 rounded-xl relative group h-full flex flex-col justify-between min-h-[110px] shadow-sm hover:shadow transition-shadow">
+        <div className="text-[10px] text-subtle font-bold uppercase mb-2 tracking-wider flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-emerald-500 font-semibold"><CheckCircle2 size={14} /> Completed</div>
           <HelpIcon text="Tasks that have been fully resolved or moved to a 'Done' column." />
         </div>
-        <div className="text-2xl font-mono text-strong">{completedTasks}</div>
-        {totalTasks > 0 && (
-          <div className="w-full h-1 bg-surface-accent mt-3 rounded-full overflow-hidden shrink-0">
-            <div className="h-full bg-blue-500" style={{ width: `${(completedTasks/totalTasks)*100}%` }}></div>
-          </div>
-        )}
+        <div className="flex flex-col mt-1">
+          <div className="text-3xl font-mono text-strong font-semibold">{completedTasks}</div>
+          {totalTasks > 0 && (
+            <div className="w-full h-1.5 bg-surface-accent mt-3 rounded-full overflow-hidden shrink-0">
+              <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${(completedTasks/totalTasks)*100}%` }}></div>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="bg-surface border border-border-subtle p-4 rounded-lg relative group h-full flex flex-col justify-center">
-        <div className="text-[10px] text-subtle font-bold uppercase mb-1 tracking-wider flex items-center justify-between">
-          <div className="flex items-center gap-2"><Clock size={14} /> In Progress</div>
+      <div className="bg-surface border border-border-subtle p-5 sm:p-6 rounded-xl relative group h-full flex flex-col justify-between min-h-[110px] shadow-sm hover:shadow transition-shadow">
+        <div className="text-[10px] text-subtle font-bold uppercase mb-2 tracking-wider flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-amber-500 font-semibold"><Clock size={14} /> In Progress</div>
           <HelpIcon text="Tasks currently being actively worked on." />
         </div>
-        <div className="text-2xl font-mono text-strong">{inProgress}</div>
+        <div className="text-3xl font-mono text-strong font-semibold mt-1">{inProgress}</div>
       </div>
 
-      <div className="bg-surface border border-border-subtle p-4 rounded-lg relative group h-full flex flex-col justify-center">
-        <div className="text-[10px] text-subtle font-bold uppercase mb-1 tracking-wider flex items-center justify-between">
-          <div className="flex items-center gap-2"><AlertCircle size={14} /> Urgent</div>
+      <div className="bg-surface border border-border-subtle p-5 sm:p-6 rounded-xl relative group h-full flex flex-col justify-between min-h-[110px] shadow-sm hover:shadow transition-shadow">
+        <div className="text-[10px] text-subtle font-bold uppercase mb-2 tracking-wider flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-red-500 font-semibold"><AlertCircle size={14} /> Urgent</div>
           <HelpIcon text="High priority tasks requiring immediate attention." />
         </div>
-        <div className="text-2xl font-mono text-strong">{urgentTasks}</div>
-        {urgentTasks > 0 && (
-          <div className="flex mt-2 space-x-1 shrink-0">
-            <span className="text-[10px] text-red-400 font-bold">{urgentTasks} CRITICAL</span>
-          </div>
-        )}
+        <div className="flex flex-col mt-1">
+          <div className="text-3xl font-mono text-strong font-semibold">{urgentTasks}</div>
+          {urgentTasks > 0 && (
+            <div className="flex mt-2 shrink-0">
+              <span className="text-[9px] bg-red-500/15 border border-red-500/20 text-red-500 px-2 py-0.5 rounded-full font-bold tracking-wider uppercase">CRITICAL</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -851,6 +855,9 @@ export default function Dashboard() {
 
           <Link to="/board" className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] uppercase font-bold tracking-widest rounded shadow-md transition-colors ml-2">
             Task Board
+          </Link>
+          <Link to={selectedProjectId !== 'all' ? `/graph?projectId=${selectedProjectId}` : "/graph"} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] uppercase font-bold tracking-widest rounded shadow-md transition-colors ml-2">
+            Task Graph
           </Link>
         </div>
       </header>

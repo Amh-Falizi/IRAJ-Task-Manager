@@ -84,6 +84,11 @@ export default function UsersAdmin() {
       </header>
 
       <div className="flex-1 overflow-y-auto p-6">
+        <div className="bg-surface border border-border-subtle rounded-lg p-4 mb-6 flex flex-col gap-1">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-strong">Role Label Customization</h3>
+          <p className="text-xs text-muted">You can customize the prefix show before 'Manager' or 'Developer' on an individual, per-user basis. Click the Edit button next to any user to personalize their exact title prefix.</p>
+        </div>
+
         <div className="bg-surface border border-border-subtle rounded-lg overflow-hidden">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -108,16 +113,19 @@ export default function UsersAdmin() {
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                       user.role === 'admin' ? 'bg-purple-500/10 text-purple-400' :
                       user.role === 'manager' ? 'bg-blue-500/10 text-blue-400' :
+                      user.role === 'developer' ? 'bg-teal-500/10 text-teal-400' :
                       'bg-surface-accent text-subtle'
                     }`}>
-                      {user.role}
+                      {user.role === 'manager' ? `${user.rolePrefix || 'Engineering'} Manager` : 
+                       user.role === 'developer' ? `${user.rolePrefix || 'Lead'} Developer` : 
+                       user.role}
                     </span>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                        <button
                          onClick={() => { setEditingUser(user); setIsModalOpen(true); }}
-                         className="p-1.5 text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
+                         className="p-1.5 text-blue-500 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-md transition-all flex items-center justify-center"
                          title="Edit User"
                        >
                          <Edit2 size={16} />
@@ -125,7 +133,7 @@ export default function UsersAdmin() {
                        {user.id !== currentUser?.id && (
                          <button
                            onClick={() => handleDeleteUser(user)}
-                           className="p-1.5 text-red-500 hover:bg-red-500/10 rounded transition-colors"
+                           className="p-1.5 text-red-500 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-md transition-all flex items-center justify-center"
                            title="Delete User"
                          >
                            <Trash2 size={16} />
