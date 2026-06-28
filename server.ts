@@ -765,6 +765,226 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
   }
 });
 
+// Google OAuth Integration
+app.get("/api/auth/google/url", (req, res) => {
+  const redirectUri = req.query.origin 
+    ? `${req.query.origin}/api/auth/google/callback` 
+    : `${getAppUrl(req)}/api/auth/google/callback`;
+
+  const params = new URLSearchParams({
+    client_id: process.env.GOOGLE_CLIENT_ID || '',
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'openid email profile',
+    state: redirectUri
+  });
+
+  res.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
+});
+
+app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req: any, res: any) => {
+  const { code, state } = req.query;
+  const redirectUri = state || `${getAppUrl(req)}/api/auth/google/callback`;
+
+  const clientId = process.env.GOOGLE_CLIENT_ID || '';
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+
+  try {
+    if (!code) throw new Error('No authorization code provided');
+    if (!clientId) throw new Error('GOOGLE_CLIENT_ID not configured');
+
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: redirectUri
+      })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok) throw new Error(tokenData.error_description || tokenData.error || 'Failed to get token');
+
+    const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+    });
+    const userData = await userRes.json();
+    if (!userRes.ok) throw new Error('Failed to get user data');
+    if (!userData.email) throw new Error('Google account has no email address.');
+
+    const db = await dbPromise;
+    let user = await db.get("SELECT * FROM users WHERE email = ? COLLATE NOCASE", userData.email);
+
+    if (!user) {
+      const id = uuidv4();
+      const role = "developer";
+      const randomPassword = require('crypto').randomBytes(16).toString('hex');
+      const salt = await bcrypt.genSalt(10);
+      const hash = await bcrypt.hash(randomPassword, salt);
+      await db.run(
+        "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
+        [id, userData.name || userData.given_name || 'Google User', userData.email, hash, role]
+      );
+      user = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", id);
+    }
+
+    const token = jwt.sign({ id: user.id, role: user.role }, SECRET_KEY, { expiresIn: "7d" });
+
+    res.send(`
+      <html>
+        <body>
+          <script>
+            if (window.opener) {
+              window.opener.postMessage({ 
+                type: 'OAUTH_AUTH_SUCCESS', 
+                token: '${token}', 
+                user: ${JSON.stringify({id: user.id, name: user.name, email: user.email, role: user.role})} 
+              }, '*');
+              window.close();
+            } else {
+              window.location.href = '/';
+            }
+          </script>
+          <p>Authentication successful. Closing...</p>
+        </body>
+      </html>
+    `);
+
+  } catch (e: any) {
+    console.error("Google OAuth error:", e);
+    res.send(`
+      <html><body>
+        <p>Google OAuth Error: ${e.message}</p>
+        <p>Note: Ensure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are configured in the environment variables.</p>
+        <script>setTimeout(() => window.close(), 5000);</script>
+      </body></html>
+    `);
+  }
+});
+
+// GitHub OAuth Integration
+app.get("/api/auth/github/url", (req, res) => {
+  const redirectUri = req.query.origin 
+    ? `${req.query.origin}/api/auth/github/callback` 
+    : `${getAppUrl(req)}/api/auth/github/callback`;
+
+  const params = new URLSearchParams({
+    client_id: process.env.GITHUB_CLIENT_ID || '',
+    redirect_uri: redirectUri,
+    scope: 'user:email',
+    state: redirectUri
+  });
+
+  res.json({ url: `https://github.com/login/oauth/authorize?${params.toString()}` });
+});
+
+app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req: any, res: any) => {
+  const { code, state } = req.query;
+  const redirectUri = state || `${getAppUrl(req)}/api/auth/github/callback`;
+
+  const clientId = process.env.GITHUB_CLIENT_ID || '';
+  const clientSecret = process.env.GITHUB_CLIENT_SECRET || '';
+
+  try {
+    if (!code) throw new Error('No authorization code provided');
+    if (!clientId) throw new Error('GITHUB_CLIENT_ID not configured');
+
+    const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        redirect_uri: redirectUri
+      })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok || tokenData.error) throw new Error(tokenData.error_description || tokenData.error || 'Failed to get token');
+
+    const userRes = await fetch("https://api.github.com/user", {
+      headers: { 
+        Authorization: `Bearer ${tokenData.access_token}`,
+        "User-Agent": "devteam-taskmanager"
+      }
+    });
+    const userData = await userRes.json();
+    if (!userRes.ok) throw new Error('Failed to get user data from GitHub');
+
+    let email = userData.email;
+    if (!email) {
+      const emailsRes = await fetch("https://api.github.com/user/emails", {
+        headers: { 
+          Authorization: `Bearer ${tokenData.access_token}`,
+          "User-Agent": "devteam-taskmanager"
+        }
+      });
+      if (emailsRes.ok) {
+        const emails = await emailsRes.json();
+        const primaryEmailObj = emails.find((e: any) => e.primary) || emails[0];
+        if (primaryEmailObj) {
+          email = primaryEmailObj.email;
+        }
+      }
+    }
+
+    if (!email) throw new Error('GitHub account has no primary email address. Please make sure your email is public or verified on GitHub.');
+
+    const db = await dbPromise;
+    let user = await db.get("SELECT * FROM users WHERE email = ? COLLATE NOCASE", email);
+
+    if (!user) {
+      const id = uuidv4();
+      const role = "developer";
+      const randomPassword = require('crypto').randomBytes(16).toString('hex');
+      const salt = await bcrypt.genSalt(10);
+      const hash = await bcrypt.hash(randomPassword, salt);
+      await db.run(
+        "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
+        [id, userData.name || userData.login || 'GitHub User', email, hash, role]
+      );
+      user = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", id);
+    }
+
+    const token = jwt.sign({ id: user.id, role: user.role }, SECRET_KEY, { expiresIn: "7d" });
+
+    res.send(`
+      <html>
+        <body>
+          <script>
+            if (window.opener) {
+              window.opener.postMessage({ 
+                type: 'OAUTH_AUTH_SUCCESS', 
+                token: '${token}', 
+                user: ${JSON.stringify({id: user.id, name: user.name, email: user.email, role: user.role})} 
+              }, '*');
+              window.close();
+            } else {
+              window.location.href = '/';
+            }
+          </script>
+          <p>Authentication successful. Closing...</p>
+        </body>
+      </html>
+    `);
+
+  } catch (e: any) {
+    console.error("GitHub OAuth error:", e);
+    res.send(`
+      <html><body>
+        <p>GitHub OAuth Error: ${e.message}</p>
+        <p>Note: Ensure GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET are configured in the environment variables.</p>
+        <script>setTimeout(() => window.close(), 5000);</script>
+      </body></html>
+    `);
+  }
+});
+
 // Get Me
 app.get("/api/auth/me", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;

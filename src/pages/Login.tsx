@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
-import { LayoutDashboard, Eye, EyeOff, Gitlab } from 'lucide-react';
+import { LayoutDashboard, Eye, EyeOff, Gitlab, Github, Chrome } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -29,7 +29,6 @@ export default function Login() {
 
   const handleGitLabLogin = async () => {
     try {
-      const redirectUri = `${window.location.origin}/api/auth/gitlab/callback`;
       const res = await fetch(`/api/auth/gitlab/url?origin=${encodeURIComponent(window.location.origin)}`);
       if (!res.ok) throw new Error('Failed to get GitLab auth URL');
       const data = await res.json();
@@ -37,6 +36,36 @@ export default function Login() {
       const authWindow = window.open(data.url, 'gitlab_oauth', 'width=600,height=700');
       if (!authWindow) {
         alert('Please allow popups to sign in with GitLab.');
+      }
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      const res = await fetch(`/api/auth/google/url?origin=${encodeURIComponent(window.location.origin)}`);
+      if (!res.ok) throw new Error('Failed to get Google auth URL');
+      const data = await res.json();
+      
+      const authWindow = window.open(data.url, 'google_oauth', 'width=600,height=700');
+      if (!authWindow) {
+        alert('Please allow popups to sign in with Google.');
+      }
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleGitHubLogin = async () => {
+    try {
+      const res = await fetch(`/api/auth/github/url?origin=${encodeURIComponent(window.location.origin)}`);
+      if (!res.ok) throw new Error('Failed to get GitHub auth URL');
+      const data = await res.json();
+      
+      const authWindow = window.open(data.url, 'github_oauth', 'width=600,height=700');
+      if (!authWindow) {
+        alert('Please allow popups to sign in with GitHub.');
       }
     } catch (err: any) {
       setError(err.message);
@@ -114,19 +143,45 @@ export default function Login() {
 
           <button
             type="submit"
-            className="w-full rounded bg-blue-600 px-4 py-2 text-[10px] font-bold tracking-wider text-strong hover:bg-blue-500 focus:outline-none transition-colors"
+            className="w-full rounded bg-blue-600 px-4 py-2 text-[10px] font-bold tracking-wider text-strong hover:bg-blue-500 focus:outline-none shadow-sm hover:shadow-[0_4px_14px_rgba(37,99,235,0.4)] hover:-translate-y-0.5 transition-all duration-300"
           >
             INITIALIZE SESSION
           </button>
 
-          <button
-            type="button"
-            onClick={handleGitLabLogin}
-            className="w-full rounded bg-[#fc6d26] px-4 py-2 text-[10px] font-bold tracking-wider text-white hover:bg-[#e24329] focus:outline-none transition-colors flex items-center justify-center space-x-2 mt-2"
-          >
-            <Gitlab size={14} />
-            <span>CONTINUE WITH GITLAB</span>
-          </button>
+          <div className="relative flex py-1 items-center">
+            <div className="flex-grow border-t border-border-subtle/40"></div>
+            <span className="flex-shrink mx-4 text-[8px] text-subtle font-bold tracking-wider uppercase">Or connect via</span>
+            <div className="flex-grow border-t border-border-subtle/40"></div>
+          </div>
+
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={handleGoogleLogin}
+              className="w-full rounded bg-white hover:bg-[#f8fafc] border border-[#dadce0] hover:border-[#c6c8cc] text-[#3c4043] px-4 py-2 text-[10px] font-bold tracking-wider focus:outline-none shadow-sm hover:shadow-[0_4px_14px_rgba(66,133,244,0.35)] hover:-translate-y-0.5 transition-all duration-300 flex items-center justify-center space-x-2"
+            >
+              <Chrome size={14} className="text-[#4285F4]" />
+              <span>CONTINUE WITH GOOGLE</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleGitHubLogin}
+              className="w-full rounded bg-[#6f42c1] hover:bg-[#5f34ac] border border-[#562d99] text-white px-4 py-2 text-[10px] font-bold tracking-wider focus:outline-none shadow-sm hover:shadow-[0_4px_14px_rgba(111,66,193,0.35)] hover:-translate-y-0.5 transition-all duration-300 flex items-center justify-center space-x-2"
+            >
+              <Github size={14} className="text-white" />
+              <span>CONTINUE WITH GITHUB</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleGitLabLogin}
+              className="w-full rounded bg-[#fc6d26] px-4 py-2 text-[10px] font-bold tracking-wider text-white hover:bg-[#e24329] focus:outline-none shadow-sm hover:shadow-[0_4px_14px_rgba(252,109,38,0.35)] hover:-translate-y-0.5 transition-all duration-300 flex items-center justify-center space-x-2"
+            >
+              <Gitlab size={14} />
+              <span>CONTINUE WITH GITLAB</span>
+            </button>
+          </div>
         </form>
 
         <div className="flex flex-col space-y-2 pt-4 border-t border-border-subtle">
