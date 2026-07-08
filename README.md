@@ -10,6 +10,7 @@ A comprehensive full-stack task management and progress tracking application des
 - **Product Documentation**: Write, edit, and safely store project PRDs, meeting notes, and architecture decisions with rich Markdown support.
 - **Git Branch Generation**: Automatically generate git branch names based on task contexts and project keys, allowing smooth development sync.
 - **Calendar & Workload**: View important deadlines and monitor team workload distributed out by month or week.
+- **Multi-Provider Authentication**: Secure local authentication paired with dynamic OAuth integrations for Google, GitHub, and GitLab with beautiful, custom-branded buttons and smooth transition states.
 - **Team Access Control**: Establish secure team domains, custom roles (Admin, Manager, Member), and strict project visibility permissions.
 
 ## Tech Stack
@@ -44,6 +45,18 @@ To get up and running, ensure you have the following installed:
 
    # DATABASE_URL: Connect to a PostgreSQL instance (falls back to SQLite if omitted)
    DATABASE_URL="postgres://user:password@localhost:5432/dbname"
+
+   # Google OAuth Integration
+   GOOGLE_CLIENT_ID="YOUR_GOOGLE_CLIENT_ID"
+   GOOGLE_CLIENT_SECRET="YOUR_GOOGLE_CLIENT_SECRET"
+
+   # GitHub OAuth Integration
+   GITHUB_CLIENT_ID="YOUR_GITHUB_CLIENT_ID"
+   GITHUB_CLIENT_SECRET="YOUR_GITHUB_CLIENT_SECRET"
+
+   # GitLab OAuth Integration
+   GITLAB_CLIENT_ID="YOUR_GITLAB_CLIENT_ID"
+   GITLAB_CLIENT_SECRET="YOUR_GITLAB_CLIENT_SECRET"
 
    # Local Docker Postgres Configuration (Optional: for docker-compose)
    POSTGRES_USER="user"
