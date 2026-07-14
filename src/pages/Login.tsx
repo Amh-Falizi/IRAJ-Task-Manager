@@ -184,33 +184,6 @@ export default function Login() {
           </div>
         </form>
 
-        <div className="flex flex-col space-y-2 pt-4 border-t border-border-subtle">
-          <p className="text-[9px] text-subtle uppercase tracking-widest text-center">Quick Login (Testing)</p>
-          <div className="grid grid-cols-3 gap-2">
-            <button 
-              type="button"
-              onClick={() => { setEmail('admin@example.com'); setPassword('password123'); }}
-              className="rounded bg-surface-dim border border-border-subtle py-1.5 text-[10px] text-muted hover:text-strong hover:bg-surface-accent transition-colors"
-            >
-              Admin
-            </button>
-            <button 
-              type="button"
-              onClick={() => { setEmail('dev1@example.com'); setPassword('password123'); }}
-              className="rounded bg-surface-dim border border-border-subtle py-1.5 text-[10px] text-muted hover:text-strong hover:bg-surface-accent transition-colors"
-            >
-              Developer
-            </button>
-            <button 
-              type="button"
-              onClick={() => { setEmail('manager1@example.com'); setPassword('password123'); }}
-              className="rounded bg-surface-dim border border-border-subtle py-1.5 text-[10px] text-muted hover:text-strong hover:bg-surface-accent transition-colors"
-            >
-              Manager
-            </button>
-          </div>
-        </div>
-
         <p className="text-center text-[10px] text-subtle uppercase tracking-widest pt-4 border-t border-border-subtle">
           No account?{' '}
           <Link to="/register" className="font-bold text-blue-400 hover:text-blue-300">
