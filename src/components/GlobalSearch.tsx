@@ -122,7 +122,7 @@ export default function GlobalSearch() {
   return (
     <div
       ref={containerRef}
-      className="relative w-full max-w-md ml-4 z-50 flex items-center"
+      className="relative w-full max-w-md mx-auto z-50 flex items-center"
     >
       <div className="relative flex items-center w-full h-10 rounded-full bg-surface-dim border border-border-subtle hover:border-border-strong focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all overflow-hidden pl-3">
         <Search className="w-4 h-4 text-muted shrink-0" />
