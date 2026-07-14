@@ -81,6 +81,37 @@ To get up and running, ensure you have the following installed:
    npm start
    ```
 
+## Database Backup & Restore
+
+The application comes with high-fidelity database backup and restore utilities. These are available both as a clean, interactive GUI inside the app and as a flexible Command Line Interface (CLI) tool.
+
+### 1. In-App User Interface
+Navigate to your **Profile** page and switch to the **Backup & Restore** tab:
+- **Database Status**: Instantly monitor the active database engine (SQLite or PostgreSQL), file size, and complete table statistics (counts of Users, Tasks, Projects, Teams, and Documents).
+- **Export Backups**:
+  - **SQLite binary (`.sqlite`)**: High-fidelity full database file download.
+  - **Portable JSON schema (`.json`)**: Export database tables in clear, readable JSON. This portable format can be used to transfer data between SQLite and PostgreSQL backends!
+- **Restore Backups**: Upload a previously exported SQLite binary or portable JSON backup file to instantly restore your workspace data. *Warning: This replaces all active records.*
+
+### 2. Command Line Interface (CLI) Utility
+You can manage backups directly via terminal scripts. Run the utility with:
+```bash
+npm run db-cli <command> [arguments]
+```
+Or run directly with `npx tsx`:
+```bash
+npx tsx scripts/db-cli.ts <command> [arguments]
+```
+
+#### Available Commands:
+* **`stats` / `status`**: Shows the active database file, path, exact size, and lists row counts for every schema table.
+* **`backup [target-file]`**: Backs up the SQLite database file. If no target path is supplied, it generates a timestamped snapshot under the `./backups/` directory (e.g., `./backups/backup-2026-07-14-140025.sqlite`).
+* **`restore <source-file>`**: Safely restores the active database using a binary `.sqlite` file. It automatically creates an emergency `.rollback` backup of your current database first.
+* **`export-json [target-file]`**: Exports all workspace tables and records into a portable, formatted JSON backup file under `./backups/`.
+* **`import-json <source-file>`**: Purges all existing tables and populates them with rows from the specified portable JSON backup file (runs inside a database transaction). It creates an emergency `.rollback-json` backup of your current database before starting.
+
+---
+
 ## License
 
 This software is provided under the MIT License.

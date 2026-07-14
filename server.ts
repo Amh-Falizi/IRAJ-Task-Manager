@@ -74,6 +74,7 @@ interface DatabaseWrapper {
   run(sql: string, params?: any | any[]): Promise<void>;
   get(sql: string, params?: any | any[]): Promise<any>;
   all(sql: string, params?: any | any[]): Promise<any[]>;
+  close?(): Promise<void>;
 }
 
 class PgWrapper implements DatabaseWrapper {
@@ -112,10 +113,13 @@ class PgWrapper implements DatabaseWrapper {
     const result = await this.pool.query(converted, this.mapParams(params));
     return result.rows;
   }
+  async close() {
+    await this.pool.end();
+  }
 }
 
 class SqliteWrapper implements DatabaseWrapper {
-  private db: any;
+  public db: any;
   constructor(db: any) {
     this.db = db;
   }
@@ -134,9 +138,15 @@ class SqliteWrapper implements DatabaseWrapper {
     if (!Array.isArray(params)) params = [params];
     return await this.db.all(sql, ...params);
   }
+  async close() {
+    if (this.db) {
+      await this.db.close();
+    }
+  }
 }
 
 let dbPromise: Promise<DatabaseWrapper>;
+let activeSqlitePath: string = path.join(process.cwd(), "database.sqlite");
 
 async function initDb(): Promise<DatabaseWrapper> {
   let db: DatabaseWrapper;
@@ -159,6 +169,7 @@ async function initDb(): Promise<DatabaseWrapper> {
 
   if (!usePg) {
     let DB_FILE = path.join(process.cwd(), "database.sqlite");
+    activeSqlitePath = DB_FILE;
     
     let sqliteDb = await open({
       filename: DB_FILE,
@@ -179,6 +190,7 @@ async function initDb(): Promise<DatabaseWrapper> {
         }
         try { fs.chmodSync(TMP_DB_FILE, 0o666); } catch (e) {}
         DB_FILE = TMP_DB_FILE;
+        activeSqlitePath = TMP_DB_FILE;
         sqliteDb = await open({
           filename: DB_FILE,
           driver: sqlite3.Database
@@ -411,30 +423,7 @@ async function initDb(): Promise<DatabaseWrapper> {
     }
   }
 
-  // Auto-seed default accounts for development testing/presentation
-  try {
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash("password123", salt);
-
-    const seedUsers = [
-      { id: "seed-user-admin", name: "Admin User", email: "admin@example.com", role: "admin" },
-      { id: "seed-user-developer", name: "Developer User", email: "dev1@example.com", role: "developer" },
-      { id: "seed-user-manager", name: "Manager User", email: "manager1@example.com", role: "manager" }
-    ];
-
-    for (const u of seedUsers) {
-      const existing = await db.get("SELECT id FROM users WHERE email = ? COLLATE NOCASE", u.email);
-      if (!existing) {
-        await db.run(
-          "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
-          [u.id, u.name, u.email, passwordHash, u.role]
-        );
-        console.log(`Auto-seeded default user account: ${u.email} (${u.role})`);
-      }
-    }
-  } catch (seedErr) {
-    console.warn("Could not seed default accounts:", seedErr);
-  }
+  // Auto-seed block removed per user request to clean up pre-made testing users
 } catch (error) {
   console.warn("DB Connection/Init Error. The app will run, but DB features will fail until DATABASE_URL is correct:", error);
 }
@@ -2138,6 +2127,211 @@ app.delete("/api/milestones/:id", authenticateToken, async (req: any, res: any) 
   const db = await dbPromise;
   await db.run("DELETE FROM milestones WHERE id = ?", req.params.id);
   res.json({ success: true });
+});
+
+// --- DATABASE BACKUP AND RESTORE APIS ---
+
+// Helper function to swap SQLite database
+async function swapSqliteDatabase(newBuffer: Buffer) {
+  try {
+    const dbWrapper = await dbPromise;
+    if (dbWrapper && typeof dbWrapper.close === 'function') {
+      await dbWrapper.close();
+    }
+  } catch (e) {
+    console.warn("Failed to close active DB during swap:", e);
+  }
+
+  // Backup current file
+  const backupPath = activeSqlitePath + ".bak";
+  if (fs.existsSync(activeSqlitePath)) {
+    try {
+      fs.copyFileSync(activeSqlitePath, backupPath);
+    } catch (e) {
+      console.error("Failed to make a .bak backup:", e);
+    }
+  }
+
+  // Write new database file
+  fs.writeFileSync(activeSqlitePath, newBuffer);
+
+  // Re-initialize connection
+  dbPromise = (async () => {
+    const { open } = await import("sqlite");
+    const sqlite3 = (await import("sqlite3")).default;
+
+    let sqliteDb = await open({
+      filename: activeSqlitePath,
+      driver: sqlite3.Database
+    });
+
+    const db = new SqliteWrapper(sqliteDb);
+    await db.exec("PRAGMA journal_mode = WAL;");
+    await db.exec("PRAGMA synchronous = NORMAL;");
+    await db.exec("PRAGMA foreign_keys = ON;");
+    return db;
+  })();
+
+  // Test connection to verify
+  await dbPromise;
+}
+
+// Get Database Type & Stats
+app.get("/api/backup/info", authenticateToken, async (req: any, res: any) => {
+  try {
+    const db = await dbPromise;
+    const isSqlite = !(db instanceof PgWrapper);
+
+    let sqliteSize = 0;
+    if (isSqlite && fs.existsSync(activeSqlitePath)) {
+      const stats = fs.statSync(activeSqlitePath);
+      sqliteSize = stats.size;
+    }
+
+    const userCount = await db.get("SELECT COUNT(*) as count FROM users").then(r => r?.count || 0).catch(() => 0);
+    const taskCount = await db.get("SELECT COUNT(*) as count FROM tasks").then(r => r?.count || 0).catch(() => 0);
+    const projectCount = await db.get("SELECT COUNT(*) as count FROM projects").then(r => r?.count || 0).catch(() => 0);
+    const teamCount = await db.get("SELECT COUNT(*) as count FROM teams").then(r => r?.count || 0).catch(() => 0);
+    const documentCount = await db.get("SELECT COUNT(*) as count FROM documents").then(r => r?.count || 0).catch(() => 0);
+
+    res.json({
+      dbType: isSqlite ? "SQLite" : "PostgreSQL",
+      sqliteSize,
+      stats: {
+        users: Number(userCount),
+        tasks: Number(taskCount),
+        projects: Number(projectCount),
+        teams: Number(teamCount),
+        documents: Number(documentCount)
+      }
+    });
+  } catch (error: any) {
+    console.error("Backup info error:", error);
+    res.status(500).json({ error: "Failed to get database details." });
+  }
+});
+
+// Download SQLite DB file
+app.get("/api/backup/download-sqlite", authenticateToken, async (req: any, res: any) => {
+  try {
+    const db = await dbPromise;
+    const isSqlite = !(db instanceof PgWrapper);
+    if (!isSqlite) {
+      return res.status(400).json({ error: "SQLite backup is not available when running on PostgreSQL." });
+    }
+
+    if (!fs.existsSync(activeSqlitePath)) {
+      return res.status(404).json({ error: "SQLite database file not found on server." });
+    }
+
+    res.download(activeSqlitePath, "workspace-backup.sqlite");
+  } catch (error: any) {
+    console.error("SQLite download error:", error);
+    res.status(500).json({ error: "Failed to download SQLite backup." });
+  }
+});
+
+// Restore SQLite DB from binary file
+app.post("/api/backup/restore-sqlite", authenticateToken, express.raw({ type: "application/octet-stream", limit: "50mb" }), async (req: any, res: any) => {
+  try {
+    const db = await dbPromise;
+    const isSqlite = !(db instanceof PgWrapper);
+    if (!isSqlite) {
+      return res.status(400).json({ error: "SQLite restore is not available when running on PostgreSQL." });
+    }
+
+    const buffer = req.body;
+    if (!buffer || buffer.length === 0) {
+      return res.status(400).json({ error: "No database binary content received." });
+    }
+
+    await swapSqliteDatabase(buffer);
+    res.json({ success: true, message: "SQLite database restored successfully!" });
+  } catch (error: any) {
+    console.error("Restore SQLite error:", error);
+    res.status(500).json({ error: `Failed to restore SQLite database: ${error.message}` });
+  }
+});
+
+// Export JSON Backup
+app.get("/api/backup/export-json", authenticateToken, async (req: any, res: any) => {
+  try {
+    const db = await dbPromise;
+    const backupData: Record<string, any[]> = {};
+    const tables = [
+      "users", "tasks", "teams", "projects", "project_members",
+      "documents", "milestones", "team_members", "team_projects",
+      "task_dependencies", "task_comments", "task_activities", "settings"
+    ];
+
+    for (const table of tables) {
+      try {
+        backupData[table] = await db.all(`SELECT * FROM ${table}`);
+      } catch (e) {
+        backupData[table] = [];
+      }
+    }
+
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", "attachment; filename=workspace-backup.json");
+    res.json(backupData);
+  } catch (error: any) {
+    console.error("Export JSON error:", error);
+    res.status(500).json({ error: "Failed to export JSON backup." });
+  }
+});
+
+// Restore from JSON Backup
+app.post("/api/backup/restore-json", authenticateToken, async (req: any, res: any) => {
+  try {
+    const db = await dbPromise;
+    const backupData = req.body;
+
+    if (!backupData || typeof backupData !== "object") {
+      return res.status(400).json({ error: "Invalid backup data format." });
+    }
+
+    const tables = [
+      "users", "tasks", "teams", "projects", "project_members",
+      "documents", "milestones", "team_members", "team_projects",
+      "task_dependencies", "task_comments", "task_activities", "settings"
+    ];
+
+    if (!backupData.users || !Array.isArray(backupData.users)) {
+      return res.status(400).json({ error: "Invalid backup: 'users' table data is missing." });
+    }
+
+    // Perform restore
+    // First, clear existing tables
+    for (const table of tables) {
+      try {
+        await db.exec(`DELETE FROM ${table}`);
+      } catch (e) {
+        console.warn(`Failed to clear table ${table}:`, e);
+      }
+    }
+
+    // Insert rows for each table
+    for (const table of tables) {
+      const rows = backupData[table];
+      if (!Array.isArray(rows) || rows.length === 0) continue;
+
+      const firstRow = rows[0];
+      const columns = Object.keys(firstRow);
+      const placeholders = columns.map(() => "?").join(", ");
+      const insertSql = `INSERT INTO ${table} (${columns.join(", ")}) VALUES (${placeholders})`;
+
+      for (const row of rows) {
+        const params = columns.map(col => row[col]);
+        await db.run(insertSql, params);
+      }
+    }
+
+    res.json({ success: true, message: "Workspace restored successfully from JSON backup!" });
+  } catch (error: any) {
+    console.error("Restore JSON error:", error);
+    res.status(500).json({ error: `Failed to restore database: ${error.message}` });
+  }
 });
 
 // Vite middleware for development
