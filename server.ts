@@ -218,7 +218,8 @@ async function initDb(): Promise<DatabaseWrapper> {
       name TEXT NOT NULL,
       email TEXT UNIQUE NOT NULL,
       passwordHash TEXT NOT NULL,
-      role TEXT NOT NULL
+      role TEXT NOT NULL,
+      status TEXT DEFAULT 'Available'
     );
 
     CREATE TABLE IF NOT EXISTS tasks (
@@ -371,6 +372,10 @@ async function initDb(): Promise<DatabaseWrapper> {
 
   try {
     await db.exec("ALTER TABLE users ADD COLUMN rolePrefix TEXT;");
+  } catch (e) {}
+
+  try {
+    await db.exec("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'Available';");
   } catch (e) {}
 
   try {
@@ -977,36 +982,39 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
 // Get Me
 app.get("/api/auth/me", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
-  const user = await db.get("SELECT id, name, email, role, skills, rolePrefix FROM users WHERE id = ?", req.user.id);
+  const user = await db.get("SELECT id, name, email, role, skills, rolePrefix, status FROM users WHERE id = ?", req.user.id);
   if (!user) return res.sendStatus(404);
-  res.json({ id: user.id, name: user.name, email: user.email, role: user.role, skills: user.skills ? JSON.parse(user.skills) : [], rolePrefix: user.rolePrefix || "" });
+  res.json({ id: user.id, name: user.name, email: user.email, role: user.role, skills: user.skills ? JSON.parse(user.skills) : [], rolePrefix: user.rolePrefix || "", status: user.status || "Available" });
 });
 
 // Update Profile
 app.put("/api/users/me", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
-  const { name, skills } = req.body;
+  const { name, skills, status } = req.body;
   if (!name) {
     return res.status(400).json({ error: "Name is required." });
   }
 
+  const statusVal = status || "Available";
+
   if (skills !== undefined) {
     await db.run(
-      "UPDATE users SET name = ?, skills = ? WHERE id = ?",
-      [name, JSON.stringify(skills), req.user.id]
+      "UPDATE users SET name = ?, skills = ?, status = ? WHERE id = ?",
+      [name, JSON.stringify(skills), statusVal, req.user.id]
     );
   } else {
     await db.run(
-      "UPDATE users SET name = ? WHERE id = ?",
-      [name, req.user.id]
+      "UPDATE users SET name = ?, status = ? WHERE id = ?",
+      [name, statusVal, req.user.id]
     );
   }
   
-  const updatedUser = await db.get("SELECT id, name, email, role, skills, rolePrefix FROM users WHERE id = ?", req.user.id);
+  const updatedUser = await db.get("SELECT id, name, email, role, skills, rolePrefix, status FROM users WHERE id = ?", req.user.id);
   res.json({
     ...updatedUser,
     skills: updatedUser.skills ? JSON.parse(updatedUser.skills) : [],
-    rolePrefix: updatedUser.rolePrefix || ""
+    rolePrefix: updatedUser.rolePrefix || "",
+    status: updatedUser.status || "Available"
   });
 });
 
@@ -1117,8 +1125,8 @@ app.get("/api/search", authenticateToken, async (req: any, res: any) => {
 // Get Users (for assigning tasks)
 app.get("/api/users", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
-  const users = await db.all("SELECT id, name, email, role, skills, rolePrefix FROM users");
-  res.json(users.map((u: any) => ({ ...u, skills: u.skills ? JSON.parse(u.skills) : [], rolePrefix: u.rolePrefix || "" })));
+  const users = await db.all("SELECT id, name, email, role, skills, rolePrefix, status FROM users");
+  res.json(users.map((u: any) => ({ ...u, skills: u.skills ? JSON.parse(u.skills) : [], rolePrefix: u.rolePrefix || "", status: u.status || "Available" })));
 });
 
 // Admin create user
@@ -1140,11 +1148,11 @@ app.post("/api/users", authenticateToken, async (req: any, res: any) => {
   const defaultRole = role && ["admin", "manager", "developer"].includes(role) ? role : "developer";
 
   await db.run(
-    "INSERT INTO users (id, name, email, passwordHash, role, rolePrefix) VALUES (?, ?, ?, ?, ?, ?)",
-    [id, name, email, passwordHash, defaultRole, rolePrefix || null]
+    "INSERT INTO users (id, name, email, passwordHash, role, rolePrefix, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [id, name, email, passwordHash, defaultRole, rolePrefix || null, "Available"]
   );
-  const newUser = await db.get("SELECT id, name, email, role, rolePrefix FROM users WHERE id = ?", id);
-  res.json({ ...newUser, rolePrefix: newUser.rolePrefix || "" });
+  const newUser = await db.get("SELECT id, name, email, role, rolePrefix, status FROM users WHERE id = ?", id);
+  res.json({ ...newUser, rolePrefix: newUser.rolePrefix || "", status: newUser.status || "Available" });
 });
 
 // Admin update user
@@ -1152,22 +1160,24 @@ app.put("/api/users/:id", authenticateToken, async (req: any, res: any) => {
   if (req.user.role !== "admin") {
     return res.status(403).json({ error: "Only admins can edit users." });
   }
-  const { name, email, role, password, rolePrefix } = req.body;
+  const { name, email, role, password, rolePrefix, status } = req.body;
   if (!name || !email || !role) return res.status(400).json({ error: "Missing required fields." });
   
   const db = await dbPromise;
   const existing = await db.get("SELECT * FROM users WHERE email = ? AND id != ?", [email, req.params.id]);
   if (existing) return res.status(400).json({ error: "Email already in use." });
 
+  const statusVal = status || "Available";
+
   if (password) {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
-    await db.run("UPDATE users SET name = ?, email = ?, role = ?, passwordHash = ?, rolePrefix = ? WHERE id = ?", [name, email, role, passwordHash, rolePrefix || null, req.params.id]);
+    await db.run("UPDATE users SET name = ?, email = ?, role = ?, passwordHash = ?, rolePrefix = ?, status = ? WHERE id = ?", [name, email, role, passwordHash, rolePrefix || null, statusVal, req.params.id]);
   } else {
-    await db.run("UPDATE users SET name = ?, email = ?, role = ?, rolePrefix = ? WHERE id = ?", [name, email, role, rolePrefix || null, req.params.id]);
+    await db.run("UPDATE users SET name = ?, email = ?, role = ?, rolePrefix = ?, status = ? WHERE id = ?", [name, email, role, rolePrefix || null, statusVal, req.params.id]);
   }
-  const updatedUser = await db.get("SELECT id, name, email, role, rolePrefix FROM users WHERE id = ?", req.params.id);
-  res.json({ ...updatedUser, rolePrefix: updatedUser.rolePrefix || "" });
+  const updatedUser = await db.get("SELECT id, name, email, role, rolePrefix, status FROM users WHERE id = ?", req.params.id);
+  res.json({ ...updatedUser, rolePrefix: updatedUser.rolePrefix || "", status: updatedUser.status || "Available" });
 });
 
 // Admin delete user
@@ -2132,6 +2142,17 @@ app.delete("/api/milestones/:id", authenticateToken, async (req: any, res: any) 
 // --- DATABASE BACKUP AND RESTORE APIS ---
 
 /**
+ * Middleware to restrict route access exclusively to users with the 'admin' role.
+ */
+const requireAdmin = (req: any, res: any, next: any) => {
+  if (req.user && req.user.role === "admin") {
+    next();
+  } else {
+    res.status(403).json({ error: "Access denied. Admin privileges required." });
+  }
+};
+
+/**
  * Helper function to swap the active SQLite database in-memory and on-disk.
  * Closures the existing wrapper connection, makes a `.bak` copy of the active file,
  * writes the new buffer over the old path, and rebuilds the SQLite connection with performance optimizations.
@@ -2189,7 +2210,7 @@ async function swapSqliteDatabase(newBuffer: Buffer) {
  * and row count statistics across core workspace tables (Users, Tasks, Projects, Teams, Documents).
  * Requires authorization token.
  */
-app.get("/api/backup/info", authenticateToken, async (req: any, res: any) => {
+app.get("/api/backup/info", authenticateToken, requireAdmin, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
     const isSqlite = !(db instanceof PgWrapper);
@@ -2230,7 +2251,7 @@ app.get("/api/backup/info", authenticateToken, async (req: any, res: any) => {
  * Only valid if SQLite is the current active engine.
  * Requires authorization token.
  */
-app.get("/api/backup/download-sqlite", authenticateToken, async (req: any, res: any) => {
+app.get("/api/backup/download-sqlite", authenticateToken, requireAdmin, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
     const isSqlite = !(db instanceof PgWrapper);
@@ -2255,7 +2276,7 @@ app.get("/api/backup/download-sqlite", authenticateToken, async (req: any, res: 
  * Restarts the internal database wrapper connection upon successful upload.
  * Requires authorization token and raw application/octet-stream payload.
  */
-app.post("/api/backup/restore-sqlite", authenticateToken, express.raw({ type: "application/octet-stream", limit: "50mb" }), async (req: any, res: any) => {
+app.post("/api/backup/restore-sqlite", authenticateToken, requireAdmin, express.raw({ type: "application/octet-stream", limit: "50mb" }), async (req: any, res: any) => {
   try {
     const db = await dbPromise;
     const isSqlite = !(db instanceof PgWrapper);
@@ -2282,7 +2303,7 @@ app.post("/api/backup/restore-sqlite", authenticateToken, express.raw({ type: "a
  * This provides engine-independent database persistence, allowing transfers between SQLite and Postgres.
  * Requires authorization token.
  */
-app.get("/api/backup/export-json", authenticateToken, async (req: any, res: any) => {
+app.get("/api/backup/export-json", authenticateToken, requireAdmin, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
     const backupData: Record<string, any[]> = {};
@@ -2315,7 +2336,7 @@ app.get("/api/backup/export-json", authenticateToken, async (req: any, res: any)
  * Purges all active data in target tables and inserts rows from JSON payload.
  * Requires authorization token.
  */
-app.post("/api/backup/restore-json", authenticateToken, async (req: any, res: any) => {
+app.post("/api/backup/restore-json", authenticateToken, requireAdmin, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
     const backupData = req.body;

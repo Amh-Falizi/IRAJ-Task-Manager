@@ -99,7 +99,7 @@ export default function Layout() {
       >
         <div className="flex flex-col w-full mb-8 shrink-0 space-y-3">
           <div className={cn("bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold transition-all shrink-0 text-center", isExpanded ? "h-10 w-full text-sm leading-tight px-1" : "w-10 h-10 mx-auto")}>
-            {isExpanded ? "Anah Assistant" : "A"}
+            {isExpanded ? "IRAJ" : "Σ"}
           </div>
           <Tooltip content={isExpanded ? "Collapse Sidebar" : "Expand Sidebar"} position="right">
             <button
@@ -278,12 +278,12 @@ export default function Layout() {
              <Tooltip content={isExpanded ? undefined : "Profile"} position="right">
                <Link 
                  to="/profile"
-                 className={cn("tour-user-dropdown hover:opacity-80 transition-all duration-300 flex items-center overflow-hidden w-full", isExpanded ? "h-12 bg-surface border border-border-subtle rounded-lg shadow-sm" : "h-10 rounded-full")} 
+                 className={cn("tour-user-dropdown hover:opacity-80 transition-all duration-300 flex items-center w-full", isExpanded ? "h-12 bg-surface border border-border-subtle rounded-lg shadow-sm overflow-hidden" : "h-10 rounded-full overflow-visible")} 
                >
                  <div className="flex items-center justify-center w-10 h-10 shrink-0">
                     <UserAvatar user={user} showTooltip={!isExpanded} />
                  </div>
-                 <div className={cn("flex flex-col min-w-0 transition-all duration-300", isExpanded ? "opacity-100 max-w-full" : "opacity-0 max-w-0")}>
+                 <div className={cn("flex flex-col min-w-0 transition-all duration-300 overflow-hidden", isExpanded ? "opacity-100 max-w-full" : "opacity-0 max-w-0")}>
                    <span className="text-sm font-bold text-strong truncate">{user?.name}</span>
                    <span className="text-[10px] text-muted truncate">{user?.email}</span>
                  </div>

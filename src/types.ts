@@ -5,6 +5,7 @@ export interface User {
   role: "admin" | "manager" | "developer" | "viewer" | "member";
   skills?: string[];
   rolePrefix?: string;
+  status?: string;
 }
 
 export interface Task {

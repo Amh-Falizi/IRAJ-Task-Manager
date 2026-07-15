@@ -105,7 +105,14 @@ export default function UsersAdmin() {
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <UserAvatar user={user} showTooltip={false} />
-                      <span className="text-sm font-medium text-strong">{user.name}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-medium text-strong">{user.name}</span>
+                        {user.status && user.status !== "Available" && (
+                          <span className="text-[10px] font-medium text-subtle px-1.5 py-0.5 rounded bg-surface-dim border border-border-subtle">
+                            {user.status}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm text-muted">{user.email}</td>

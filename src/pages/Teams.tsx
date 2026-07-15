@@ -580,10 +580,15 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
                     <div className="flex items-center gap-3">
                       <UserAvatar user={member} showTooltip={false} />
                       <div>
-                        <div className="text-sm font-medium text-strong flex items-center gap-2">
+                        <div className="text-sm font-medium text-strong flex items-center gap-2 flex-wrap">
                           {member.name}
                           {member.id === team.ownerId && (
                             <Shield size={12} className="text-blue-400" />
+                          )}
+                          {member.status && member.status !== "Available" && (
+                            <span className="text-[9px] font-medium text-subtle px-1.5 py-0.5 bg-surface-dim border border-border-subtle rounded">
+                              {member.status}
+                            </span>
                           )}
                         </div>
                         <div className="text-xs text-muted">{member.email} • {member.role}</div>

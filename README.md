@@ -69,7 +69,26 @@ To get up and running, ensure you have the following installed:
    ```bash
    npm run dev
    ```
-   *The server operates safely behind port 3000.*
+   *The server operates safely behind port 3000 by default.*
+
+   **Running on a Custom Port**  
+   If you need to run the application on a custom port (e.g., `4000`), you can set the `PORT` environment variable. This can be configured inside your `.env` file or supplied inline:
+   - **Environment File**: Set the `PORT` variable in your `.env` file:
+     ```env
+     PORT=4000
+     ```
+   - **macOS/Linux**:
+     ```bash
+     PORT=4000 npm run dev
+     ```
+   - **Windows (Command Prompt)**:
+     ```cmd
+     set PORT=4000 && npm run dev
+     ```
+   - **Windows (PowerShell)**:
+     ```powershell
+     $env:PORT="4000"; npm run dev
+     ```
 
 4. **Build for Production**
    Compiles code via ESbuild for backend routing and Vite build for bundled static assets:

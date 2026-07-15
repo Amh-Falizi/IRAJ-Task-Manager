@@ -32,12 +32,22 @@ import {
 } from "lucide-react";
 import UserAvatar from "../components/UserAvatar";
 
+export const STATUS_OPTIONS = [
+  { value: "Available", label: "Available", color: "bg-green-500", text: "text-green-500" },
+  { value: "Busy", label: "Busy", color: "bg-red-500", text: "text-red-500" },
+  { value: "Away", label: "Away", color: "bg-yellow-500", text: "text-yellow-500" },
+  { value: "Offline", label: "Offline", color: "bg-gray-500", text: "text-gray-500" },
+  { value: "In a Meeting", label: "In a Meeting", color: "bg-purple-500", text: "text-purple-500" },
+  { value: "On Vacation", label: "On Vacation", color: "bg-blue-500", text: "text-blue-500" },
+];
+
 export default function Profile() {
   const { user, token, updateUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { success, error } = useToast();
 
   const [name, setName] = useState(user?.name || "");
+  const [statusText, setStatusText] = useState(user?.status || "Available");
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('general');
 
@@ -55,6 +65,13 @@ export default function Profile() {
   const [dbInfo, setDbInfo] = useState<any>(null);
   const [loadingInfo, setLoadingInfo] = useState(false);
   const [restoring, setRestoring] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setName(user.name || "");
+      setStatusText(user.status || "Available");
+    }
+  }, [user]);
 
   useEffect(() => {
     if (user?.skills) {
@@ -337,7 +354,7 @@ export default function Profile() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, status: statusText }),
       });
 
       if (res.ok) {
@@ -376,7 +393,15 @@ export default function Profile() {
                 />
               </div>
               <h2 className="text-xl font-bold text-strong">{user?.name}</h2>
-              <p className="text-sm text-muted mb-4">{user?.email}</p>
+              <p className="text-sm text-muted mb-2">{user?.email}</p>
+
+              <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium border bg-surface-dim border-border-subtle mb-4 shadow-sm">
+                <span className={cn(
+                  "w-2 h-2 rounded-full",
+                  STATUS_OPTIONS.find(o => o.value === user?.status)?.color || "bg-green-500"
+                )} />
+                <span className="text-subtle font-medium">{user?.status || "Available"}</span>
+              </div>
 
               <div className={`w-full flex items-center justify-center space-x-2 border rounded py-2 text-xs font-bold uppercase tracking-wider ${skills.length > 0 ? 'mb-4' : 'mb-6'} ${roleInfo.bg} ${roleInfo.border} ${roleInfo.color}`}>
                 <RoleIcon size={14} />
@@ -454,17 +479,19 @@ export default function Profile() {
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-t-full" />
                 )}
               </button>
-              <button
-                onClick={() => setActiveTab('backup')}
-                className={`py-3 px-6 text-xs font-bold uppercase tracking-wider relative transition-colors ${
-                  activeTab === 'backup' ? 'text-blue-500' : 'text-subtle hover:text-strong hover:bg-surface-accent/30'
-                }`}
-              >
-                Backup & Restore
-                {activeTab === 'backup' && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-t-full" />
-                )}
-              </button>
+              {user?.role === 'admin' && (
+                <button
+                  onClick={() => setActiveTab('backup')}
+                  className={`py-3 px-6 text-xs font-bold uppercase tracking-wider relative transition-colors ${
+                    activeTab === 'backup' ? 'text-blue-500' : 'text-subtle hover:text-strong hover:bg-surface-accent/30'
+                  }`}
+                >
+                  Backup & Restore
+                  {activeTab === 'backup' && (
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 rounded-t-full" />
+                  )}
+                </button>
+              )}
             </div>
 
             <div className="space-y-6">
@@ -492,6 +519,34 @@ export default function Profile() {
                       className="w-full bg-surface-dim border border-border-subtle rounded px-4 py-2 text-strong focus:outline-none focus:border-blue-500 transition-colors"
                       required
                     />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-subtle uppercase tracking-widest block mb-2">
+                      Active Status Tag
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={statusText}
+                        onChange={(e) => setStatusText(e.target.value)}
+                        className="w-full bg-surface-dim border border-border-subtle rounded px-4 py-2 pl-10 text-strong focus:outline-none focus:border-blue-500 transition-colors appearance-none cursor-pointer"
+                      >
+                        {STATUS_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value} className="bg-surface text-strong">
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
+                        <span className={cn(
+                          "w-2.5 h-2.5 rounded-full ring-2 ring-surface",
+                          STATUS_OPTIONS.find(o => o.value === statusText)?.color || "bg-green-500"
+                        )} />
+                      </div>
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-subtle text-[8px]">
+                        ▼
+                      </div>
+                    </div>
                   </div>
 
                   <div>
@@ -528,7 +583,7 @@ export default function Profile() {
                   <div className="pt-4 flex justify-end">
                     <button
                       type="submit"
-                      disabled={saving || name === user?.name}
+                      disabled={saving || (name === user?.name && statusText === (user?.status || "Available"))}
                       className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 disabled:text-strong/50 text-strong px-6 py-2 rounded font-bold uppercase text-[10px] tracking-widest transition-colors"
                     >
                       {saving ? (
@@ -793,7 +848,7 @@ export default function Profile() {
                 </div>
               )}
 
-              {activeTab === 'backup' && (
+              {activeTab === 'backup' && user?.role === 'admin' && (
                 <div className="space-y-6 animate-fade-in">
                   {/* Database Info Card */}
                   <div className="bg-surface border border-border-subtle rounded-xl overflow-hidden shadow-sm animate-slide-up">

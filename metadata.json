@@ -1,5 +1,5 @@
 {
-  "name": "DevTeam Task Manager",
+  "name": "IRAJ",
   "description": "A comprehensive task management and progress tracking application for software development teams with Git branch generation and role-based permissions.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
