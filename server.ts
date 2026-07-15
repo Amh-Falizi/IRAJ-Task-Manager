@@ -18,7 +18,7 @@ import nodemailer from "nodemailer";
 
 const app = express();
 app.set("trust proxy", 1); // Trust first proxy for rate limiting (Cloud Run/Nginx)
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Security: Generate a secure secret if none is provided via environment
 const FALLBACK_SECRET = crypto.randomBytes(64).toString('hex');
@@ -2131,7 +2131,14 @@ app.delete("/api/milestones/:id", authenticateToken, async (req: any, res: any) 
 
 // --- DATABASE BACKUP AND RESTORE APIS ---
 
-// Helper function to swap SQLite database
+/**
+ * Helper function to swap the active SQLite database in-memory and on-disk.
+ * Closures the existing wrapper connection, makes a `.bak` copy of the active file,
+ * writes the new buffer over the old path, and rebuilds the SQLite connection with performance optimizations.
+ * 
+ * @param {Buffer} newBuffer - The binary buffer content representing the new SQLite database.
+ * @throws {Error} If database re-initialization fails.
+ */
 async function swapSqliteDatabase(newBuffer: Buffer) {
   try {
     const dbWrapper = await dbPromise;
@@ -2142,7 +2149,7 @@ async function swapSqliteDatabase(newBuffer: Buffer) {
     console.warn("Failed to close active DB during swap:", e);
   }
 
-  // Backup current file
+  // Backup current file to prevent loss in case of subsequent load issues
   const backupPath = activeSqlitePath + ".bak";
   if (fs.existsSync(activeSqlitePath)) {
     try {
@@ -2152,10 +2159,10 @@ async function swapSqliteDatabase(newBuffer: Buffer) {
     }
   }
 
-  // Write new database file
+  // Write new database file onto disk
   fs.writeFileSync(activeSqlitePath, newBuffer);
 
-  // Re-initialize connection
+  // Re-initialize sqlite connection with WAL journal mode, NORMAL synchrony, and foreign key support
   dbPromise = (async () => {
     const { open } = await import("sqlite");
     const sqlite3 = (await import("sqlite3")).default;
@@ -2172,11 +2179,16 @@ async function swapSqliteDatabase(newBuffer: Buffer) {
     return db;
   })();
 
-  // Test connection to verify
+  // Test connection to verify everything is operational
   await dbPromise;
 }
 
-// Get Database Type & Stats
+/**
+ * GET /api/backup/info
+ * @description Retrieves current database metadata, active engine (SQLite vs PostgreSQL), 
+ * and row count statistics across core workspace tables (Users, Tasks, Projects, Teams, Documents).
+ * Requires authorization token.
+ */
 app.get("/api/backup/info", authenticateToken, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
@@ -2188,6 +2200,7 @@ app.get("/api/backup/info", authenticateToken, async (req: any, res: any) => {
       sqliteSize = stats.size;
     }
 
+    // Retrieve active count statistics concurrently or fallback safely on table-level failures
     const userCount = await db.get("SELECT COUNT(*) as count FROM users").then(r => r?.count || 0).catch(() => 0);
     const taskCount = await db.get("SELECT COUNT(*) as count FROM tasks").then(r => r?.count || 0).catch(() => 0);
     const projectCount = await db.get("SELECT COUNT(*) as count FROM projects").then(r => r?.count || 0).catch(() => 0);
@@ -2211,7 +2224,12 @@ app.get("/api/backup/info", authenticateToken, async (req: any, res: any) => {
   }
 });
 
-// Download SQLite DB file
+/**
+ * GET /api/backup/download-sqlite
+ * @description Initiates a binary download stream of the current active SQLite database.
+ * Only valid if SQLite is the current active engine.
+ * Requires authorization token.
+ */
 app.get("/api/backup/download-sqlite", authenticateToken, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
@@ -2231,7 +2249,12 @@ app.get("/api/backup/download-sqlite", authenticateToken, async (req: any, res: 
   }
 });
 
-// Restore SQLite DB from binary file
+/**
+ * POST /api/backup/restore-sqlite
+ * @description Overwrites the active SQLite database file with an uploaded binary backup.
+ * Restarts the internal database wrapper connection upon successful upload.
+ * Requires authorization token and raw application/octet-stream payload.
+ */
 app.post("/api/backup/restore-sqlite", authenticateToken, express.raw({ type: "application/octet-stream", limit: "50mb" }), async (req: any, res: any) => {
   try {
     const db = await dbPromise;
@@ -2253,7 +2276,12 @@ app.post("/api/backup/restore-sqlite", authenticateToken, express.raw({ type: "a
   }
 });
 
-// Export JSON Backup
+/**
+ * GET /api/backup/export-json
+ * @description Exports all core database tables into a unified JSON format.
+ * This provides engine-independent database persistence, allowing transfers between SQLite and Postgres.
+ * Requires authorization token.
+ */
 app.get("/api/backup/export-json", authenticateToken, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
@@ -2281,7 +2309,12 @@ app.get("/api/backup/export-json", authenticateToken, async (req: any, res: any)
   }
 });
 
-// Restore from JSON Backup
+/**
+ * POST /api/backup/restore-json
+ * @description Restores workspace database records from a portable JSON schema.
+ * Purges all active data in target tables and inserts rows from JSON payload.
+ * Requires authorization token.
+ */
 app.post("/api/backup/restore-json", authenticateToken, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
@@ -2301,8 +2334,7 @@ app.post("/api/backup/restore-json", authenticateToken, async (req: any, res: an
       return res.status(400).json({ error: "Invalid backup: 'users' table data is missing." });
     }
 
-    // Perform restore
-    // First, clear existing tables
+    // Perform restore by dropping existing table records
     for (const table of tables) {
       try {
         await db.exec(`DELETE FROM ${table}`);
@@ -2311,7 +2343,7 @@ app.post("/api/backup/restore-json", authenticateToken, async (req: any, res: an
       }
     }
 
-    // Insert rows for each table
+    // Sequentially insert backup rows for each table
     for (const table of tables) {
       const rows = backupData[table];
       if (!Array.isArray(rows) || rows.length === 0) continue;

@@ -80,6 +80,10 @@ export default function Profile() {
     if (token) fetchStats();
   }, [token]);
 
+  /**
+   * Fetches database engine details and record statistics from the server.
+   * Maps results to local component state `dbInfo` to power status visualizers.
+   */
   const fetchDbInfo = async () => {
     setLoadingInfo(true);
     try {
@@ -91,18 +95,23 @@ export default function Profile() {
         setDbInfo(data);
       }
     } catch (e) {
-      console.error(e);
+      console.error("Failed to fetch database information:", e);
     } finally {
       setLoadingInfo(false);
     }
   };
 
+  // Automatically trigger database metadata fetch when user switches to the Backup tab
   useEffect(() => {
     if (activeTab === 'backup' && token) {
       fetchDbInfo();
     }
   }, [activeTab, token]);
 
+  /**
+   * Initiates download of the live binary SQLite database file.
+   * Prompts stream response from /api/backup/download-sqlite.
+   */
   const handleSqliteDownload = async () => {
     try {
       const res = await fetch("/api/backup/download-sqlite", {
@@ -128,6 +137,10 @@ export default function Profile() {
     }
   };
 
+  /**
+   * Exports all database tables as a single portable JSON file.
+   * Downloads formatted output that can be restored into SQLite or Postgres.
+   */
   const handleJsonDownload = async () => {
     try {
       const res = await fetch("/api/backup/export-json", {
@@ -153,6 +166,13 @@ export default function Profile() {
     }
   };
 
+  /**
+   * Handles binary `.sqlite` database restoration.
+   * Reads selected file as an ArrayBuffer and posts it as an octet-stream to the backend.
+   * Reloads the page in 2 seconds upon success to establish a fresh server context.
+   * 
+   * @param {File} file - Selected SQLite file from client disk.
+   */
   const handleSqliteRestore = async (file: File) => {
     if (!window.confirm("Are you absolutely sure you want to restore this SQLite database? ALL current workspace data will be replaced, and you might need to re-login.")) {
       return;
@@ -186,6 +206,13 @@ export default function Profile() {
     }
   };
 
+  /**
+   * Handles portable `.json` database restoration.
+   * Parses the file content, structures the payload, and sends a transaction-backed import request.
+   * Reloads the page in 2 seconds to force a clean reload of all layout states.
+   * 
+   * @param {File} file - Selected JSON backup file.
+   */
   const handleJsonRestore = async (file: File) => {
     if (!window.confirm("Are you absolutely sure you want to restore from this JSON backup? ALL current tables will be cleared and replaced with backup data.")) {
       return;
