@@ -112,6 +112,63 @@ npx tsx scripts/db-cli.ts <command> [arguments]
 
 ---
 
+## Self-Hosting & SQLite Persistence (VPS)
+
+If you wish to host the application on your own **Virtual Private Server (VPS)** without setting up PostgreSQL or external databases, you can safely use the built-in SQLite engine with standard persistent storage.
+
+### 1. Raw Node.js Deployment
+If running directly on the host system:
+1. Clone the repository onto your VPS.
+2. Install dependencies: `npm install --production`.
+3. Create a production `.env` file containing your production settings (e.g. `PORT=3003`, `APP_URL`, etc.). Ensure `DATABASE_URL` is omitted so the app automatically defaults to SQLite.
+4. Build the application: `npm run build`.
+5. Run the application in the background using a process manager like **PM2**:
+   ```bash
+   npm install -g pm2
+   pm2 start dist/server.cjs --name "devteam-taskmanager"
+   ```
+   *Your `database.sqlite` file will persist reliably in the application root directory across service restarts.*
+
+### 2. Docker Deployment with Persistent Volume
+If deploying via Docker, the active SQLite file (`database.sqlite`) is written inside the container's working directory (`/app`). To prevent data loss when the container is rebuilt or restarted, you must mount a persistent volume for the database file:
+
+#### Option A: Docker Run (Single Volume Mount)
+Initialize and run the container by mounting a directory from your VPS host to the database file path:
+```bash
+docker run -d \
+  -p 3003:3003 \
+  -v /var/lib/devteam-taskmanager/database.sqlite:/app/database.sqlite \
+  -e PORT=3003 \
+  -e GEMINI_API_KEY="your_gemini_key" \
+  -e APP_URL="https://yourdomain.com" \
+  --name taskmanager \
+  your-docker-image
+```
+
+#### Option B: Docker Compose
+Create a `docker-compose.yml` file on your VPS:
+```yaml
+version: '3.8'
+
+services:
+  app:
+    image: your-docker-image
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - GEMINI_API_KEY=your_gemini_key
+      - APP_URL=https://yourdomain.com
+    volumes:
+      # Mounts the local host directory containing the sqlite db file to /app inside the container
+      - ./data/database.sqlite:/app/database.sqlite
+    restart: always
+```
+
+*By mounting `./data/database.sqlite` (or a named docker volume), all of your project, task, and user data will remain perfectly safe and persistent.*
+
+---
+
 ## License
 
 This software is provided under the MIT License.
