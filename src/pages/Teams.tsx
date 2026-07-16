@@ -44,7 +44,7 @@ export default function Teams() {
 
   return (
     <div className="flex h-full flex-col bg-surface-dim">
-      <header className="flex-none flex items-center justify-between px-6 py-4 border-b border-border-subtle bg-surface-dim">
+      <header className="flex-none flex flex-col sm:flex-row sm:items-center justify-between px-4 md:px-6 py-4 border-b border-border-subtle bg-surface-dim gap-3">
         <div className="flex flex-col">
           <h1 className="text-xl font-semibold text-strong tracking-tight">Teams</h1>
           <p className="text-xs text-muted mt-1">Manage development teams and members</p>
@@ -52,7 +52,7 @@ export default function Teams() {
         {(currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md shadow hover:scale-105 font-bold transition-all text-sm"
+            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md shadow hover:scale-105 font-bold transition-all text-sm self-end sm:self-auto"
           >
             <Plus size={16} />
             <span>New Team</span>
@@ -60,9 +60,9 @@ export default function Teams() {
         )}
       </header>
       
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         {/* Teams List */}
-        <div className={`flex flex-col ${selectedTeam ? 'w-1/3 border-r border-border-subtle' : 'w-full'} overflow-y-auto p-6 transition-all`}>
+        <div className={`flex flex-col overflow-y-auto p-4 md:p-6 transition-all h-full ${selectedTeam ? 'hidden md:flex md:w-1/3 md:border-r md:border-border-subtle' : 'w-full'}`}>
           {loading ? (
             <div className="text-subtle text-sm">Loading teams...</div>
           ) : teams.length === 0 ? (

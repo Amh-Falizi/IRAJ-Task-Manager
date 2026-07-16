@@ -75,12 +75,12 @@ export default function Projects() {
 
   return (
     <div className="flex h-full flex-col bg-surface-dim">
-      <header className="flex-none flex items-center justify-between px-6 py-4 border-b border-border-subtle bg-surface-dim">
+      <header className="flex-none flex flex-col sm:flex-row sm:items-center justify-between px-4 md:px-6 py-4 border-b border-border-subtle bg-surface-dim gap-3">
         <div className="flex flex-col">
           <h1 className="text-xl font-semibold text-strong tracking-tight">Projects</h1>
           <p className="text-xs text-muted mt-1">Manage all projects and their related tasks</p>
         </div>
-        <div className="flex flex-row items-center space-x-3">
+        <div className="flex flex-row items-center space-x-3 self-end sm:self-auto">
           <div className="relative">
             <button
               onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}

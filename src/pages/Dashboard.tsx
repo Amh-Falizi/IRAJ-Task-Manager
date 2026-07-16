@@ -796,16 +796,16 @@ export default function Dashboard() {
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-page-bg">
       {/* Header */}
-      <header className="h-14 border-b border-border-subtle flex items-center justify-between px-6 bg-surface shrink-0 z-10 relative">
-        <div className="flex items-center space-x-4">
+      <header className="min-h-14 py-3 border-b border-border-subtle flex flex-col sm:flex-row sm:items-center justify-between px-4 md:px-6 bg-surface shrink-0 z-10 relative gap-3">
+        <div className="flex items-center space-x-3">
           <h1 className="text-sm font-semibold text-strong tracking-tight uppercase flex items-center gap-2">
             <Layout size={18} className="text-blue-500" />
             Dashboard
           </h1>
-          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-500 border border-green-500/20">ACTIVE</span>
+          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-500 border border-green-500/20 shrink-0">ACTIVE</span>
         </div>
         
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3 flex-wrap">
           {isEditLayout && (
             <button
               onClick={resetLayout}

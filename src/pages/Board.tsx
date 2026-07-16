@@ -522,7 +522,7 @@ export default function Board() {
   }
 
   return (
-    <div className="flex-1 flex flex-col p-6 min-h-0 bg-page-bg">
+    <div className="flex-1 flex flex-col p-4 md:p-6 min-h-0 bg-page-bg">
       <div className="tour-board-header flex justify-between items-start lg:items-center mb-6 shrink-0 flex-col lg:flex-row gap-4">
         <div>
           {project ? (
@@ -673,14 +673,14 @@ export default function Board() {
         </div>
       </div>
 
-      <div className="flex-1 flex space-x-6 overflow-x-auto overflow-y-hidden pb-4">
+      <div className="flex-1 flex space-x-4 md:space-x-6 overflow-x-auto overflow-y-hidden pb-4 scrollbar-thin snap-x snap-mandatory scroll-smooth">
           {columns.map(column => {
             const parentTasks = filteredTasks.filter(t => !t.parentId);
             const columnTasks = parentTasks.filter(t => t.status === column.id);
           return (
             <div 
               key={column.id} 
-              className={`w-80 flex-shrink-0 flex flex-col bg-surface border rounded-lg transition-colors duration-200 ${draggingColumnId === column.id ? 'opacity-50 border-dashed border-blue-500' : 'border-border-subtle'} `}
+              className={`w-[290px] sm:w-80 snap-center flex-shrink-0 flex flex-col bg-surface border rounded-lg transition-colors duration-200 ${draggingColumnId === column.id ? 'opacity-50 border-dashed border-blue-500' : 'border-border-subtle'} `}
               onDragEnter={(e) => {
                 if (draggingColumnId) {
                   handleColumnDragEnter(column.id);
