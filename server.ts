@@ -18,7 +18,7 @@ import nodemailer from "nodemailer";
 
 const app = express();
 app.set("trust proxy", 1); // Trust first proxy for rate limiting (Cloud Run/Nginx)
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3003;
 
 // Security: Generate a secure secret if none is provided via environment
 const FALLBACK_SECRET = crypto.randomBytes(64).toString('hex');
