@@ -397,23 +397,34 @@ async function initDb(): Promise<DatabaseWrapper> {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         description TEXT,
-        is_custom INTEGER DEFAULT 0
+        is_custom INTEGER DEFAULT 0,
+        permissions TEXT
       );
     `);
+    try {
+      await db.exec("ALTER TABLE roles ADD COLUMN permissions TEXT;");
+    } catch (alterError) {
+      // Column already exists
+    }
     const defaultRoles = [
-      { id: "admin", name: "Admin", description: "Full administrator permissions", is_custom: 0 },
-      { id: "manager", name: "Manager", description: "Can manage projects, teams, and tasks", is_custom: 0 },
-      { id: "developer", name: "Developer", description: "Core developer role to build and claim tasks", is_custom: 0 },
-      { id: "designer", name: "Designer", description: "Can design user interfaces and experiences", is_custom: 0 },
-      { id: "qa", name: "QA Engineer", description: "Can test and verify task completions", is_custom: 0 },
-      { id: "product_owner", name: "Product Owner", description: "Can manage roadmap and verify milestones", is_custom: 0 },
-      { id: "scrum_master", name: "Scrum Master", description: "Facilitates agile processes and unblocks team", is_custom: 0 },
-      { id: "viewer", name: "Viewer", description: "Read-only access to view projects and boards", is_custom: 0 }
+      { id: "admin", name: "Admin", description: "Full administrator permissions", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":true,"manage_projects":true,"manage_teams":true}' },
+      { id: "manager", name: "Manager", description: "Can manage projects, teams, and tasks", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":true,"manage_projects":true,"manage_teams":true}' },
+      { id: "developer", name: "Developer", description: "Core developer role to build and claim tasks", is_custom: 0, permissions: '{"create_tasks":false,"edit_all_tasks":false,"delete_tasks":false,"manage_projects":false,"manage_teams":false}' },
+      { id: "designer", name: "Designer", description: "Can design user interfaces and experiences", is_custom: 0, permissions: '{"create_tasks":false,"edit_all_tasks":false,"delete_tasks":false,"manage_projects":false,"manage_teams":false}' },
+      { id: "qa", name: "QA Engineer", description: "Can test and verify task completions", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":false,"manage_projects":false,"manage_teams":false}' },
+      { id: "product_owner", name: "Product Owner", description: "Can manage roadmap and verify milestones", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":true,"manage_projects":true,"manage_teams":false}' },
+      { id: "scrum_master", name: "Scrum Master", description: "Facilitates agile processes and unblocks team", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":false,"manage_projects":false,"manage_teams":true}' },
+      { id: "viewer", name: "Viewer", description: "Read-only access to view projects and boards", is_custom: 0, permissions: '{"create_tasks":false,"edit_all_tasks":false,"delete_tasks":false,"manage_projects":false,"manage_teams":false}' }
     ];
     for (const role of defaultRoles) {
       await db.run(
-        "INSERT OR IGNORE INTO roles (id, name, description, is_custom) VALUES (?, ?, ?, ?)",
-        [role.id, role.name, role.description, role.is_custom]
+        "INSERT OR IGNORE INTO roles (id, name, description, is_custom, permissions) VALUES (?, ?, ?, ?, ?)",
+        [role.id, role.name, role.description, role.is_custom, role.permissions]
+      );
+      // Backfill existing empty permissions
+      await db.run(
+        "UPDATE roles SET permissions = ? WHERE id = ? AND (permissions IS NULL OR permissions = '')",
+        [role.permissions, role.id]
       );
     }
   } catch (e) {
@@ -505,6 +516,24 @@ const authenticateToken = (req: any, res: any, next: any) => {
     req.user = user;
     next();
   });
+};
+
+const hasPermission = async (user: any, permission: string): Promise<boolean> => {
+  if (!user) return false;
+  if (user.role === 'admin') return true; // Admins always have all permissions!
+  
+  try {
+    const db = await dbPromise;
+    const roleRow = await db.get("SELECT permissions FROM roles WHERE id = ?", user.role);
+    if (!roleRow) {
+      return false;
+    }
+    const perms = JSON.parse(roleRow.permissions || "{}");
+    return !!perms[permission];
+  } catch (e) {
+    console.error("Error checking permission:", e);
+    return false;
+  }
 };
 
 /* --- API ROUTES --- */
@@ -1186,6 +1215,32 @@ app.post("/api/users", authenticateToken, async (req: any, res: any) => {
   res.json({ ...newUser, rolePrefix: newUser.rolePrefix || "", status: newUser.status || "Available" });
 });
 
+// Admin bulk change user roles
+app.put("/api/users/bulk/role", authenticateToken, async (req: any, res: any) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Only admins can perform bulk actions." });
+  }
+
+  const { userIds, role } = req.body;
+  if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+    return res.status(400).json({ error: "At least one user must be selected." });
+  }
+  if (!role) {
+    return res.status(400).json({ error: "Role is required." });
+  }
+
+  const db = await dbPromise;
+  const roleExists = await db.get("SELECT * FROM roles WHERE id = ?", role);
+  if (!roleExists) {
+    return res.status(400).json({ error: "Invalid role. Role does not exist in definitions." });
+  }
+
+  const placeholders = userIds.map(() => "?").join(",");
+  await db.run(`UPDATE users SET role = ? WHERE id IN (${placeholders})`, [role, ...userIds]);
+
+  res.json({ success: true, message: `Successfully updated roles for ${userIds.length} users.` });
+});
+
 // Admin update user
 app.put("/api/users/:id", authenticateToken, async (req: any, res: any) => {
   if (req.user.role !== "admin") {
@@ -1274,7 +1329,7 @@ app.post("/api/roles", authenticateToken, async (req: any, res: any) => {
     if (req.user.role !== "admin") {
       return res.status(403).json({ error: "Only admins can create custom roles." });
     }
-    let { id, name, description } = req.body;
+    let { id, name, description, permissions } = req.body;
     if (!id || !name) {
       return res.status(400).json({ error: "Role ID and Name are required." });
     }
@@ -1289,9 +1344,14 @@ app.post("/api/roles", authenticateToken, async (req: any, res: any) => {
       return res.status(400).json({ error: "A role with this ID already exists." });
     }
 
+    let permsStr = "{}";
+    if (permissions) {
+      permsStr = typeof permissions === "object" ? JSON.stringify(permissions) : String(permissions);
+    }
+
     await db.run(
-      "INSERT INTO roles (id, name, description, is_custom) VALUES (?, ?, ?, 1)",
-      [id, name, description || ""]
+      "INSERT INTO roles (id, name, description, is_custom, permissions) VALUES (?, ?, ?, 1, ?)",
+      [id, name, description || "", permsStr]
     );
 
     const newRole = await db.get("SELECT * FROM roles WHERE id = ?", id);
@@ -1301,30 +1361,37 @@ app.post("/api/roles", authenticateToken, async (req: any, res: any) => {
   }
 });
 
-// Update custom role
+// Update role permissions and settings
 app.put("/api/roles/:id", authenticateToken, async (req: any, res: any) => {
   try {
     if (req.user.role !== "admin") {
       return res.status(403).json({ error: "Only admins can update roles." });
     }
     const { id } = req.params;
-    const { name, description } = req.body;
-    if (!name) {
-      return res.status(400).json({ error: "Role Name is required." });
-    }
+    const { name, description, permissions } = req.body;
 
     const db = await dbPromise;
     const role = await db.get("SELECT * FROM roles WHERE id = ?", id);
     if (!role) {
       return res.status(404).json({ error: "Role not found." });
     }
-    if (role.is_custom !== 1) {
-      return res.status(400).json({ error: "Default roles cannot be modified." });
+
+    let finalName = role.name;
+    if (role.is_custom === 1) {
+      if (!name) {
+        return res.status(400).json({ error: "Role Name is required." });
+      }
+      finalName = name;
+    }
+
+    let permsStr = role.permissions || "{}";
+    if (permissions) {
+      permsStr = typeof permissions === "object" ? JSON.stringify(permissions) : String(permissions);
     }
 
     await db.run(
-      "UPDATE roles SET name = ?, description = ? WHERE id = ?",
-      [name, description || "", id]
+      "UPDATE roles SET name = ?, description = ?, permissions = ? WHERE id = ?",
+      [finalName, description !== undefined ? description : role.description, permsStr, id]
     );
 
     const updatedRole = await db.get("SELECT * FROM roles WHERE id = ?", id);
@@ -1474,8 +1541,9 @@ app.delete("/api/tasks/:taskId/comments/:commentId", authenticateToken, async (r
 
 // Create Task
 app.post("/api/tasks", authenticateToken, async (req: any, res: any) => {
-  if (req.user.role !== 'admin' && req.user.role !== 'manager') {
-    return res.status(403).json({ error: "Only Admins and Managers are allowed to create tasks." });
+  const isAllowed = await hasPermission(req.user, "create_tasks");
+  if (!isAllowed) {
+    return res.status(403).json({ error: "You do not have permission to create tasks." });
   }
 
   if (!req.body.projectId) {
@@ -1563,44 +1631,45 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
   const task = await db.get("SELECT * FROM tasks WHERE id = ?", req.params.id);
   if (!task) return res.sendStatus(404);
 
-  if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+  const canEditAllTasks = await hasPermission(req.user, "edit_all_tasks");
+  if (!canEditAllTasks) {
     if (task.assigneeId !== req.user.id) {
-      return res.status(403).json({ error: "Only Admins, Managers, or the assigned contributor can update this task." });
+      return res.status(403).json({ error: "Only admins, managers, or the assigned contributor can update this task." });
     }
 
     // Check if projectId is changed
     if (req.body.projectId !== undefined && String(req.body.projectId) !== String(task.projectId)) {
-      return res.status(403).json({ error: "Non-managers are not allowed to change the project." });
+      return res.status(403).json({ error: "You are not allowed to change the project." });
     }
 
     // Check if assigneeId is changed
     if (req.body.assigneeId !== undefined && (req.body.assigneeId || null) !== (task.assigneeId || null)) {
-      return res.status(403).json({ error: "Non-managers are not allowed to change the assignee." });
+      return res.status(403).json({ error: "You are not allowed to change the assignee." });
     }
 
     // Check if priority is changed
     if (req.body.priority !== undefined && req.body.priority !== task.priority) {
-      return res.status(403).json({ error: "Non-managers are not allowed to change the priority." });
+      return res.status(403).json({ error: "You are not allowed to change the priority." });
     }
 
     // Check if deadline is changed
     if (req.body.deadline !== undefined && req.body.deadline !== task.deadline) {
-      return res.status(403).json({ error: "Non-managers are not allowed to change the deadline." });
+      return res.status(403).json({ error: "You are not allowed to change the deadline." });
     }
 
     // Check if milestoneId is changed
     if (req.body.milestoneId !== undefined && (req.body.milestoneId || null) !== (task.milestoneId || null)) {
-      return res.status(403).json({ error: "Non-managers are not allowed to change the milestone." });
+      return res.status(403).json({ error: "You are not allowed to change the milestone." });
     }
 
     // Check if parentId is changed
     if (req.body.parentId !== undefined && (req.body.parentId || null) !== (task.parentId || null)) {
-      return res.status(403).json({ error: "Non-managers are not allowed to change the parent task." });
+      return res.status(403).json({ error: "You are not allowed to change the parent task." });
     }
 
     // Check if branchName is changed
     if (req.body.branchName !== undefined && (req.body.branchName || null) !== (task.branchName || null)) {
-      return res.status(403).json({ error: "Non-managers are not allowed to change the branch name." });
+      return res.status(403).json({ error: "You are not allowed to change the branch name." });
     }
 
     // Check if dependencies are changed
@@ -1609,13 +1678,13 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
       const currentDepIds = currentDepsRows.map((r: any) => r.blockedByTaskId).sort();
       const newDepIds = [...req.body.dependencies].sort();
       if (JSON.stringify(currentDepIds) !== JSON.stringify(newDepIds)) {
-        return res.status(403).json({ error: "Non-managers are not allowed to change dependencies." });
+        return res.status(403).json({ error: "You are not allowed to change dependencies." });
       }
     }
   }
 
-  if (req.user.role !== "admin" && req.user.role !== "manager" && task.creatorId !== req.user.id && task.assigneeId !== req.user.id) {
-    return res.status(403).json({ error: "Only admins, managers, creators, or assignees can edit tasks." });
+  if (!canEditAllTasks && task.creatorId !== req.user.id && task.assigneeId !== req.user.id) {
+    return res.status(403).json({ error: "Only authorized roles, task creators, or assignees can edit tasks." });
   }
 
   if (req.body.projectId === null || req.body.projectId === "") {
@@ -1704,8 +1773,9 @@ app.delete("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
   const task = await db.get("SELECT * FROM tasks WHERE id = ?", req.params.id);
   if (!task) return res.sendStatus(404);
 
-  if (req.user.role !== "admin" && req.user.role !== "manager" && task.creatorId !== req.user.id) {
-    return res.status(403).json({ error: "Only admins, managers or the task creator can delete tasks." });
+  const canDeleteTasks = await hasPermission(req.user, "delete_tasks");
+  if (!canDeleteTasks && task.creatorId !== req.user.id) {
+    return res.status(403).json({ error: "You do not have permission to delete this task." });
   }
 
   await db.run("DELETE FROM tasks WHERE id = ?", req.params.id);
@@ -1837,9 +1907,9 @@ app.get("/api/projects", authenticateToken, async (req: any, res: any) => {
 app.post("/api/projects", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
 
-  // Let managers and admins create, but maybe any user? Let's keep it global admin/manager.
-  if (req.user.role !== "admin" && req.user.role !== "manager") {
-    return res.status(403).json({ error: "Only admins and managers can create projects." });
+  const canManageProjects = await hasPermission(req.user, "manage_projects");
+  if (!canManageProjects) {
+    return res.status(403).json({ error: "You do not have permission to create projects." });
   }
 
   const { name, description, projectKey: customProjectKey } = req.body;
@@ -1899,8 +1969,9 @@ app.put("/api/projects/:id", authenticateToken, async (req: any, res: any) => {
   const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
   const isProjectAdmin = pm && pm.role === 'admin';
 
-  if (req.user.role !== "admin" && project.ownerId !== req.user.id && !isProjectAdmin) {
-    return res.status(403).json({ error: "Only admins, project owner or project admins can edit projects." });
+  const canManageProjects = await hasPermission(req.user, "manage_projects");
+  if (!canManageProjects && project.ownerId !== req.user.id && !isProjectAdmin) {
+    return res.status(403).json({ error: "Only project owners, admins, or authorized roles can edit projects." });
   }
 
   const { name, description } = req.body;
@@ -1921,8 +1992,9 @@ app.delete("/api/projects/:id", authenticateToken, async (req: any, res: any) =>
   const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
   const isProjectAdmin = pm && pm.role === 'admin';
 
-  if (req.user.role !== "admin" && project.ownerId !== req.user.id && !isProjectAdmin) {
-    return res.status(403).json({ error: "Only admins, project owner or project admins can delete projects." });
+  const canManageProjects = await hasPermission(req.user, "manage_projects");
+  if (!canManageProjects && project.ownerId !== req.user.id && !isProjectAdmin) {
+    return res.status(403).json({ error: "Only project owners, admins, or authorized roles can delete projects." });
   }
 
   await db.run("DELETE FROM projects WHERE id = ?", req.params.id);
@@ -2027,8 +2099,9 @@ app.post("/api/teams", authenticateToken, async (req: any, res: any) => {
        return res.status(403).json({ error: "Only admins, project owner or project admins can create teams for this project." });
     }
   } else {
-    if (req.user.role !== "admin" && req.user.role !== "manager") {
-      return res.status(403).json({ error: "Only admins and managers can create global teams." });
+    const canManageTeams = await hasPermission(req.user, "manage_teams");
+    if (!canManageTeams) {
+      return res.status(403).json({ error: "You do not have permission to create global teams." });
     }
   }
 
@@ -2154,8 +2227,9 @@ app.put("/api/teams/:id", authenticateToken, async (req: any, res: any) => {
   const team = await db.get("SELECT * FROM teams WHERE id = ?", req.params.id);
   if (!team) return res.sendStatus(404);
 
-  if (req.user.role !== "admin" && team.ownerId !== req.user.id) {
-    return res.status(403).json({ error: "Only admins and the team owner can edit this team." });
+  const canManageTeams = await hasPermission(req.user, "manage_teams");
+  if (!canManageTeams && team.ownerId !== req.user.id) {
+    return res.status(403).json({ error: "Only team owners, admins, or authorized roles can edit this team." });
   }
 
   const { name = null, description = null, projectId } = req.body;
@@ -2181,8 +2255,9 @@ app.delete("/api/teams/:id", authenticateToken, async (req: any, res: any) => {
   const team = await db.get("SELECT * FROM teams WHERE id = ?", req.params.id);
   if (!team) return res.sendStatus(404);
   
-  if (req.user.role !== "admin" && team.ownerId !== req.user.id) {
-    return res.status(403).json({ error: "Only admins or the team owner can delete this team." });
+  const canManageTeams = await hasPermission(req.user, "manage_teams");
+  if (!canManageTeams && team.ownerId !== req.user.id) {
+    return res.status(403).json({ error: "Only team owners, admins, or authorized roles can delete this team." });
   }
 
   await db.run("DELETE FROM teams WHERE id = ?", req.params.id);

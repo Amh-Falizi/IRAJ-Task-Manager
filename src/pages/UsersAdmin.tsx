@@ -18,10 +18,26 @@ export default function UsersAdmin() {
   const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // Bulk operation states
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [bulkRole, setBulkRole] = useState<string>('');
+  const [updatingBulk, setUpdatingBulk] = useState(false);
+
   // Role form states
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<any | null>(null);
-  const [roleForm, setRoleForm] = useState({ id: '', name: '', description: '' });
+  const [roleForm, setRoleForm] = useState({
+    id: '',
+    name: '',
+    description: '',
+    permissions: {
+      create_tasks: false,
+      edit_all_tasks: false,
+      delete_tasks: false,
+      manage_projects: false,
+      manage_teams: false
+    }
+  });
 
   const fetchUsers = async () => {
     try {
@@ -138,6 +154,62 @@ export default function UsersAdmin() {
     }
   };
 
+  const handleToggleSelectAll = () => {
+    if (selectedUserIds.length === users.length) {
+      setSelectedUserIds([]);
+    } else {
+      setSelectedUserIds(users.map(u => u.id));
+    }
+  };
+
+  const handleToggleSelectUser = (userId: string) => {
+    setSelectedUserIds(prev =>
+      prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
+  };
+
+  const handleBulkRoleUpdate = async () => {
+    if (!bulkRole) {
+      error("Please select a role to apply.");
+      return;
+    }
+    if (selectedUserIds.length === 0) {
+      error("No users selected.");
+      return;
+    }
+
+    setUpdatingBulk(true);
+    try {
+      const res = await fetch('/api/users/bulk/role', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          userIds: selectedUserIds,
+          role: bulkRole
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update roles.');
+      }
+
+      success(data.message || `Successfully updated roles for ${selectedUserIds.length} users.`);
+      setSelectedUserIds([]);
+      setBulkRole('');
+      fetchUsers();
+    } catch (err: any) {
+      error(err.message);
+    } finally {
+      setUpdatingBulk(false);
+    }
+  };
+
   const getRoleLabel = (user: User) => {
     const r = roles.find(role => role.id === user.role);
     const baseName = r ? r.name : user.role;
@@ -203,7 +275,18 @@ export default function UsersAdmin() {
           <button
             onClick={() => {
               setEditingRole(null);
-              setRoleForm({ id: '', name: '', description: '' });
+              setRoleForm({
+                id: '',
+                name: '',
+                description: '',
+                permissions: {
+                  create_tasks: false,
+                  edit_all_tasks: false,
+                  delete_tasks: false,
+                  manage_projects: false,
+                  manage_teams: false
+                }
+              });
               setIsRoleModalOpen(true);
             }}
             className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md shadow hover:scale-105 text-xs font-bold uppercase tracking-widest transition-all flex items-center gap-2 animate-fade-in"
@@ -241,10 +324,58 @@ export default function UsersAdmin() {
               <p className="text-xs text-muted font-sans leading-relaxed">You can customize the prefix shown before any role on an individual, per-user basis. Click the Edit button next to any user to personalize their exact title prefix.</p>
             </div>
 
+            {selectedUserIds.length > 0 && (
+              <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                  <p className="text-xs font-semibold text-strong">
+                    {selectedUserIds.length} {selectedUserIds.length === 1 ? 'user' : 'users'} selected for bulk action
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    className="rounded bg-surface-dim border border-border-subtle px-3 py-1.5 text-xs text-strong focus:border-blue-500 focus:outline-none"
+                    value={bulkRole}
+                    onChange={e => setBulkRole(e.target.value)}
+                    disabled={updatingBulk}
+                  >
+                    <option value="">-- Apply Specific Role --</option>
+                    {roles.map(r => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleBulkRoleUpdate}
+                    disabled={!bulkRole || updatingBulk}
+                    className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white px-3.5 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all"
+                  >
+                    {updatingBulk ? 'Applying...' : 'Apply Role'}
+                  </button>
+                  <button
+                    onClick={() => setSelectedUserIds([])}
+                    disabled={updatingBulk}
+                    className="text-subtle hover:text-strong text-[10px] font-bold uppercase tracking-widest px-2 py-1.5 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="bg-surface border border-border-subtle rounded-lg overflow-hidden">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-surface-dim border-b border-border-subtle text-[10px] uppercase tracking-widest text-subtle font-bold">
+                    <th className="px-4 py-3 text-center w-12">
+                      <input
+                        type="checkbox"
+                        className="rounded border-border-subtle text-blue-600 focus:ring-blue-500/20 bg-surface-dim cursor-pointer"
+                        checked={users.length > 0 && selectedUserIds.length === users.length}
+                        onChange={handleToggleSelectAll}
+                      />
+                    </th>
                     <th className="px-6 py-3 font-medium">User</th>
                     <th className="px-6 py-3 font-medium">Email</th>
                     <th className="px-6 py-3 font-medium">Role</th>
@@ -252,52 +383,63 @@ export default function UsersAdmin() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
-                  {users.map(user => (
-                    <tr key={user.id} className="hover:bg-surface-accent/20 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <UserAvatar user={user} showTooltip={false} />
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-sm font-medium text-strong">{user.name}</span>
-                            {user.status && user.status !== "Available" && (
-                              <span className="text-[10px] font-medium text-subtle px-1.5 py-0.5 rounded bg-surface-dim border border-border-subtle">
-                                {user.status}
-                              </span>
+                  {users.map(user => {
+                    const isSelected = selectedUserIds.includes(user.id);
+                    return (
+                      <tr key={user.id} className={`hover:bg-surface-accent/20 transition-colors ${isSelected ? 'bg-blue-500/5' : ''}`}>
+                        <td className="px-4 py-4 text-center">
+                          <input
+                            type="checkbox"
+                            className="rounded border-border-subtle text-blue-600 focus:ring-blue-500/20 bg-surface-dim cursor-pointer"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelectUser(user.id)}
+                          />
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <UserAvatar user={user} showTooltip={false} />
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm font-medium text-strong">{user.name}</span>
+                              {user.status && user.status !== "Available" && (
+                                <span className="text-[10px] font-medium text-subtle px-1.5 py-0.5 rounded bg-surface-dim border border-border-subtle">
+                                  {user.status}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-muted">{user.email}</td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${getRoleBadgeStyle(user.role)}`}>
+                            {getRoleLabel(user)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => { setEditingUser(user); setIsModalOpen(true); }}
+                              className="p-1.5 text-blue-500 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-md transition-all flex items-center justify-center"
+                              title="Edit User"
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            {user.id !== currentUser?.id && (
+                              <button
+                                onClick={() => handleDeleteUser(user)}
+                                className="p-1.5 text-red-500 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-md transition-all flex items-center justify-center"
+                                title="Delete User"
+                              >
+                                <Trash2 size={16} />
+                              </button>
                             )}
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-muted">{user.email}</td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${getRoleBadgeStyle(user.role)}`}>
-                          {getRoleLabel(user)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => { setEditingUser(user); setIsModalOpen(true); }}
-                            className="p-1.5 text-blue-500 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-md transition-all flex items-center justify-center"
-                            title="Edit User"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          {user.id !== currentUser?.id && (
-                            <button
-                              onClick={() => handleDeleteUser(user)}
-                              className="p-1.5 text-red-500 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-md transition-all flex items-center justify-center"
-                              title="Delete User"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {users.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={4} className="px-6 py-8 text-center text-subtle text-sm">
+                      <td colSpan={5} className="px-6 py-8 text-center text-subtle text-sm">
                         No users found.
                       </td>
                     </tr>
@@ -349,29 +491,47 @@ export default function UsersAdmin() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setEditingRole(role);
+                              let parsedPerms = {
+                                create_tasks: false,
+                                edit_all_tasks: false,
+                                delete_tasks: false,
+                                manage_projects: false,
+                                manage_teams: false
+                              };
+                              if (role.permissions) {
+                                try {
+                                  const parsed = typeof role.permissions === 'string' ? JSON.parse(role.permissions) : role.permissions;
+                                  parsedPerms = { ...parsedPerms, ...parsed };
+                                } catch (err) {
+                                  console.error("Failed to parse permissions", err);
+                                }
+                              }
+                              setRoleForm({
+                                id: role.id,
+                                name: role.name,
+                                description: role.description || '',
+                                permissions: parsedPerms
+                              });
+                              setIsRoleModalOpen(true);
+                            }}
+                            className="p-1.5 text-blue-500 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-md transition-all flex items-center justify-center"
+                            title={role.is_custom === 1 ? "Edit Custom Role & Permissions" : "Customize Role Permissions"}
+                          >
+                            <Edit2 size={16} />
+                          </button>
                           {role.is_custom === 1 ? (
-                            <>
-                              <button
-                                onClick={() => {
-                                  setEditingRole(role);
-                                  setRoleForm({ id: role.id, name: role.name, description: role.description || '' });
-                                  setIsRoleModalOpen(true);
-                                }}
-                                className="p-1.5 text-blue-500 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-md transition-all flex items-center justify-center"
-                                title="Edit Custom Role"
-                              >
-                                <Edit2 size={16} />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteRole(role.id, role.name)}
-                                className="p-1.5 text-red-500 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-md transition-all flex items-center justify-center"
-                                title="Delete Custom Role"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </>
+                            <button
+                              onClick={() => handleDeleteRole(role.id, role.name)}
+                              className="p-1.5 text-red-500 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-md transition-all flex items-center justify-center"
+                              title="Delete Custom Role"
+                            >
+                              <Trash2 size={16} />
+                            </button>
                           ) : (
-                            <span className="text-[10px] text-muted italic">Immutable</span>
+                            <span className="text-[10px] text-muted italic">System Default</span>
                           )}
                         </div>
                       </td>
@@ -400,7 +560,10 @@ export default function UsersAdmin() {
           <div className="bg-surface border border-border-subtle rounded-xl w-full max-w-md shadow-2xl flex flex-col overflow-hidden max-h-[90vh]">
             <div className="flex justify-between items-center px-6 py-4 border-b border-border-subtle shrink-0">
               <h2 className="text-sm font-bold tracking-widest text-strong uppercase">
-                {editingRole ? 'Edit Custom Role' : 'Create Custom Role'}
+                {editingRole 
+                  ? (editingRole.is_custom === 1 ? 'Edit Custom Role' : 'Customize System Role')
+                  : 'Create Custom Role'
+                }
               </h2>
               <button onClick={() => setIsRoleModalOpen(false)} className="p-1 hover:bg-surface-dim rounded text-muted transition-colors">
                 <X size={18} />
@@ -426,22 +589,64 @@ export default function UsersAdmin() {
                 <input
                   required
                   type="text"
+                  disabled={editingRole && editingRole.is_custom !== 1}
                   placeholder="e.g. UI/UX Designer"
-                  className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-sm text-strong focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-sm text-strong focus:border-blue-500 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                   value={roleForm.name}
                   onChange={e => setRoleForm(p => ({ ...p, name: e.target.value }))}
                 />
+                {editingRole && editingRole.is_custom !== 1 && (
+                  <p className="text-[10px] text-muted">System default role names cannot be renamed.</p>
+                )}
               </div>
               <div className="space-y-1">
                 <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Description</label>
                 <textarea
                   placeholder="What is this role responsible for?"
-                  className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-sm text-strong focus:border-blue-500 focus:outline-none min-h-[80px]"
+                  className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-sm text-strong focus:border-blue-500 focus:outline-none min-h-[60px]"
                   value={roleForm.description}
                   onChange={e => setRoleForm(p => ({ ...p, description: e.target.value }))}
                 />
               </div>
-              <div className="pt-4 flex justify-end gap-3 border-t border-border-subtle bg-surface-dim -mx-6 -mb-6 p-4">
+
+              {/* Dynamic Permissions Section */}
+              <div className="space-y-3 pt-2">
+                <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Role Permissions</label>
+                <div className="space-y-2.5 bg-surface-dim/50 border border-border-subtle rounded-lg p-3">
+                  {[
+                    { key: 'create_tasks', label: 'Create Tasks', desc: 'Can create new tasks within projects' },
+                    { key: 'edit_all_tasks', label: 'Edit All Tasks', desc: 'Can edit details of any task' },
+                    { key: 'delete_tasks', label: 'Delete Tasks', desc: 'Can delete tasks' },
+                    { key: 'manage_projects', label: 'Manage Projects', desc: 'Can create, edit, and delete projects' },
+                    { key: 'manage_teams', label: 'Manage Teams', desc: 'Can create, edit, and delete teams' },
+                  ].map((perm) => (
+                    <label key={perm.key} className="flex items-start gap-3 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 rounded border-border-subtle text-blue-600 focus:ring-blue-500/20 bg-surface-dim"
+                        checked={roleForm.permissions[perm.key as keyof typeof roleForm.permissions] || false}
+                        onChange={(e) => setRoleForm(prev => ({
+                          ...prev,
+                          permissions: {
+                            ...prev.permissions,
+                            [perm.key]: e.target.checked
+                          }
+                        }))}
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-xs font-semibold text-strong group-hover:text-blue-400 transition-colors">
+                          {perm.label}
+                        </span>
+                        <span className="text-[10px] text-muted">
+                          {perm.desc}
+                        </span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-4 flex justify-end gap-3 border-t border-border-subtle bg-surface-dim -mx-6 -mb-6 p-4 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsRoleModalOpen(false)}
