@@ -391,6 +391,35 @@ async function initDb(): Promise<DatabaseWrapper> {
     console.error("Failed to create/seed settings table:", e);
   }
 
+  try {
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS roles (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        is_custom INTEGER DEFAULT 0
+      );
+    `);
+    const defaultRoles = [
+      { id: "admin", name: "Admin", description: "Full administrator permissions", is_custom: 0 },
+      { id: "manager", name: "Manager", description: "Can manage projects, teams, and tasks", is_custom: 0 },
+      { id: "developer", name: "Developer", description: "Core developer role to build and claim tasks", is_custom: 0 },
+      { id: "designer", name: "Designer", description: "Can design user interfaces and experiences", is_custom: 0 },
+      { id: "qa", name: "QA Engineer", description: "Can test and verify task completions", is_custom: 0 },
+      { id: "product_owner", name: "Product Owner", description: "Can manage roadmap and verify milestones", is_custom: 0 },
+      { id: "scrum_master", name: "Scrum Master", description: "Facilitates agile processes and unblocks team", is_custom: 0 },
+      { id: "viewer", name: "Viewer", description: "Read-only access to view projects and boards", is_custom: 0 }
+    ];
+    for (const role of defaultRoles) {
+      await db.run(
+        "INSERT OR IGNORE INTO roles (id, name, description, is_custom) VALUES (?, ?, ?, ?)",
+        [role.id, role.name, role.description, role.is_custom]
+      );
+    }
+  } catch (e) {
+    console.error("Failed to create/seed roles table:", e);
+  }
+
   // Backfill project members for existing projects if they don't have members
   try {
     const existingProjects = await db.all("SELECT id, ownerId, createdAt FROM projects");
@@ -1142,14 +1171,16 @@ app.post("/api/users", authenticateToken, async (req: any, res: any) => {
   const existing = await db.get("SELECT * FROM users WHERE email = ? COLLATE NOCASE", email);
   if (existing) return res.status(400).json({ error: "Email already registered." });
 
+  const roleExists = role ? await db.get("SELECT * FROM roles WHERE id = ?", role) : null;
+  const finalRole = roleExists ? role : "developer";
+
   const salt = await bcrypt.genSalt(10);
   const passwordHash = await bcrypt.hash(password, salt);
   const id = uuidv4();
-  const defaultRole = role && ["admin", "manager", "developer"].includes(role) ? role : "developer";
 
   await db.run(
     "INSERT INTO users (id, name, email, passwordHash, role, rolePrefix, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    [id, name, email, passwordHash, defaultRole, rolePrefix || null, "Available"]
+    [id, name, email, passwordHash, finalRole, rolePrefix || null, "Available"]
   );
   const newUser = await db.get("SELECT id, name, email, role, rolePrefix, status FROM users WHERE id = ?", id);
   res.json({ ...newUser, rolePrefix: newUser.rolePrefix || "", status: newUser.status || "Available" });
@@ -1166,6 +1197,11 @@ app.put("/api/users/:id", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
   const existing = await db.get("SELECT * FROM users WHERE email = ? AND id != ?", [email, req.params.id]);
   if (existing) return res.status(400).json({ error: "Email already in use." });
+
+  const roleExists = await db.get("SELECT * FROM roles WHERE id = ?", role);
+  if (!roleExists) {
+    return res.status(400).json({ error: "Invalid role selected." });
+  }
 
   const statusVal = status || "Available";
 
@@ -1204,14 +1240,127 @@ app.put("/api/users/:id/role", authenticateToken, async (req: any, res: any) => 
   }
 
   const { role } = req.body;
-  if (!role || !["admin", "manager", "developer"].includes(role)) {
-    return res.status(400).json({ error: "Invalid role." });
+  if (!role) {
+    return res.status(400).json({ error: "Role is required." });
   }
 
   const db = await dbPromise;
+  const roleExists = await db.get("SELECT * FROM roles WHERE id = ?", role);
+  if (!roleExists) {
+    return res.status(400).json({ error: "Invalid role. Role does not exist in definitions." });
+  }
+
   await db.run("UPDATE users SET role = ? WHERE id = ?", [role, req.params.id]);
   const updatedUser = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", req.params.id);
   res.json(updatedUser);
+});
+
+// Roles API endpoints
+
+// Get all roles
+app.get("/api/roles", authenticateToken, async (req: any, res: any) => {
+  try {
+    const db = await dbPromise;
+    const roles = await db.all("SELECT * FROM roles ORDER BY is_custom ASC, name ASC");
+    res.json(roles);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Create custom role
+app.post("/api/roles", authenticateToken, async (req: any, res: any) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "Only admins can create custom roles." });
+    }
+    let { id, name, description } = req.body;
+    if (!id || !name) {
+      return res.status(400).json({ error: "Role ID and Name are required." });
+    }
+    id = id.toLowerCase().replace(/[^a-z0-9_-]/g, "").trim();
+    if (id === "") {
+      return res.status(400).json({ error: "Invalid Role ID. Must be alphanumeric." });
+    }
+    
+    const db = await dbPromise;
+    const existing = await db.get("SELECT * FROM roles WHERE id = ?", id);
+    if (existing) {
+      return res.status(400).json({ error: "A role with this ID already exists." });
+    }
+
+    await db.run(
+      "INSERT INTO roles (id, name, description, is_custom) VALUES (?, ?, ?, 1)",
+      [id, name, description || ""]
+    );
+
+    const newRole = await db.get("SELECT * FROM roles WHERE id = ?", id);
+    res.json(newRole);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Update custom role
+app.put("/api/roles/:id", authenticateToken, async (req: any, res: any) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "Only admins can update roles." });
+    }
+    const { id } = req.params;
+    const { name, description } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: "Role Name is required." });
+    }
+
+    const db = await dbPromise;
+    const role = await db.get("SELECT * FROM roles WHERE id = ?", id);
+    if (!role) {
+      return res.status(404).json({ error: "Role not found." });
+    }
+    if (role.is_custom !== 1) {
+      return res.status(400).json({ error: "Default roles cannot be modified." });
+    }
+
+    await db.run(
+      "UPDATE roles SET name = ?, description = ? WHERE id = ?",
+      [name, description || "", id]
+    );
+
+    const updatedRole = await db.get("SELECT * FROM roles WHERE id = ?", id);
+    res.json(updatedRole);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Delete custom role
+app.delete("/api/roles/:id", authenticateToken, async (req: any, res: any) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "Only admins can delete roles." });
+    }
+    const { id } = req.params;
+
+    const db = await dbPromise;
+    const role = await db.get("SELECT * FROM roles WHERE id = ?", id);
+    if (!role) {
+      return res.status(404).json({ error: "Role not found." });
+    }
+    if (role.is_custom !== 1) {
+      return res.status(400).json({ error: "Default roles cannot be deleted." });
+    }
+
+    // Delete the role
+    await db.run("DELETE FROM roles WHERE id = ?", id);
+
+    // Reassign any users who had this role to 'developer' as default
+    await db.run("UPDATE users SET role = 'developer' WHERE role = ?", id);
+
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Get Settings
@@ -1325,8 +1474,8 @@ app.delete("/api/tasks/:taskId/comments/:commentId", authenticateToken, async (r
 
 // Create Task
 app.post("/api/tasks", authenticateToken, async (req: any, res: any) => {
-  if (req.user.role === 'developer') {
-    return res.status(403).json({ error: "Developers are not allowed to create tasks." });
+  if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+    return res.status(403).json({ error: "Only Admins and Managers are allowed to create tasks." });
   }
 
   if (!req.body.projectId) {
@@ -1414,44 +1563,44 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
   const task = await db.get("SELECT * FROM tasks WHERE id = ?", req.params.id);
   if (!task) return res.sendStatus(404);
 
-  if (req.user.role === 'developer') {
+  if (req.user.role !== 'admin' && req.user.role !== 'manager') {
     if (task.assigneeId !== req.user.id) {
-      return res.status(403).json({ error: "Developers can only update tasks assigned to them." });
+      return res.status(403).json({ error: "Only Admins, Managers, or the assigned contributor can update this task." });
     }
 
     // Check if projectId is changed
     if (req.body.projectId !== undefined && String(req.body.projectId) !== String(task.projectId)) {
-      return res.status(403).json({ error: "Developers are not allowed to change the project." });
+      return res.status(403).json({ error: "Non-managers are not allowed to change the project." });
     }
 
     // Check if assigneeId is changed
     if (req.body.assigneeId !== undefined && (req.body.assigneeId || null) !== (task.assigneeId || null)) {
-      return res.status(403).json({ error: "Developers are not allowed to change the assignee." });
+      return res.status(403).json({ error: "Non-managers are not allowed to change the assignee." });
     }
 
     // Check if priority is changed
     if (req.body.priority !== undefined && req.body.priority !== task.priority) {
-      return res.status(403).json({ error: "Developers are not allowed to change the priority." });
+      return res.status(403).json({ error: "Non-managers are not allowed to change the priority." });
     }
 
     // Check if deadline is changed
     if (req.body.deadline !== undefined && req.body.deadline !== task.deadline) {
-      return res.status(403).json({ error: "Developers are not allowed to change the deadline." });
+      return res.status(403).json({ error: "Non-managers are not allowed to change the deadline." });
     }
 
     // Check if milestoneId is changed
     if (req.body.milestoneId !== undefined && (req.body.milestoneId || null) !== (task.milestoneId || null)) {
-      return res.status(403).json({ error: "Developers are not allowed to change the milestone." });
+      return res.status(403).json({ error: "Non-managers are not allowed to change the milestone." });
     }
 
     // Check if parentId is changed
     if (req.body.parentId !== undefined && (req.body.parentId || null) !== (task.parentId || null)) {
-      return res.status(403).json({ error: "Developers are not allowed to change the parent task." });
+      return res.status(403).json({ error: "Non-managers are not allowed to change the parent task." });
     }
 
     // Check if branchName is changed
     if (req.body.branchName !== undefined && (req.body.branchName || null) !== (task.branchName || null)) {
-      return res.status(403).json({ error: "Developers are not allowed to change the branch name." });
+      return res.status(403).json({ error: "Non-managers are not allowed to change the branch name." });
     }
 
     // Check if dependencies are changed
@@ -1460,7 +1609,7 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
       const currentDepIds = currentDepsRows.map((r: any) => r.blockedByTaskId).sort();
       const newDepIds = [...req.body.dependencies].sort();
       if (JSON.stringify(currentDepIds) !== JSON.stringify(newDepIds)) {
-        return res.status(403).json({ error: "Developers are not allowed to change dependencies." });
+        return res.status(403).json({ error: "Non-managers are not allowed to change dependencies." });
       }
     }
   }

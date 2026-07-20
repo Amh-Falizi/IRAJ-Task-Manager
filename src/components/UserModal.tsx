@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { X, Save } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -22,6 +22,24 @@ export default function UserModal({ user, onClose, onSave }: UserModalProps) {
   });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [roles, setRoles] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchRoles = async () => {
+      try {
+        const res = await fetch('/api/roles', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setRoles(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch roles:', err);
+      }
+    };
+    fetchRoles();
+  }, [token]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,16 +121,18 @@ export default function UserModal({ user, onClose, onSave }: UserModalProps) {
               <select
                 className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-sm text-strong uppercase focus:border-blue-500 focus:outline-none appearance-none disabled:opacity-50"
                  value={formData.role}
-                onChange={e => setFormData(p => ({ ...p, role: e.target.value as "admin" | "manager" | "developer" }))}
+                onChange={e => setFormData(p => ({ ...p, role: e.target.value }))}
                 disabled={isSelf}
               >
-                <option value="developer">Developer</option>
-                <option value="manager">Manager</option>
-                <option value="admin">Admin</option>
+                {roles.map(r => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
               </select>
             </div>
 
-            {(formData.role === 'developer' || formData.role === 'manager') && (
+            {formData.role !== 'admin' && (
               <div className="space-y-1">
                 <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Role Prefix Label</label>
                 <input
@@ -120,9 +140,9 @@ export default function UserModal({ user, onClose, onSave }: UserModalProps) {
                   className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-sm text-strong focus:border-blue-500 focus:outline-none"
                   value={formData.rolePrefix}
                   onChange={e => setFormData(p => ({ ...p, rolePrefix: e.target.value }))}
-                  placeholder={formData.role === 'manager' ? 'e.g. Engineering' : 'e.g. Lead'}
+                  placeholder="e.g. Lead, Senior, Principal"
                 />
-                <p className="text-[10px] text-muted">A custom prefix before the role name (e.g., '{formData.rolePrefix || (formData.role === 'manager' ? 'Engineering' : 'Lead')}' {formData.role === 'manager' ? 'Manager' : 'Developer'})</p>
+                <p className="text-[10px] text-muted">A custom prefix before the role name (e.g., '{formData.rolePrefix || 'Lead'}' {roles.find(r => r.id === formData.role)?.name || 'Contributor'})</p>
               </div>
             )}
             

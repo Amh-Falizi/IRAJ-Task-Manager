@@ -2,7 +2,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: "admin" | "manager" | "developer" | "viewer" | "member";
+  role: string;
   skills?: string[];
   rolePrefix?: string;
   status?: string;
@@ -73,7 +73,7 @@ export interface TeamMember extends User {
 
 export interface ProjectMember extends User {
   projectId: string;
-  role: "admin" | "manager" | "developer" | "viewer" | "member";
+  role: string;
   joinedAt: string;
 }
 

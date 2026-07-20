@@ -149,17 +149,7 @@ export default function Register() {
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Role Assignment</label>
-            <select
-              className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong focus:border-blue-500 focus:outline-none appearance-none"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-            >
-              <option value="developer">Developer</option>
-              <option value="manager">Manager</option>
-            </select>
-          </div>
+
 
           <button
             type="submit"
