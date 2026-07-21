@@ -91,8 +91,34 @@ export default function Login() {
   };
 
   return (
-    <div className="flex h-screen items-center justify-center bg-page-bg px-4 font-sans text-primary">
-      <div className="w-full max-w-sm space-y-6 rounded-lg bg-surface border border-border-subtle p-6 shadow-xl">
+    <div className="relative flex min-h-screen items-center justify-center bg-page-bg px-4 py-12 font-sans text-primary overflow-hidden">
+      {/* Dynamic Mesh Gradient Background */}
+      <div className="absolute inset-0 z-0 bg-[#07090e]">
+        {/* Glowing floating ambient light orbs */}
+        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-blue-600/20 blur-[120px] animate-float-slow" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-purple-600/20 blur-[130px] animate-float-reverse" />
+        <div className="absolute top-[40%] left-[30%] w-[45%] h-[45%] rounded-full bg-indigo-500/15 blur-[150px] animate-pulse-slow" />
+        <div className="absolute bottom-[20%] left-[-5%] w-[35%] h-[35%] rounded-full bg-cyan-500/10 blur-[110px] animate-float-slow" />
+
+        {/* Crisp high-tech geometric grid pattern overlay */}
+        <div 
+          className="absolute inset-0 opacity-[0.12]" 
+          style={{
+            backgroundImage: `
+              radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.25) 1.5px, transparent 0),
+              linear-gradient(to right, rgba(148, 163, 184, 0.02) 1px, transparent 1px),
+              linear-gradient(to bottom, rgba(148, 163, 184, 0.02) 1px, transparent 1px)
+            `,
+            backgroundSize: '24px 24px, 24px 24px, 24px 24px'
+          }}
+        />
+
+        {/* Subtle radial overlay for depth */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#07090e] via-transparent to-transparent opacity-80" />
+      </div>
+
+      {/* Actual login card with sleek glassmorphism design */}
+      <div className="relative z-10 w-full max-w-sm space-y-6 rounded-xl bg-surface/80 backdrop-blur-xl border border-border-strong/50 p-6 shadow-[0_20px_50px_rgba(0,0,0,0.6)] border-t-white/10 hover:border-blue-500/40 transition-all duration-500">
         <div className="flex flex-col items-center space-y-2">
           <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-strong font-bold mb-2">
             Σ
