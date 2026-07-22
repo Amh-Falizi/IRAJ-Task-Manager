@@ -129,43 +129,58 @@ If running directly on the host system:
    ```
    *Your `database.sqlite` file will persist reliably in the application root directory across service restarts.*
 
-### 2. Docker Deployment with Persistent Volume
-If deploying via Docker, the active SQLite file (`database.sqlite`) is written inside the container's working directory (`/app`). To prevent data loss when the container is rebuilt or restarted, you must mount a persistent volume for the database file:
+### 2. Docker Compose Deployment (App + PostgreSQL)
+
+The project includes a ready-to-use `docker-compose.yaml` that orchestrates both the **Node.js application** and a **PostgreSQL 18** database container with automatic health checks and persistent volume storage.
+
+#### Running with Docker Compose:
+
+1. Create a `.env` file at the root (or pass environment variables):
+   ```env
+   POSTGRES_USER=devuser
+   POSTGRES_PASSWORD=devpassword
+   POSTGRES_DB=devdb
+   GEMINI_API_KEY=your_gemini_key
+   APP_URL=http://your-vps-ip:3000
+   ```
+
+2. Start the services:
+   ```bash
+   docker compose up -d --build
+   ```
+
+#### Changing Ports (e.g. to Port 3001 or 3003):
+
+If you want to run the application on a different host port (such as `3001`), update the port mapping and `PORT` environment variable in `docker-compose.yaml`:
+
+```yaml
+  app:
+    ports:
+      - "3001:3000"  # Exposes host port 3001 mapped to container port 3000
+    environment:
+      - PORT=3000
+      - APP_URL=http://your-vps-ip:3001
+```
+*(Or set `PORT=3001` and `ports: - "3001:3001"` if you want the application process inside the container to listen on 3001 as well).*
+
+---
+
+### 3. SQLite-Only Docker Deployment (Optional)
+
+If you prefer deploying via Docker without running PostgreSQL (using local SQLite instead):
 
 #### Option A: Docker Run (Single Volume Mount)
 Initialize and run the container by mounting a directory from your VPS host to the database file path:
 ```bash
 docker run -d \
-  -p 3003:3003 \
+  -p 3001:3000 \
   -v /var/lib/devteam-taskmanager/database.sqlite:/app/database.sqlite \
-  -e PORT=3003 \
+  -e PORT=3000 \
   -e GEMINI_API_KEY="your_gemini_key" \
   -e APP_URL="https://yourdomain.com" \
   --name taskmanager \
   your-docker-image
 ```
-
-#### Option B: Docker Compose
-Create a `docker-compose.yml` file on your VPS:
-```yaml
-version: '3.8'
-
-services:
-  app:
-    image: your-docker-image
-    ports:
-      - "3003:3003"
-    environment:
-      - PORT=3003
-      - GEMINI_API_KEY=your_gemini_key
-      - APP_URL=https://yourdomain.com
-    volumes:
-      # Mounts the local host directory containing the sqlite db file to /app inside the container
-      - ./data/database.sqlite:/app/database.sqlite
-    restart: always
-```
-
-*By mounting `./data/database.sqlite` (or a named docker volume), all of your project, task, and user data will remain perfectly safe and persistent.*
 
 ---
 
