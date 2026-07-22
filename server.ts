@@ -2223,7 +2223,14 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
         // 1. Get SHA of base branch
         const baseRefRes = await fetch(`https://api.github.com/repos/${owner}/${name}/git/ref/heads/${targetBaseBranch}`, { headers });
         if (!baseRefRes.ok) {
-          throw new Error(`Failed to find base branch '${targetBaseBranch}' on GitHub`);
+          let errMsg = `Failed to find base branch '${targetBaseBranch}' on GitHub`;
+          try {
+            const errJson = await baseRefRes.json();
+            if (errJson.message) {
+              errMsg += ` (${errJson.message})`;
+            }
+          } catch (e) {}
+          throw new Error(errMsg);
         }
         const baseRefData = await baseRefRes.json();
         const sha = baseRefData.object.sha;
@@ -2239,8 +2246,20 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
         });
 
         if (!createRefRes.ok) {
-          const createErr = await createRefRes.json();
-          throw new Error(createErr.message || 'Failed to create branch on GitHub');
+          let errMsg = 'Failed to create branch on GitHub';
+          try {
+            const createErr = await createRefRes.json();
+            errMsg = createErr.message || errMsg;
+            if (createErr.errors && Array.isArray(createErr.errors)) {
+              const details = createErr.errors.map((e: any) => e.message || JSON.stringify(e)).join(', ');
+              errMsg += `: ${details}`;
+            }
+          } catch (e) {
+            try {
+              errMsg = await createRefRes.text() || errMsg;
+            } catch (inner) {}
+          }
+          throw new Error(errMsg);
         }
 
         remoteCreated = true;
@@ -2262,8 +2281,16 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
         });
 
         if (!glRes.ok) {
-          const glErr = await glRes.json();
-          throw new Error(glErr.message || 'Failed to create branch on GitLab');
+          let errMsg = 'Failed to create branch on GitLab';
+          try {
+            const glErr = await glRes.json();
+            errMsg = glErr.message || glErr.error || errMsg;
+          } catch (e) {
+            try {
+              errMsg = await glRes.text() || errMsg;
+            } catch (inner) {}
+          }
+          throw new Error(errMsg);
         }
 
         const glData = await glRes.json();
@@ -2274,6 +2301,14 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
       console.error("Error creating remote branch:", err.message);
       remoteError = err.message;
     }
+  }
+
+  // If a remote repo is configured, but remote branch creation failed, return an error response
+  if (owner && name && token && !remoteCreated) {
+    return res.status(400).json({
+      success: false,
+      error: remoteError || "Failed to create remote branch on Git provider. Check your repository token permissions, repository path, and default branch settings."
+    });
   }
 
   // Save branch onto task if taskId provided

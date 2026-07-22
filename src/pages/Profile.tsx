@@ -446,7 +446,10 @@ export default function Profile() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name) return;
+    if (!name || !name.trim()) {
+      error("Name is required and cannot be empty.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -781,7 +784,7 @@ export default function Profile() {
                   <div className="pt-4 flex justify-end">
                     <button
                       type="submit"
-                      disabled={saving || (name === user?.name && statusText === (user?.status || "Available"))}
+                      disabled={saving}
                       className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 disabled:text-strong/50 text-strong px-6 py-2 rounded font-bold uppercase text-[10px] tracking-widest transition-colors"
                     >
                       {saving ? (

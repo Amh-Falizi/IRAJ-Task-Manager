@@ -8,13 +8,17 @@ DevTeam Task Manager features deep integration with **GitHub** and **GitLab** re
 
 To enable Git integrations for a project:
 
-1. Open the **Projects** page (`/projects`).
-2. Click the Git icon on a project card or open the project options and select **"Repository Settings"**.
+1. Open the **Projects** page (`/projects`) or navigate to `/git-repository`.
+2. Click the Git icon on a project card, open the project options, or click **"Repository Integration"** on the Repository page.
 3. Configure the following fields:
    - **Provider**: Select **GitHub** or **GitLab**.
    - **Repository URL**: E.g. `https://github.com/my-org/my-repo` or `https://gitlab.com/my-org/my-repo`.
    - **Default Base Branch**: E.g. `main` or `master`.
    - **Personal Access Token (PAT)**: Provide a token with repository write access (`repo` scope for GitHub, `api` scope for GitLab).
+
+> [!IMPORTANT]
+> **Access Security Rules**:
+> Repository integration configurations (such as repository URL, Personal Access Tokens, and default branches) can only be viewed and altered by **Project Managers**, **System Administrators**, or the **Project Owner**. For other team members, these settings are locked down with a visual warning indicator to prevent unauthorized configuration changes and token exposure.
 
 ---
 
@@ -45,7 +49,18 @@ git fetch origin && git checkout feature/PROJ-14-add-jwt-auth
 
 ---
 
-## 4. Repository Management Page (`/git-repository`)
+## 4. Troubleshooting & Verification
+
+If remote branch creation fails, the backend will return detailed validation and API error outputs to help debug issues instantly:
+
+- **Check Base Branch Existence**: Ensure the default base branch (e.g. `main` or `master`) exists on your remote repository. If it is missing or misspelled, the app will return a detailed error stating that it failed to locate the specified base branch on GitHub/GitLab.
+- **Validate Token Permissions**: The provided Personal Access Token (PAT) must have proper write capabilities. For GitHub, check the `repo` scope. For GitLab, check the `api` scope. If the token is invalid or lacks access, the API will output the exact provider authorization failure message.
+- **Check Repository Paths**: Ensure the project is linked with a valid owner/name format extracted from your Git repository URL.
+- **Check User Roles**: Non-managers or non-admins cannot change repository settings or access tokens. Ensure you have the appropriate role permission if you need to update repository connection keys.
+
+---
+
+## 5. Repository Management Page (`/git-repository`)
 
 Navigate to `/git-repository` to view repository-wide insights:
 - **Active Branches List**: Overview of all active remote branches across projects.

@@ -141,7 +141,10 @@ export default function GitRepositoryPage() {
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProjectId) return;
+    if (!selectedProjectId) {
+      error("No active project selected. Please select a project before saving.");
+      return;
+    }
     if (!isManagerOrAdmin) {
       error("Permission denied: Only Admins, Managers, or the Project Owner can alter repository integration settings");
       return;
@@ -184,6 +187,10 @@ export default function GitRepositoryPage() {
 
   const handleCreateBranch = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedProjectId) {
+      error("No active project selected. Please select a project first.");
+      return;
+    }
     if (!newBranchName.trim()) {
       error('Branch name is required');
       return;
@@ -224,6 +231,10 @@ export default function GitRepositoryPage() {
 
   const handleCreatePR = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!selectedProjectId) {
+      error("No active project selected. Please select a project first.");
+      return;
+    }
     if (!prSourceBranch) {
       error('Source branch is required');
       return;
@@ -456,7 +467,11 @@ export default function GitRepositoryPage() {
           >
             <Key size={14} />
             <span>Repository Integration</span>
-            {!isManagerOrAdmin && <Shield size={12} className="text-amber-400 ml-1" title="Restricted to Managers & Admins" />}
+            {!isManagerOrAdmin && (
+              <span title="Restricted to Managers & Admins">
+                <Shield size={12} className="text-amber-400 ml-1" />
+              </span>
+            )}
           </button>
         </div>
 

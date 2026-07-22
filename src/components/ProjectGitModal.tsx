@@ -273,7 +273,11 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
           >
             <Key size={14} />
             <span>Repo Settings</span>
-            {!canManageRepoSettings && <Shield size={12} className="text-amber-400 ml-1" title="Restricted to Managers & Admins" />}
+            {!canManageRepoSettings && (
+              <span title="Restricted to Managers & Admins">
+                <Shield size={12} className="text-amber-400 ml-1" />
+              </span>
+            )}
           </button>
         </div>
 

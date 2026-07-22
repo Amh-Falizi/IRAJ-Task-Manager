@@ -22,7 +22,7 @@ Full operational guides and feature documentation are available in the [`/docs`]
 ## Key Features
 
 - **Dynamic Kanban Board**: Drag-and-drop task status transitions across Backlog, To Do, In Progress, In Review, and Done.
-- **Git Branch Automation**: Connect GitHub or GitLab repositories to create remote feature/fix branches directly from task cards with automated naming conventions and terminal checkout helpers.
+- **Git Branch Automation**: Connect GitHub or GitLab repositories to create remote feature/fix branches directly from task cards with automated naming conventions, terminal checkout helpers, detailed API error diagnostics, and secure role-based authorization (restricting repository configurations to Admins, Managers, and Project Owners).
 - **Interactive Dependency Task Graph**: Visualize upstream blockers and sub-task node trees using `@xyflow/react` and Dagre.
 - **D3.js Timeline Chart**: Interactive Gantt chart view for sprint roadmap tracking and date ranges.
 - **Documentation Hub**: Write and preview PRDs, architecture guides, and meeting notes with full Markdown syntax highlighting.
