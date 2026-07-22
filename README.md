@@ -1,189 +1,100 @@
 # DevTeam Task Manager
 
-A comprehensive full-stack task management and progress tracking application designed for software development teams, featuring Git branch generation and role-based permissions.
+A full-stack task management, roadmap planning, and progress tracking application built for software development teams. Features Git branch generation, Kanban board workflows, D3.js timeline charts, task dependency graphing, product documentation wiki, and flexible database backup tools.
 
-## Features
+---
 
-- **Project Management**: Track and manage issues, tasks, and features using a dynamic Kanban board.
-- **Milestone Planning**: Define roadmaps, track active sprints, and visualize goals with Planning Mode and Timeline views.
-- **Task Graph Visualization**: Interactively view blockers, sub-tasks, and complex task dependencies.
-- **Product Documentation**: Write, edit, and safely store project PRDs, meeting notes, and architecture decisions with rich Markdown support.
-- **Git Branch Generation**: Automatically generate git branch names based on task contexts and project keys, allowing smooth development sync.
-- **Calendar & Workload**: View important deadlines and monitor team workload distributed out by month or week.
-- **Multi-Provider Authentication**: Secure local authentication paired with dynamic OAuth integrations for Google, GitHub, and GitLab with beautiful, custom-branded buttons and smooth transition states.
-- **Team Access Control**: Establish secure team domains, custom roles (Admin, Manager, Member), and strict project visibility permissions.
+## 📖 Comprehensive Documentation
+
+Full operational guides and feature documentation are available in the [`/docs`](./docs/README.md) folder:
+
+- **[🚀 Getting Started & Auth](./docs/01-getting-started.md)**: Accounts, OAuth (Google, GitHub, GitLab), RBAC roles, sidebar navigation.
+- **[📋 Project & Board Management](./docs/02-project-and-board-management.md)**: Projects, Kanban workflow, Task modal, subtasks, global search (`Cmd/Ctrl+K`).
+- **[🗺️ Planning, Timeline & Task Graph](./docs/03-planning-and-visualizations.md)**: Milestones, sprints, D3 Gantt timeline chart, Dagre/React Flow task graph.
+- **[🌿 Git & Branch Management](./docs/04-git-and-branch-management.md)**: Linking GitHub/GitLab, remote branch creation, PR/MR links, terminal checkout commands.
+- **[📝 Product Documentation & PRDs](./docs/05-documents-and-wiki.md)**: Markdown editor, live side-by-side preview, wiki categories.
+- **[📅 Calendar & Workload Analytics](./docs/06-calendar-and-workload.md)**: Calendar view, member capacity tracking, workload balancing.
+- **[👥 Team & User Administration](./docs/07-team-and-user-administration.md)**: Team domains, admin user management, grabbable profile settings carousel.
+- **[💾 Database Operations & Backups](./docs/08-database-and-backups.md)**: SQLite vs PostgreSQL, in-app backup UI, terminal CLI utility (`db-cli.ts`), Docker deployment.
+
+---
+
+## Key Features
+
+- **Dynamic Kanban Board**: Drag-and-drop task status transitions across Backlog, To Do, In Progress, In Review, and Done.
+- **Git Branch Automation**: Connect GitHub or GitLab repositories to create remote feature/fix branches directly from task cards with automated naming conventions and terminal checkout helpers.
+- **Interactive Dependency Task Graph**: Visualize upstream blockers and sub-task node trees using `@xyflow/react` and Dagre.
+- **D3.js Timeline Chart**: Interactive Gantt chart view for sprint roadmap tracking and date ranges.
+- **Documentation Hub**: Write and preview PRDs, architecture guides, and meeting notes with full Markdown syntax highlighting.
+- **Grabbable Profile Carousel**: Smooth swipeable/grabbable settings carousel for user profiles, skills, and admin tools without scrollbar noise.
+- **Multi-Engine Database Support**: Seamless zero-config SQLite for development/VPS hosting, with optional PostgreSQL support and full JSON/SQLite backup & restore CLI utilities.
+
+---
 
 ## Tech Stack
 
-- **Frontend**: React (v19) + Vite, TypeScript, Tailwind CSS, Lucide React (for UI design)
-- **Visuals & Charts**: React Flow (`@xyflow/react`), Dagre, Recharts
-- **Backend Application**: Node.js + Express.js API
-- **Database Architecture**: PostgreSQL (via `pg`) with seamless fallback to local SQLite (`sqlite3`) for zero-config development.
-- **AI Tooling**: Google Gemini (`@google/genai`) for intelligent string and branch generation features
-
-## Development Requirements 
-
-To get up and running, ensure you have the following installed:
-- Node.js (v20+ recommended)
-
-## Installation Guide
-
-1. **Install Packages**  
-   Download all dependencies defined in `package.json`:
-   ```bash
-   npm install
-   ```
-
-2. **Setup your Environment**  
-   Create a `.env` file at the root of the project with the following configuration:
-   ```env
-   # GEMINI_API_KEY: Required for AI generation features
-   GEMINI_API_KEY="YOUR_API_KEY"
-
-   # APP_URL: URL where the app is hosted (used for callbacks and links)
-   APP_URL="http://localhost:3000"
-
-   # DATABASE_URL: Connect to a PostgreSQL instance (falls back to SQLite if omitted)
-   DATABASE_URL="postgres://user:password@localhost:5432/dbname"
-
-   # Google OAuth Integration
-   GOOGLE_CLIENT_ID="YOUR_GOOGLE_CLIENT_ID"
-   GOOGLE_CLIENT_SECRET="YOUR_GOOGLE_CLIENT_SECRET"
-
-   # GitHub OAuth Integration
-   GITHUB_CLIENT_ID="YOUR_GITHUB_CLIENT_ID"
-   GITHUB_CLIENT_SECRET="YOUR_GITHUB_CLIENT_SECRET"
-
-   # GitLab OAuth Integration
-   GITLAB_CLIENT_ID="YOUR_GITLAB_CLIENT_ID"
-   GITLAB_CLIENT_SECRET="YOUR_GITLAB_CLIENT_SECRET"
-
-   # Local Docker Postgres Configuration (Optional: for docker-compose)
-   POSTGRES_USER="user"
-   POSTGRES_PASSWORD="password"
-   POSTGRES_DB="dbname"
-   ```
-
-3. **Start the Development Server**
-   Start both the Vite SPA and Express backend server smoothly using `tsx`:
-   ```bash
-   npm run dev
-   ```
-   *The server operates safely behind port 3000.*
-
-4. **Build for Production**
-   Compiles code via ESbuild for backend routing and Vite build for bundled static assets:
-   ```bash
-   npm run build
-   ```
-   Once built, start the robust production build:
-   ```bash
-   npm start
-   ```
-
-## Database Backup & Restore
-
-The application comes with high-fidelity database backup and restore utilities. These are available both as a clean, interactive GUI inside the app and as a flexible Command Line Interface (CLI) tool.
-
-### 1. In-App User Interface
-Navigate to your **Profile** page and switch to the **Backup & Restore** tab:
-- **Database Status**: Instantly monitor the active database engine (SQLite or PostgreSQL), file size, and complete table statistics (counts of Users, Tasks, Projects, Teams, and Documents).
-- **Export Backups**:
-  - **SQLite binary (`.sqlite`)**: High-fidelity full database file download.
-  - **Portable JSON schema (`.json`)**: Export database tables in clear, readable JSON. This portable format can be used to transfer data between SQLite and PostgreSQL backends!
-- **Restore Backups**: Upload a previously exported SQLite binary or portable JSON backup file to instantly restore your workspace data. *Warning: This replaces all active records.*
-
-### 2. Command Line Interface (CLI) Utility
-You can manage backups directly via terminal scripts. Run the utility with:
-```bash
-npm run db-cli <command> [arguments]
-```
-Or run directly with `npx tsx`:
-```bash
-npx tsx scripts/db-cli.ts <command> [arguments]
-```
-
-#### Available Commands:
-* **`stats` / `status`**: Shows the active database file, path, exact size, and lists row counts for every schema table.
-* **`backup [target-file]`**: Backs up the SQLite database file. If no target path is supplied, it generates a timestamped snapshot under the `./backups/` directory (e.g., `./backups/backup-2026-07-14-140025.sqlite`).
-* **`restore <source-file>`**: Safely restores the active database using a binary `.sqlite` file. It automatically creates an emergency `.rollback` backup of your current database first.
-* **`export-json [target-file]`**: Exports all workspace tables and records into a portable, formatted JSON backup file under `./backups/`.
-* **`import-json <source-file>`**: Purges all existing tables and populates them with rows from the specified portable JSON backup file (runs inside a database transaction). It creates an emergency `.rollback-json` backup of your current database before starting.
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Lucide React, Framer Motion (`motion/react`)
+- **Data Visualizations**: `@xyflow/react`, Dagre, Recharts, D3.js
+- **Backend Application**: Node.js + Express.js API (bundle output via `esbuild`)
+- **Database Architecture**: SQLite (`sqlite3`) default with optional PostgreSQL (`pg`) support
+- **AI Tooling**: Google Gemini (`@google/genai`) for intelligent code branch suggestions and task formatting
 
 ---
 
-## Self-Hosting & SQLite Persistence (VPS)
+## Quick Start Guide
 
-If you wish to host the application on your own **Virtual Private Server (VPS)** without setting up PostgreSQL or external databases, you can safely use the built-in SQLite engine with standard persistent storage.
-
-### 1. Raw Node.js Deployment
-If running directly on the host system:
-1. Clone the repository onto your VPS.
-2. Install dependencies: `npm install --production`.
-3. Create a production `.env` file containing your production settings (e.g. `PORT=3003`, `APP_URL`, etc.). Ensure `DATABASE_URL` is omitted so the app automatically defaults to SQLite.
-4. Build the application: `npm run build`.
-5. Run the application in the background using a process manager like **PM2**:
-   ```bash
-   npm install -g pm2
-   pm2 start dist/server.cjs --name "devteam-taskmanager"
-   ```
-   *Your `database.sqlite` file will persist reliably in the application root directory across service restarts.*
-
-### 2. Docker Compose Deployment (App + PostgreSQL)
-
-The project includes a ready-to-use `docker-compose.yaml` that orchestrates both the **Node.js application** and a **PostgreSQL 18** database container with automatic health checks and persistent volume storage.
-
-#### Running with Docker Compose:
-
-1. Create a `.env` file at the root (or pass environment variables):
-   ```env
-   POSTGRES_USER=devuser
-   POSTGRES_PASSWORD=devpassword
-   POSTGRES_DB=devdb
-   GEMINI_API_KEY=your_gemini_key
-   APP_URL=http://your-vps-ip:3000
-   ```
-
-2. Start the services:
-   ```bash
-   docker compose up -d --build
-   ```
-
-#### Changing Ports (e.g. to Port 3001 or 3003):
-
-If you want to run the application on a different host port (such as `3001`), update the port mapping and `PORT` environment variable in `docker-compose.yaml`:
-
-```yaml
-  app:
-    ports:
-      - "3001:3000"  # Exposes host port 3001 mapped to container port 3000
-    environment:
-      - PORT=3000
-      - APP_URL=http://your-vps-ip:3001
+### 1. Installation
+```bash
+npm install
 ```
-*(Or set `PORT=3001` and `ports: - "3001:3001"` if you want the application process inside the container to listen on 3001 as well).*
+
+### 2. Environment Setup
+Copy `.env.example` to `.env` or declare environment variables:
+```env
+# Optional Gemini API Key
+GEMINI_API_KEY="YOUR_API_KEY"
+
+# Optional PostgreSQL URL (defaults to local SQLite if omitted)
+DATABASE_URL="postgres://user:password@localhost:5432/dbname"
+
+# APP_URL
+APP_URL="http://localhost:3000"
+```
+
+### 3. Start Development Server
+Starts the Express server with Vite middleware on port 3000:
+```bash
+npm run dev
+```
+
+### 4. Build & Run Production
+```bash
+npm run build
+npm start
+```
 
 ---
 
-### 3. SQLite-Only Docker Deployment (Optional)
+## Database CLI Quick Reference
 
-If you prefer deploying via Docker without running PostgreSQL (using local SQLite instead):
+Manage database snapshots and JSON data portability via terminal:
 
-#### Option A: Docker Run (Single Volume Mount)
-Initialize and run the container by mounting a directory from your VPS host to the database file path:
 ```bash
-docker run -d \
-  -p 3001:3000 \
-  -v /var/lib/devteam-taskmanager/database.sqlite:/app/database.sqlite \
-  -e PORT=3000 \
-  -e GEMINI_API_KEY="your_gemini_key" \
-  -e APP_URL="https://yourdomain.com" \
-  --name taskmanager \
-  your-docker-image
+# View database stats and table row counts
+npm run db-cli stats
+
+# Backup database to ./backups/
+npm run db-cli backup
+
+# Export all database records to portable JSON
+npm run db-cli export-json ./backups/export.json
+
+# Restore database from JSON backup file
+npm run db-cli import-json ./backups/export.json
 ```
 
 ---
 
 ## License
 
-This software is provided under the MIT License.
+This project is licensed under the MIT License.

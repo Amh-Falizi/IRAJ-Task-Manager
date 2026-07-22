@@ -5,10 +5,10 @@ import { Task, User, Project, Milestone } from '../types';
 import TaskModal from '../components/TaskModal';
 import WorkloadModal from '../components/WorkloadModal';
 import ProjectActivityModal from '../components/ProjectActivityModal';
-import { Plus, MoreVertical, Calendar, ArrowUpDown, CornerDownRight, Search, Filter, AlertCircle, ChevronUp, Minus, ChevronDown, X, FolderKanban, Activity, CheckCircle2, Workflow, Clock, Pencil, Trash2, UserPlus, Download } from 'lucide-react';
+import { Plus, MoreVertical, Calendar, ArrowUpDown, CornerDownRight, Search, Filter, AlertCircle, ChevronUp, Minus, ChevronDown, X, FolderKanban, Activity, CheckCircle2, Workflow, Clock, Pencil, Trash2, UserPlus, Download, GitBranch, GitPullRequest } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
-import { useSearchParams, Link, Navigate } from 'react-router';
+import { useSearchParams, Link, Navigate, useNavigate } from 'react-router';
 import TaskDiagram from '../components/TaskDiagram';
 import Markdown from 'react-markdown';
 import UserAvatar from '../components/UserAvatar';
@@ -42,6 +42,7 @@ const priorityWeight = {
 export default function Board() {
   const { token, user } = useAuth();
   const { success, error, info } = useToast();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('projectId');
   
@@ -563,6 +564,13 @@ export default function Board() {
                 <Clock size={14} className="text-blue-500" />
                 <span>Project Activity</span>
               </button>
+              <button
+                onClick={() => navigate(`/git?projectId=${project.id}`)}
+                className="flex items-center space-x-2 bg-surface border border-border-subtle hover:border-amber-500/50 text-primary hover:text-amber-400 px-3 py-1.5 rounded transition-all text-sm font-medium"
+              >
+                <GitBranch size={14} className="text-amber-400" />
+                <span>Git Repo</span>
+              </button>
             </>
           )}
           <div className="flex items-center space-x-2 bg-surface border border-border-subtle rounded px-3 py-1.5 text-[10px]">
@@ -899,9 +907,36 @@ export default function Board() {
                       </div>
 
                       <h4 className="text-xs font-bold text-strong mb-1 leading-snug">{task.title}</h4>
-                      {task.branchName && (
-                        <div className="text-[10px] text-subtle font-mono italic mb-2 truncate">{task.branchName}</div>
-                      )}
+                      {task.branchName ? (
+                        <div className="flex items-center space-x-1 mb-2 flex-wrap gap-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(`git checkout ${task.branchName}`);
+                              success(`Copied: git checkout ${task.branchName}`);
+                            }}
+                            title="Click to copy: git checkout branch"
+                            className="inline-flex items-center space-x-1 text-[10px] font-mono font-bold text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 px-1.5 py-0.5 rounded border border-blue-500/20 transition-all truncate max-w-[180px]"
+                          >
+                            <GitBranch size={10} className="shrink-0" />
+                            <span className="truncate">{task.branchName}</span>
+                          </button>
+                          {task.prUrl && (
+                            <a
+                              href={task.prUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center space-x-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-1.5 py-0.5 rounded border border-emerald-500/20 transition-colors"
+                              title="View Pull Request"
+                            >
+                              <GitPullRequest size={9} />
+                              <span>PR</span>
+                            </a>
+                          )}
+                        </div>
+                      ) : null}
                       {task.milestoneId && (
                         <div className="text-[9px] font-bold uppercase tracking-widest text-[#a855f7] bg-[#a855f7]/10 border border-[#a855f7]/20 px-1.5 py-0.5 rounded inline-block mb-2 max-w-full truncate">
                           {milestones.find(m => m.id === task.milestoneId)?.name || 'Milestone'}

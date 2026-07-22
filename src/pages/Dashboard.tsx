@@ -863,8 +863,8 @@ export default function Dashboard() {
       </header>
 
       {/* Dashboard View */}
-      <div className="flex-1 overflow-y-auto w-full">
-        <div className="max-w-[1600px] mx-auto p-4 md:p-6 w-full flex flex-col items-center">
+      <div className="flex-1 w-full">
+        <div className="w-full p-4 md:p-6 flex flex-col">
           
           {isEditLayout && (
             <motion.div 

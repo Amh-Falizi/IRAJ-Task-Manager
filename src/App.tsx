@@ -20,6 +20,7 @@ import ResetPassword from './pages/ResetPassword';
 import UsersAdmin from './pages/UsersAdmin';
 import Documents from './pages/Documents';
 import Planning from './pages/Planning';
+import GitRepositoryPage from './pages/GitRepositoryPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token, loading } = useAuth();
@@ -61,6 +62,7 @@ export default function App() {
                   <Route path="teams" element={<Teams />} />
                   <Route path="documents" element={<Documents />} />
                   <Route path="planning" element={<Planning />} />
+                  <Route path="git" element={<GitRepositoryPage />} />
                   <Route path="profile" element={<Profile />} />
                   <Route path="admin/users" element={<UsersAdmin />} />
                 </Route>

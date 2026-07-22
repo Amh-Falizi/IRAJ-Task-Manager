@@ -377,6 +377,32 @@ async function initDb(): Promise<DatabaseWrapper> {
   } catch (e) {}
 
   try {
+    await db.exec("ALTER TABLE projects ADD COLUMN repoProvider TEXT;");
+  } catch (e) {}
+  try {
+    await db.exec("ALTER TABLE projects ADD COLUMN repoOwner TEXT;");
+  } catch (e) {}
+  try {
+    await db.exec("ALTER TABLE projects ADD COLUMN repoName TEXT;");
+  } catch (e) {}
+  try {
+    await db.exec("ALTER TABLE projects ADD COLUMN repoUrl TEXT;");
+  } catch (e) {}
+  try {
+    await db.exec("ALTER TABLE projects ADD COLUMN repoToken TEXT;");
+  } catch (e) {}
+  try {
+    await db.exec("ALTER TABLE projects ADD COLUMN defaultBranch TEXT DEFAULT 'main';");
+  } catch (e) {}
+
+  try {
+    await db.exec("ALTER TABLE tasks ADD COLUMN prUrl TEXT;");
+  } catch (e) {}
+  try {
+    await db.exec("ALTER TABLE tasks ADD COLUMN prStatus TEXT;");
+  } catch (e) {}
+
+  try {
     await db.exec(`
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
@@ -1982,6 +2008,404 @@ app.put("/api/projects/:id", authenticateToken, async (req: any, res: any) => {
   res.json(updatedProject);
 });
 
+// Update Project Repository Settings
+app.put("/api/projects/:id/repo", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+  const isProjectAdmin = pm && pm.role === 'admin';
+  const canManageProjects = await hasPermission(req.user, "manage_projects");
+
+  if (!canManageProjects && project.ownerId !== req.user.id && !isProjectAdmin) {
+    return res.status(403).json({ error: "Permission denied" });
+  }
+
+  const { repoProvider, repoOwner, repoName, repoUrl, repoToken, defaultBranch } = req.body;
+
+  let owner = repoOwner || '';
+  let name = repoName || '';
+  if (repoUrl && (!owner || !name)) {
+    try {
+      const parsed = new URL(repoUrl);
+      const parts = parsed.pathname.replace(/^\//, '').replace(/\.git$/, '').split('/');
+      if (parts.length >= 2) {
+        owner = owner || parts[0];
+        name = name || parts.slice(1).join('/');
+      }
+    } catch (e) {}
+  }
+
+  await db.run(
+    `UPDATE projects SET 
+      repoProvider = ?, 
+      repoOwner = ?, 
+      repoName = ?, 
+      repoUrl = ?, 
+      repoToken = ?, 
+      defaultBranch = ? 
+     WHERE id = ?`,
+    [
+      repoProvider || 'github',
+      owner,
+      name,
+      repoUrl || '',
+      repoToken !== undefined ? repoToken : (project.repoToken || ''),
+      defaultBranch || 'main',
+      req.params.id
+    ]
+  );
+
+  const updated = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+  res.json(updated);
+});
+
+// Get Live Branches from GitHub or GitLab for a Project
+app.get("/api/projects/:id/git/branches", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const tasks = await db.all("SELECT id, title, branchName, prUrl, prStatus FROM tasks WHERE projectId = ? AND branchName IS NOT NULL AND branchName != ''", req.params.id);
+  const taskBranchMap = new Map();
+  tasks.forEach((t: any) => {
+    taskBranchMap.set(t.branchName, t);
+  });
+
+  const provider = project.repoProvider || 'github';
+  const owner = project.repoOwner;
+  const name = project.repoName;
+  const token = project.repoToken;
+
+  if (!owner || !name) {
+    // Fallback: return local task-linked branches
+    const localBranches = Array.from(taskBranchMap.entries()).map(([bName, task]: [string, any]) => ({
+      name: bName,
+      commitSha: 'local',
+      commitMessage: `Linked to task: ${task.title}`,
+      isDefault: bName === (project.defaultBranch || 'main'),
+      linkedTaskId: task.id,
+      linkedTaskTitle: task.title,
+      prUrl: task.prUrl,
+      prStatus: task.prStatus
+    }));
+
+    if (localBranches.length === 0) {
+      localBranches.push({
+        name: project.defaultBranch || 'main',
+        commitSha: 'main',
+        commitMessage: 'Default branch',
+        isDefault: true,
+        linkedTaskId: null,
+        linkedTaskTitle: null,
+        prUrl: null,
+        prStatus: null
+      });
+    }
+
+    return res.json({ branches: localBranches, provider: 'none', configured: false });
+  }
+
+  try {
+    if (provider === 'github') {
+      const headers: Record<string, string> = {
+        'User-Agent': 'devteam-taskmanager',
+        'Accept': 'application/vnd.github.v3+json'
+      };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const ghRes = await fetch(`https://api.github.com/repos/${owner}/${name}/branches`, { headers });
+      if (!ghRes.ok) {
+        const errText = await ghRes.text();
+        throw new Error(`GitHub API Error (${ghRes.status}): ${errText}`);
+      }
+
+      const rawBranches = await ghRes.json();
+      const branches = rawBranches.map((b: any) => {
+        const linkedTask = taskBranchMap.get(b.name);
+        return {
+          name: b.name,
+          commitSha: b.commit?.sha?.substring(0, 7) || '',
+          protected: b.protected || false,
+          webUrl: `https://github.com/${owner}/${name}/tree/${encodeURIComponent(b.name)}`,
+          isDefault: b.name === (project.defaultBranch || 'main'),
+          linkedTaskId: linkedTask?.id,
+          linkedTaskTitle: linkedTask?.title,
+          prUrl: linkedTask?.prUrl,
+          prStatus: linkedTask?.prStatus
+        };
+      });
+
+      return res.json({ branches, provider: 'github', configured: true });
+    } else if (provider === 'gitlab') {
+      const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
+      const projectPath = `${owner}/${name}`;
+      const headers: Record<string, string> = {};
+      if (token) headers['PRIVATE-TOKEN'] = token;
+
+      const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/repository/branches`, { headers });
+      if (!glRes.ok) {
+        const errText = await glRes.text();
+        throw new Error(`GitLab API Error (${glRes.status}): ${errText}`);
+      }
+
+      const rawBranches = await glRes.json();
+      const branches = rawBranches.map((b: any) => {
+        const linkedTask = taskBranchMap.get(b.name);
+        return {
+          name: b.name,
+          commitSha: b.commit?.short_id || b.commit?.id?.substring(0, 7) || '',
+          commitMessage: b.commit?.title || '',
+          protected: b.protected || false,
+          webUrl: b.web_url || `${gitlabUrl}/${projectPath}/-/tree/${encodeURIComponent(b.name)}`,
+          isDefault: b.default || b.name === (project.defaultBranch || 'main'),
+          linkedTaskId: linkedTask?.id,
+          linkedTaskTitle: linkedTask?.title,
+          prUrl: linkedTask?.prUrl,
+          prStatus: linkedTask?.prStatus
+        };
+      });
+
+      return res.json({ branches, provider: 'gitlab', configured: true });
+    }
+  } catch (err: any) {
+    console.error("Git API error:", err.message);
+    // Return graceful fallback with error notice
+    const localBranches = Array.from(taskBranchMap.entries()).map(([bName, task]: [string, any]) => ({
+      name: bName,
+      commitSha: 'local',
+      commitMessage: `Linked to task: ${task.title}`,
+      isDefault: bName === (project.defaultBranch || 'main'),
+      linkedTaskId: task.id,
+      linkedTaskTitle: task.title,
+      prUrl: task.prUrl,
+      prStatus: task.prStatus
+    }));
+
+    return res.json({ 
+      branches: localBranches, 
+      provider, 
+      configured: true, 
+      error: err.message || "Failed to connect to remote Git provider" 
+    });
+  }
+});
+
+// Create Branch on Remote GitHub or GitLab Repository
+app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const { branchName, taskId, baseBranch } = req.body;
+  if (!branchName) return res.status(400).json({ error: "Branch name is required" });
+
+  const targetBaseBranch = baseBranch || project.defaultBranch || 'main';
+  const provider = project.repoProvider || 'github';
+  const owner = project.repoOwner;
+  const name = project.repoName;
+  const token = project.repoToken;
+
+  let remoteCreated = false;
+  let remoteUrl = '';
+  let remoteError = null;
+
+  if (owner && name && token) {
+    try {
+      if (provider === 'github') {
+        const headers: Record<string, string> = {
+          'User-Agent': 'devteam-taskmanager',
+          'Accept': 'application/vnd.github.v3+json',
+          'Authorization': `Bearer ${token}`
+        };
+
+        // 1. Get SHA of base branch
+        const baseRefRes = await fetch(`https://api.github.com/repos/${owner}/${name}/git/ref/heads/${targetBaseBranch}`, { headers });
+        if (!baseRefRes.ok) {
+          throw new Error(`Failed to find base branch '${targetBaseBranch}' on GitHub`);
+        }
+        const baseRefData = await baseRefRes.json();
+        const sha = baseRefData.object.sha;
+
+        // 2. Create ref
+        const createRefRes = await fetch(`https://api.github.com/repos/${owner}/${name}/git/refs`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            ref: `refs/heads/${branchName}`,
+            sha
+          })
+        });
+
+        if (!createRefRes.ok) {
+          const createErr = await createRefRes.json();
+          throw new Error(createErr.message || 'Failed to create branch on GitHub');
+        }
+
+        remoteCreated = true;
+        remoteUrl = `https://github.com/${owner}/${name}/tree/${encodeURIComponent(branchName)}`;
+      } else if (provider === 'gitlab') {
+        const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
+        const projectPath = `${owner}/${name}`;
+        
+        const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/repository/branches`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'PRIVATE-TOKEN': token
+          },
+          body: JSON.stringify({
+            branch: branchName,
+            ref: targetBaseBranch
+          })
+        });
+
+        if (!glRes.ok) {
+          const glErr = await glRes.json();
+          throw new Error(glErr.message || 'Failed to create branch on GitLab');
+        }
+
+        const glData = await glRes.json();
+        remoteCreated = true;
+        remoteUrl = glData.web_url || `${gitlabUrl}/${projectPath}/-/tree/${encodeURIComponent(branchName)}`;
+      }
+    } catch (err: any) {
+      console.error("Error creating remote branch:", err.message);
+      remoteError = err.message;
+    }
+  }
+
+  // Save branch onto task if taskId provided
+  if (taskId) {
+    await db.run("UPDATE tasks SET branchName = ? WHERE id = ?", [branchName, taskId]);
+    
+    // Add activity
+    const activityId = uuidv4();
+    const actionText = remoteCreated 
+      ? `created remote branch ${branchName} on ${provider.toUpperCase()}`
+      : `linked branch ${branchName} to task`;
+
+    await db.run(
+      "INSERT INTO task_activities (id, taskId, userId, action, createdAt) VALUES (?, ?, ?, ?, ?)",
+      [activityId, taskId, req.user.id, actionText, new Date().toISOString()]
+    );
+  }
+
+  res.json({
+    success: true,
+    branchName,
+    remoteCreated,
+    remoteUrl,
+    remoteError,
+    message: remoteCreated ? `Branch '${branchName}' created successfully on ${provider.toUpperCase()}` : `Branch '${branchName}' linked locally`
+  });
+});
+
+// Create Pull Request / Merge Request for a Task
+app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const { taskId, sourceBranch, targetBranch, title, description } = req.body;
+  if (!sourceBranch) return res.status(400).json({ error: "Source branch is required" });
+
+  const baseBranch = targetBranch || project.defaultBranch || 'main';
+  const provider = project.repoProvider || 'github';
+  const owner = project.repoOwner;
+  const name = project.repoName;
+  const token = project.repoToken;
+
+  let prUrl = '';
+  let prStatus = 'open';
+
+  if (!owner || !name || !token) {
+    // If no token or repo configured, generate web creation URL
+    if (provider === 'github') {
+      prUrl = `https://github.com/${owner || 'owner'}/${name || 'repo'}/compare/${baseBranch}...${encodeURIComponent(sourceBranch)}?expand=1`;
+    } else {
+      const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
+      prUrl = `${gitlabUrl}/${owner || 'owner'}/${name || 'repo'}/-/merge_requests/new?merge_request%5Bsource_branch%5D=${encodeURIComponent(sourceBranch)}&merge_request%5Btarget_branch%5D=${baseBranch}`;
+    }
+  } else {
+    try {
+      if (provider === 'github') {
+        const ghRes = await fetch(`https://api.github.com/repos/${owner}/${name}/pulls`, {
+          method: 'POST',
+          headers: {
+            'User-Agent': 'devteam-taskmanager',
+            'Accept': 'application/vnd.github.v3+json',
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            title: title || `[Task] ${sourceBranch}`,
+            head: sourceBranch,
+            base: baseBranch,
+            body: description || `Automated Pull Request created from DevTeam TaskManager`
+          })
+        });
+
+        if (!ghRes.ok) {
+          const ghErr = await ghRes.json();
+          throw new Error(ghErr.message || 'Failed to create PR on GitHub');
+        }
+
+        const ghData = await ghRes.json();
+        prUrl = ghData.html_url;
+      } else if (provider === 'gitlab') {
+        const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
+        const projectPath = `${owner}/${name}`;
+
+        const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'PRIVATE-TOKEN': token
+          },
+          body: JSON.stringify({
+            title: title || `[Task] ${sourceBranch}`,
+            source_branch: sourceBranch,
+            target_branch: baseBranch,
+            description: description || `Automated Merge Request created from DevTeam TaskManager`
+          })
+        });
+
+        if (!glRes.ok) {
+          const glErr = await glRes.json();
+          throw new Error(glErr.message || 'Failed to create Merge Request on GitLab');
+        }
+
+        const glData = await glRes.json();
+        prUrl = glData.web_url;
+      }
+    } catch (err: any) {
+      console.error("PR Creation error:", err.message);
+      // Fallback web URL
+      if (provider === 'github') {
+        prUrl = `https://github.com/${owner}/${name}/compare/${baseBranch}...${encodeURIComponent(sourceBranch)}?expand=1`;
+      } else {
+        const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
+        prUrl = `${gitlabUrl}/${owner}/${name}/-/merge_requests/new?merge_request%5Bsource_branch%5D=${encodeURIComponent(sourceBranch)}&merge_request%5Btarget_branch%5D=${baseBranch}`;
+      }
+    }
+  }
+
+  if (taskId) {
+    await db.run("UPDATE tasks SET prUrl = ?, prStatus = ? WHERE id = ?", [prUrl, prStatus, taskId]);
+    
+    // Add activity
+    const activityId = uuidv4();
+    await db.run(
+      "INSERT INTO task_activities (id, taskId, userId, action, createdAt) VALUES (?, ?, ?, ?, ?)",
+      [activityId, taskId, req.user.id, `opened Pull Request on ${provider.toUpperCase()}`, new Date().toISOString()]
+    );
+  }
+
+  res.json({ success: true, prUrl, prStatus });
+});
+
 app.delete("/api/projects/:id", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
   const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
@@ -1997,6 +2421,92 @@ app.delete("/api/projects/:id", authenticateToken, async (req: any, res: any) =>
 
   await db.run("DELETE FROM projects WHERE id = ?", req.params.id);
   res.json({ success: true });
+});
+
+// Integration Connectivity Status API for GitHub & GitLab
+app.get("/api/integrations/status", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const projects = await db.all("SELECT id, name, repoProvider, repoOwner, repoName, repoToken FROM projects");
+
+  const githubProjects = projects.filter(p => p.repoProvider === 'github' && p.repoOwner && p.repoName);
+  const gitlabProjects = projects.filter(p => p.repoProvider === 'gitlab' && p.repoOwner && p.repoName);
+
+  // Evaluate GitHub (Optional by default)
+  let ghStatus = 'disconnected';
+  let ghText = 'Not Linked';
+  let ghColor = 'slate';
+  let ghDetail = 'Optional - No GitHub repository linked';
+
+  if (githubProjects.length > 0) {
+    const ghWithToken = githubProjects.filter(p => p.repoToken && p.repoToken.trim() !== '');
+    if (ghWithToken.length === githubProjects.length) {
+      ghStatus = 'connected';
+      ghText = 'Connected';
+      ghColor = 'emerald';
+      ghDetail = `${githubProjects.length} GitHub ${githubProjects.length === 1 ? 'repo' : 'repos'} connected`;
+    } else if (ghWithToken.length > 0) {
+      ghStatus = 'connected_partial';
+      ghText = 'Partial';
+      ghColor = 'emerald';
+      ghDetail = `${ghWithToken.length} of ${githubProjects.length} GitHub repos configured`;
+    } else {
+      ghStatus = 'not_linked';
+      ghText = 'Not Linked';
+      ghColor = 'slate';
+      ghDetail = `Optional - Token not configured for ${githubProjects.length} GitHub repo(s)`;
+    }
+  }
+
+  // Evaluate GitLab (Optional by default)
+  let glStatus = 'disconnected';
+  let glText = 'Not Linked';
+  let glColor = 'slate';
+  let glDetail = 'Optional - No GitLab repository linked';
+
+  if (gitlabProjects.length > 0) {
+    const glWithToken = gitlabProjects.filter(p => p.repoToken && p.repoToken.trim() !== '');
+    if (glWithToken.length === gitlabProjects.length) {
+      glStatus = 'connected';
+      glText = 'Connected';
+      glColor = 'emerald';
+      glDetail = `${gitlabProjects.length} GitLab ${gitlabProjects.length === 1 ? 'repo' : 'repos'} connected`;
+    } else if (glWithToken.length > 0) {
+      glStatus = 'connected_partial';
+      glText = 'Partial';
+      glColor = 'emerald';
+      glDetail = `${glWithToken.length} of ${gitlabProjects.length} GitLab repos configured`;
+    } else {
+      glStatus = 'not_linked';
+      glText = 'Not Linked';
+      glColor = 'slate';
+      glDetail = `Optional - Token not configured for ${gitlabProjects.length} GitLab repo(s)`;
+    }
+  }
+
+  res.json({
+    github: {
+      provider: 'github',
+      name: 'GitHub',
+      status: ghStatus,
+      label: ghText,
+      color: ghColor,
+      details: ghDetail,
+      count: githubProjects.length,
+      repoCount: githubProjects.length,
+      hasToken: githubProjects.length > 0 && githubProjects.every(p => p.repoToken && p.repoToken.trim() !== '')
+    },
+    gitlab: {
+      provider: 'gitlab',
+      name: 'GitLab',
+      status: glStatus,
+      label: glText,
+      color: glColor,
+      details: glDetail,
+      count: gitlabProjects.length,
+      repoCount: gitlabProjects.length,
+      hasToken: gitlabProjects.length > 0 && gitlabProjects.every(p => p.repoToken && p.repoToken.trim() !== '')
+    }
+  });
 });
 
 // Project Members APIs

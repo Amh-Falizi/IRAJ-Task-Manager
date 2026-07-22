@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { Project, User } from '../types';
-import { FolderKanban, Plus, X, Trash2, Calendar, LayoutDashboard, Activity, Clock, Download, Users, User as UserIcon } from 'lucide-react';
+import { FolderKanban, Plus, X, Trash2, Calendar, LayoutDashboard, Activity, Clock, Download, Users, User as UserIcon, GitBranch } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router';
 import WorkloadModal from '../components/WorkloadModal';
 import ProjectActivityModal from '../components/ProjectActivityModal';
 import ProjectMembersModal from '../components/ProjectMembersModal';
 import ProjectTeamsModal from '../components/ProjectTeamsModal';
+import ProjectGitModal from '../components/ProjectGitModal';
 import Markdown from 'react-markdown';
 import { exportToCSV, exportToJSON } from '../lib/export';
 import { EmptyState } from '../components/EmptyState';
@@ -26,6 +27,7 @@ export default function Projects() {
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
   const [isProjectTeamsModalOpen, setIsProjectTeamsModalOpen] = useState(false);
+  const [isGitModalOpen, setIsGitModalOpen] = useState(false);
   const navigate = useNavigate();
   
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
@@ -74,7 +76,7 @@ export default function Projects() {
   }, [token]);
 
   return (
-    <div className="flex h-full flex-col bg-surface-dim">
+    <div className="flex-1 flex flex-col min-h-0 bg-surface-dim overflow-y-auto">
       <header className="flex-none flex flex-col sm:flex-row sm:items-center justify-between px-4 md:px-6 py-4 border-b border-border-subtle bg-surface-dim gap-3">
         <div className="flex flex-col">
           <h1 className="text-xl font-semibold text-strong tracking-tight">Projects</h1>
@@ -121,7 +123,7 @@ export default function Projects() {
         </div>
       </header>
       
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="p-6 flex-1">
         {loading ? (
           <div className="text-subtle text-sm">Loading projects...</div>
         ) : projects.length === 0 ? (
@@ -262,6 +264,17 @@ export default function Projects() {
                         <Clock size={14} />
                       </button>
                     </Tooltip>
+                    <Tooltip content="Git Repository Hub" position="bottom">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/git?projectId=${project.id}`);
+                        }}
+                        className="flex items-center space-x-1.5 text-xs text-amber-400 hover:text-amber-300 font-medium bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1.5 rounded transition-colors border border-amber-500/20"
+                      >
+                        <GitBranch size={14} />
+                      </button>
+                    </Tooltip>
                     <Tooltip content="Task Board" position="bottom">
                       <button
                         onClick={(e) => {
@@ -336,6 +349,19 @@ export default function Projects() {
           onClose={() => {
             setIsProjectTeamsModalOpen(false);
             setSelectedProject(null);
+          }}
+        />
+      )}
+
+      {isGitModalOpen && selectedProject && (
+        <ProjectGitModal
+          project={selectedProject}
+          onClose={() => {
+            setIsGitModalOpen(false);
+            setSelectedProject(null);
+          }}
+          onUpdateProject={(updated) => {
+            setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
           }}
         />
       )}

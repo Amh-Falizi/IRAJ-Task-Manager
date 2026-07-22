@@ -18,6 +18,8 @@ export interface Task {
   assigneeId: string | null;
   creatorId: string;
   branchName: string | null;
+  prUrl?: string | null;
+  prStatus?: 'open' | 'merged' | 'closed' | null;
   createdAt: string;
   parentId?: string | null;
   projectId?: string | null;
@@ -34,6 +36,34 @@ export interface Project {
   projectKey?: string;
   taskCounter?: number;
   createdAt: string;
+  repoProvider?: 'github' | 'gitlab' | null;
+  repoOwner?: string | null;
+  repoName?: string | null;
+  repoUrl?: string | null;
+  repoToken?: string | null;
+  defaultBranch?: string | null;
+}
+
+export interface GitBranch {
+  name: string;
+  commitSha?: string;
+  commitMessage?: string;
+  protected?: boolean;
+  webUrl?: string;
+  isDefault?: boolean;
+  linkedTaskId?: string;
+  linkedTaskTitle?: string;
+}
+
+export interface GitPullRequest {
+  id: number | string;
+  title: string;
+  sourceBranch: string;
+  targetBranch: string;
+  status: 'open' | 'merged' | 'closed';
+  webUrl: string;
+  author?: string;
+  createdAt?: string;
 }
 
 export interface Document {

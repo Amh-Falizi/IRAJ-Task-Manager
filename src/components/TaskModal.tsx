@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Task, User, Project } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { X, GitBranch, Edit2, Calendar, Clock, CheckCircle2, Trash, Plus, FolderKanban } from 'lucide-react';
+import { X, GitBranch, Edit2, Calendar, Clock, CheckCircle2, Trash, Plus, FolderKanban, GitPullRequest, ExternalLink } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
@@ -198,6 +198,43 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
     });
   };
 
+  const handleCreateRemoteBranch = async () => {
+    if (!formData.projectId) {
+      error('Please select a project first');
+      return;
+    }
+    const cleanTitle = (formData.title || 'task').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30);
+    const proj = projectsList.find(p => p.id === formData.projectId);
+    const keyPrefix = proj?.projectKey ? `${proj.projectKey}-` : '';
+    const targetBranch = formData.branchName || `feature/${keyPrefix}${cleanTitle}`;
+
+    setGeneratingBranch(true);
+    try {
+      const res = await fetch(`/api/projects/${formData.projectId}/git/branches`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          branchName: targetBranch,
+          taskId: task?.id || null
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setFormData(prev => ({ ...prev, branchName: data.branchName || targetBranch }));
+        success(data.message || `Remote branch '${targetBranch}' created successfully!`);
+      } else {
+        error(data.error || 'Failed to create remote branch');
+      }
+    } catch (err) {
+      error('Error creating remote branch');
+    } finally {
+      setGeneratingBranch(false);
+    }
+  };
+
   const handleGenerateBranch = async () => {
     if (!formData.title) return;
     setGeneratingBranch(true);
@@ -219,6 +256,34 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
       console.error(err);
     } finally {
       setGeneratingBranch(false);
+    }
+  };
+
+  const handleCreateTaskPR = async (t: Task) => {
+    if (!t.branchName || !t.projectId) return;
+    try {
+      const res = await fetch(`/api/projects/${t.projectId}/git/pull-requests`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          taskId: t.id,
+          sourceBranch: t.branchName,
+          title: `[Task] ${t.title}`
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.prUrl) {
+        window.open(data.prUrl, '_blank');
+        success('Pull Request link opened!');
+      } else {
+        error('Failed to create Pull Request');
+      }
+    } catch (err) {
+      error('Error creating Pull Request');
     }
   };
 
@@ -246,10 +311,32 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                   {getStatusTitle(task.status)}
                 </span>
                 {task.branchName && (
-                  <span className="flex items-center space-x-1 text-muted bg-surface-dim px-2 py-0.5 rounded border border-border-subtle font-mono">
-                    <GitBranch size={12} />
-                    <span>{task.branchName}</span>
-                  </span>
+                  <div className="flex items-center space-x-1">
+                    <span className="flex items-center space-x-1 text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 font-mono">
+                      <GitBranch size={12} />
+                      <span>{task.branchName}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCreateTaskPR(task)}
+                      title="Create Pull/Merge Request for this branch"
+                      className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors flex items-center space-x-1"
+                    >
+                      <GitPullRequest size={10} />
+                      <span>PR</span>
+                    </button>
+                  </div>
+                )}
+                {task.prUrl && (
+                  <a
+                    href={task.prUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20"
+                  >
+                    <ExternalLink size={10} />
+                    <span>View PR</span>
+                  </a>
                 )}
                 {task.milestoneId && (
                   <span className="px-2 py-0.5 rounded font-bold uppercase tracking-wider text-[#a855f7] bg-[#a855f7]/10 border border-[#a855f7]/20">
@@ -825,27 +912,26 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
            <div className="space-y-1">
              <div className="flex justify-between items-center mb-1">
                 <label className="text-[9px] font-bold text-subtle uppercase tracking-widest flex items-center space-x-2">
-                  <GitBranch size={12} /> <span>Git Branch Name</span>
+                  <GitBranch size={12} /> <span>Git Branch & Remote Sync</span>
                 </label>
-                {!(projectsList.find(p => p.id === formData.projectId)?.projectKey) && (
+                <div className="flex items-center space-x-1.5">
                   <button
                     type="button"
-                    onClick={handleGenerateBranch}
-                    disabled={isDeveloper || generatingBranch}
-                    className="text-[9px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-1 rounded hover:bg-blue-500/20 disabled:opacity-50 flex items-center space-x-1 font-bold tracking-wider uppercase transition-colors"
+                    onClick={handleCreateRemoteBranch}
+                    disabled={generatingBranch || !formData.projectId}
+                    className="text-[9px] bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded disabled:opacity-50 flex items-center space-x-1 font-bold tracking-wider uppercase transition-colors shadow-sm"
                   >
-                    {generatingBranch ? <span className="text-[10px] text-blue-500 font-bold uppercase tracking-widest animate-pulse ml-2">Loading...</span> : null}
-                    <span>Generate AI Branch</span>
+                    <GitBranch size={10} />
+                    <span>{generatingBranch ? 'Creating...' : 'Create Remote Branch'}</span>
                   </button>
-                )}
+                </div>
              </div>
              <input
               type="text"
-              placeholder={(projectsList.find(p => p.id === formData.projectId)?.projectKey) ? `Auto-generated when saved` : "e.g., PROJ-123"}
+              placeholder="e.g. feature/PROJ-12-task-name"
               className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 focus:border-blue-500 focus:outline-none font-mono text-xs text-blue-400 placeholder-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
               value={formData.branchName || ''}
               onChange={e => setFormData(p => ({ ...p, branchName: e.target.value }))}
-              disabled={isDeveloper || !!(projectsList.find(p => p.id === formData.projectId)?.projectKey)}
             />
           </div>
 

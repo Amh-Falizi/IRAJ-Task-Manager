@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { LayoutDashboard, KanbanSquare, LogOut, Users, Calendar, FolderKanban, FileText, Map, Sun, Moon, Shield, PanelLeftClose, PanelLeft, Workflow, Settings, ChevronUp, ChevronDown, ChevronRight, Menu, X } from 'lucide-react';
+import { LayoutDashboard, KanbanSquare, LogOut, Users, Calendar, FolderKanban, FileText, Map, Sun, Moon, Shield, PanelLeftClose, PanelLeft, Workflow, Settings, ChevronUp, ChevronDown, ChevronRight, Menu, X, GitBranch, Github, Gitlab } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -14,17 +14,35 @@ import WelcomeModal from './WelcomeModal';
 import GlobalSearch from './GlobalSearch';
 
 export default function Layout() {
-  const { user, logout } = useAuth();
+  const { user, token, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [integrationsStatus, setIntegrationsStatus] = useState<any>(null);
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
     Management: true,
     Tasks: true,
   });
+
+  React.useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch('/api/integrations/status', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setIntegrationsStatus(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch integration status:', err);
+      }
+    };
+    if (token) fetchStatus();
+  }, [token, location.pathname]);
 
   React.useEffect(() => {
     const checkMobile = () => {
@@ -56,6 +74,7 @@ export default function Layout() {
       icon: FolderKanban, 
       children: [
         { name: 'Projects', href: '/projects', icon: FolderKanban },
+        { name: 'Git Repositories', href: '/git', icon: GitBranch },
         { name: 'Planning', href: '/planning', icon: Map },
         { name: 'Documents', href: '/documents', icon: FileText },
       ]
@@ -125,11 +144,11 @@ export default function Layout() {
       {/* Sidebar */}
       <aside 
         className={cn(
-          "tour-sidebar flex flex-col py-6 border-r border-border-subtle bg-surface-dim transition-all duration-300 z-50",
+          "tour-sidebar flex flex-col py-6 border-r border-border-subtle bg-surface-dim transition-all duration-300 z-50 shrink-0 overflow-hidden",
           // Layout constraints across screens
           "fixed inset-y-0 left-0 md:relative md:translate-x-0 md:flex",
           isMobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
-          showExpanded ? "w-64 px-3" : "w-16 px-3"
+          showExpanded ? "w-64 px-3" : "w-20 px-3.5"
         )}
       >
         <div className="flex flex-col w-full mb-8 shrink-0 space-y-3">
@@ -150,14 +169,15 @@ export default function Layout() {
           <Tooltip content={isExpanded ? "Collapse Sidebar" : "Expand Sidebar"} position="right">
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="hidden md:flex w-10 h-10 shrink-0 text-subtle hover:text-strong hover:bg-surface-accent rounded-md transition-colors items-center justify-center"
+              className="hidden md:flex w-10 h-10 shrink-0 text-subtle hover:text-strong hover:bg-surface-accent rounded-md transition-colors items-center justify-center mx-auto"
             >
               {isExpanded ? <PanelLeftClose size={20} /> : <PanelLeft size={20} />}
             </button>
           </Tooltip>
         </div>
 
-        <nav className="flex-1 overflow-y-auto flex flex-col space-y-1 overflow-x-hidden">
+        <div className="flex-1 min-h-0 flex flex-col overflow-y-auto overflow-x-hidden space-y-4 pr-0.5 custom-scrollbar">
+          <nav className="flex flex-col space-y-1 w-full overflow-y-auto overflow-x-hidden custom-scrollbar max-h-full pr-0.5">
           {navItems.map((item) => {
             if (item.children) {
               const Icon = item.icon;
@@ -198,11 +218,15 @@ export default function Layout() {
                   </Tooltip>
                   
                   <AnimatePresence>
-                    {showExpanded && isOpen && (
+                    {isOpen && (
                       <motion.div
                         initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
+                        animate={{ 
+                          height: showExpanded ? 'auto' : 0, 
+                          opacity: showExpanded ? 1 : 0 
+                        }}
                         exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
                         className="flex flex-col space-y-1 overflow-hidden"
                       >
                         {item.children.map(child => {
@@ -222,9 +246,54 @@ export default function Layout() {
                               <div className="flex items-center justify-center w-8 h-8 shrink-0 mr-2">
                                 <ChildIcon className="w-4 h-4" />
                               </div>
-                              <span className="text-sm truncate whitespace-nowrap">
+                              <span className={cn(
+                                "text-sm truncate whitespace-nowrap transition-all duration-300 flex-1 text-left",
+                                showExpanded ? "opacity-100 max-w-full" : "opacity-0 max-w-0"
+                              )}>
                                 {child.name}
                               </span>
+                              {child.name === 'Git Repositories' && integrationsStatus && (
+                                <div className={cn(
+                                  "ml-auto mr-2 flex items-center space-x-1 shrink-0 transition-all duration-300 overflow-hidden",
+                                  showExpanded ? "opacity-100 max-w-[120px] scale-100" : "opacity-0 max-w-0 scale-90"
+                                )}>
+                                  <span
+                                    title={`GitHub Integration: ${integrationsStatus.github?.label} (${integrationsStatus.github?.details})`}
+                                    className={cn(
+                                      "inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border",
+                                      integrationsStatus.github?.color === 'emerald'
+                                        ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                        : integrationsStatus.github?.color === 'amber'
+                                        ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                        : "bg-slate-500/10 text-slate-400 border-slate-500/20"
+                                    )}
+                                  >
+                                    <span className={cn(
+                                      "w-1.5 h-1.5 rounded-full shrink-0",
+                                      integrationsStatus.github?.color === 'emerald' ? "bg-emerald-500 animate-pulse" : (integrationsStatus.github?.color === 'amber' ? "bg-amber-500 animate-pulse" : "bg-slate-400")
+                                    )} />
+                                    <span>GH</span>
+                                  </span>
+
+                                  <span
+                                    title={`GitLab Integration: ${integrationsStatus.gitlab?.label} (${integrationsStatus.gitlab?.details})`}
+                                    className={cn(
+                                      "inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border",
+                                      integrationsStatus.gitlab?.color === 'emerald'
+                                        ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                        : integrationsStatus.gitlab?.color === 'amber'
+                                        ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                        : "bg-slate-500/10 text-slate-400 border-slate-500/20"
+                                    )}
+                                  >
+                                    <span className={cn(
+                                      "w-1.5 h-1.5 rounded-full shrink-0",
+                                      integrationsStatus.gitlab?.color === 'emerald' ? "bg-emerald-500 animate-pulse" : (integrationsStatus.gitlab?.color === 'amber' ? "bg-amber-500 animate-pulse" : "bg-slate-400")
+                                    )} />
+                                    <span>GL</span>
+                                  </span>
+                                </div>
+                              )}
                             </Link>
                           );
                         })}
@@ -321,21 +390,61 @@ export default function Layout() {
           </Tooltip>
 
           <div className="flex w-full pt-2 transition-all duration-300 shrink-0">
-             <Tooltip content={showExpanded ? undefined : "Profile"} position="right">
+             <Tooltip content={showExpanded ? undefined : "Profile & Integrations"} position="right">
                 <Link 
                   to="/profile"
-                  className={cn("tour-user-dropdown hover:opacity-80 transition-all duration-300 flex items-center w-full", showExpanded ? "h-12 bg-surface border border-border-subtle rounded-lg shadow-sm overflow-hidden" : "h-10 rounded-full overflow-visible")} 
+                  className={cn("tour-user-dropdown hover:opacity-90 transition-all duration-300 flex items-center w-full", showExpanded ? "p-2 bg-surface border border-border-subtle rounded-lg shadow-sm overflow-hidden" : "h-10 rounded-full overflow-visible")} 
                 >
-                  <div className="flex items-center justify-center w-10 h-10 shrink-0">
+                  <div className="flex items-center justify-center w-10 h-10 shrink-0 relative">
                      <UserAvatar user={user} showTooltip={!showExpanded} />
+                     {!showExpanded && integrationsStatus && (
+                       <span
+                         title={`GitHub: ${integrationsStatus.github?.label} | GitLab: ${integrationsStatus.gitlab?.label}`}
+                         className={cn(
+                           "absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-surface shrink-0",
+                           integrationsStatus.github?.color === 'amber' || integrationsStatus.gitlab?.color === 'amber'
+                             ? "bg-amber-500 animate-pulse"
+                             : integrationsStatus.github?.color === 'emerald' || integrationsStatus.gitlab?.color === 'emerald'
+                             ? "bg-emerald-500"
+                             : "bg-slate-400"
+                         )}
+                       />
+                     )}
                   </div>
-                  <div className={cn("flex flex-col min-w-0 transition-all duration-300 overflow-hidden", showExpanded ? "opacity-100 max-w-full" : "opacity-0 max-w-0")}>
+                  <div className={cn("flex flex-col min-w-0 transition-all duration-300 overflow-hidden ml-2 flex-1", showExpanded ? "opacity-100 max-w-full" : "opacity-0 max-w-0")}>
                     <span className="text-sm font-bold text-strong truncate">{user?.name}</span>
                     <span className="text-[10px] text-muted truncate">{user?.email}</span>
+                    {integrationsStatus && (
+                      <div className="flex items-center space-x-1.5 mt-1 pt-1 border-t border-border-subtle/40">
+                        <span className={cn(
+                          "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border inline-flex items-center space-x-1",
+                          integrationsStatus.github?.color === 'emerald'
+                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                            : integrationsStatus.github?.color === 'amber'
+                            ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                            : "bg-slate-500/10 text-slate-400 border-slate-500/20"
+                        )}>
+                          <span className={cn("w-1 h-1 rounded-full", integrationsStatus.github?.color === 'emerald' ? "bg-emerald-500" : (integrationsStatus.github?.color === 'amber' ? "bg-amber-500" : "bg-slate-400"))} />
+                          <span>GH: {integrationsStatus.github?.label}</span>
+                        </span>
+                        <span className={cn(
+                          "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border inline-flex items-center space-x-1",
+                          integrationsStatus.gitlab?.color === 'emerald'
+                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                            : integrationsStatus.gitlab?.color === 'amber'
+                            ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                            : "bg-slate-500/10 text-slate-400 border-slate-500/20"
+                        )}>
+                          <span className={cn("w-1 h-1 rounded-full", integrationsStatus.gitlab?.color === 'emerald' ? "bg-emerald-500" : (integrationsStatus.gitlab?.color === 'amber' ? "bg-amber-500" : "bg-slate-400"))} />
+                          <span>GL: {integrationsStatus.gitlab?.label}</span>
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </Link>
              </Tooltip>
           </div>
+        </div>
         </div>
       </aside>
 
@@ -350,8 +459,63 @@ export default function Layout() {
             <Menu size={20} />
           </button>
           <GlobalSearch />
+
+          {/* Visual Integration Status Badges */}
+          {integrationsStatus && (
+            <div className="hidden sm:flex items-center space-x-2 ml-auto shrink-0">
+              <Link
+                to="/git"
+                title={`GitHub: ${integrationsStatus.github?.label} (${integrationsStatus.github?.details})`}
+                className={cn(
+                  "flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all hover:scale-105 shadow-sm",
+                  integrationsStatus.github?.color === 'emerald'
+                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                    : integrationsStatus.github?.color === 'amber'
+                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/20"
+                    : "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30 hover:bg-slate-500/20"
+                )}
+              >
+                <Github size={13} className="shrink-0" />
+                <span className="font-mono text-[11px] font-bold">GitHub:</span>
+                <span className="text-[11px] font-bold">{integrationsStatus.github?.label}</span>
+                <span className={cn(
+                  "w-2 h-2 rounded-full shrink-0",
+                  integrationsStatus.github?.color === 'emerald'
+                    ? "bg-emerald-500 animate-pulse"
+                    : integrationsStatus.github?.color === 'amber'
+                    ? "bg-amber-500 animate-pulse"
+                    : "bg-slate-400"
+                )} />
+              </Link>
+
+              <Link
+                to="/git"
+                title={`GitLab: ${integrationsStatus.gitlab?.label} (${integrationsStatus.gitlab?.details})`}
+                className={cn(
+                  "flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all hover:scale-105 shadow-sm",
+                  integrationsStatus.gitlab?.color === 'emerald'
+                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                    : integrationsStatus.gitlab?.color === 'amber'
+                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/20"
+                    : "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30 hover:bg-slate-500/20"
+                )}
+              >
+                <Gitlab size={13} className="shrink-0" />
+                <span className="font-mono text-[11px] font-bold">GitLab:</span>
+                <span className="text-[11px] font-bold">{integrationsStatus.gitlab?.label}</span>
+                <span className={cn(
+                  "w-2 h-2 rounded-full shrink-0",
+                  integrationsStatus.gitlab?.color === 'emerald'
+                    ? "bg-emerald-500 animate-pulse"
+                    : integrationsStatus.gitlab?.color === 'amber'
+                    ? "bg-amber-500 animate-pulse"
+                    : "bg-slate-400"
+                )} />
+              </Link>
+            </div>
+          )}
         </header>
-        <div className="flex-1 w-full h-full flex flex-col min-h-0 relative z-0">
+        <div className="flex-1 w-full h-full flex flex-col min-h-0 relative z-0 overflow-y-auto overflow-x-auto custom-scrollbar">
           <Outlet />
         </div>
       </main>
