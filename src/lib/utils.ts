@@ -46,3 +46,53 @@ export function getUserGradient(name: string | undefined | null) {
   }
   return `bg-gradient-to-r ${gradients[Math.abs(hash) % gradients.length]}`;
 }
+
+/**
+ * Detects if a branch name ends with a number (with optional separator like - or _)
+ * and returns the incremented branch name.
+ * e.g., 'wt-45' -> 'wt-46', 'fty-98' -> 'fty-99'
+ */
+export function getIncrementedBranchName(name: string): string | null {
+  if (!name) return null;
+  const match = name.trim().match(/^(.*?[-_]?)(\d+)$/);
+  if (!match) return null;
+  const prefix = match[1];
+  const numStr = match[2];
+  const nextNum = parseInt(numStr, 10) + 1;
+  const nextNumStr = nextNum.toString().padStart(numStr.length, '0');
+  return prefix + nextNumStr;
+}
+
+/**
+ * Scans list of existing branch names, finds patterns ending with numbers,
+ * groups them by prefix, and returns the next incremented suggestion for each prefix.
+ */
+export function getBranchSuggestions(existingBranches: string[]): string[] {
+  if (!existingBranches || existingBranches.length === 0) return [];
+  const maxNumbers: Record<string, { max: number; originalNumStr: string }> = {};
+
+  for (const branch of existingBranches) {
+    if (!branch) continue;
+    const match = branch.trim().match(/^(.*?[-_]?)(\d+)$/);
+    if (match) {
+      const prefix = match[1];
+      const numStr = match[2];
+      const num = parseInt(numStr, 10);
+      if (!(prefix in maxNumbers) || num > maxNumbers[prefix].max) {
+        maxNumbers[prefix] = { max: num, originalNumStr: numStr };
+      }
+    }
+  }
+
+  const suggestions: string[] = [];
+  for (const [prefix, val] of Object.entries(maxNumbers)) {
+    // Avoid generating suggestion if prefix is empty and it's just a raw number
+    if (!prefix.trim()) continue;
+    const nextNum = val.max + 1;
+    const nextNumStr = nextNum.toString().padStart(val.originalNumStr.length, '0');
+    suggestions.push(prefix + nextNumStr);
+  }
+
+  return suggestions;
+}
+

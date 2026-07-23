@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Outlet, Link, useLocation } from 'react-router';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { LayoutDashboard, KanbanSquare, LogOut, Users, Calendar, FolderKanban, FileText, Map, Sun, Moon, Shield, PanelLeftClose, PanelLeft, Workflow, Settings, ChevronUp, ChevronDown, ChevronRight, Menu, X, GitBranch, Github, Gitlab } from 'lucide-react';
@@ -17,15 +17,30 @@ export default function Layout() {
   const { user, token, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
+  const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [integrationsStatus, setIntegrationsStatus] = useState<any>(null);
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
-    Management: true,
-    Tasks: true,
+    Management: false,
+    Tasks: false,
   });
+  const [unreadNotifications, setUnreadNotifications] = useState<number>(() => (window as any).__unreadCount || 0);
+
+  React.useEffect(() => {
+    const handleUnreadChange = (e: Event) => {
+      setUnreadNotifications((e as CustomEvent).detail || 0);
+    };
+    window.addEventListener('unread-notifications-changed', handleUnreadChange);
+    if ((window as any).__unreadCount !== undefined) {
+      setUnreadNotifications((window as any).__unreadCount);
+    }
+    return () => {
+      window.removeEventListener('unread-notifications-changed', handleUnreadChange);
+    };
+  }, []);
 
   React.useEffect(() => {
     const fetchStatus = async () => {
@@ -144,7 +159,7 @@ export default function Layout() {
       {/* Sidebar */}
       <aside 
         className={cn(
-          "tour-sidebar flex flex-col py-6 border-r border-border-subtle bg-surface-dim transition-all duration-300 z-50 shrink-0 overflow-hidden",
+          "tour-sidebar flex flex-col py-6 border-r border-border-subtle bg-surface-dim transition-all duration-300 z-50 shrink-0 overflow-visible",
           // Layout constraints across screens
           "fixed inset-y-0 left-0 md:relative md:translate-x-0 md:flex",
           isMobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
@@ -176,8 +191,7 @@ export default function Layout() {
           </Tooltip>
         </div>
 
-        <div className="flex-1 min-h-0 flex flex-col overflow-y-auto overflow-x-hidden space-y-4 pr-0.5 custom-scrollbar">
-          <nav className="flex flex-col space-y-1 w-full overflow-y-auto overflow-x-hidden custom-scrollbar max-h-full pr-0.5">
+        <nav className="flex-1 min-h-0 flex flex-col space-y-1 w-full overflow-y-auto overflow-x-hidden custom-scrollbar pr-0.5">
           {navItems.map((item) => {
             if (item.children) {
               const Icon = item.icon;
@@ -185,7 +199,7 @@ export default function Layout() {
               const isAnyChildActive = item.children.some(child => location.pathname === child.href);
 
               return (
-                <div key={item.name} className="flex flex-col space-y-1 w-full relative">
+                <div key={item.name} className="flex flex-col space-y-1 w-full relative shrink-0">
                   <Tooltip content={showExpanded ? undefined : item.name} position="right">
                     <button
                       onClick={() => toggleMenu(item.name)}
@@ -237,7 +251,7 @@ export default function Layout() {
                               key={child.name}
                               to={child.href}
                               className={cn(
-                                'flex items-center rounded-md transition-all duration-300 cursor-pointer overflow-hidden w-full h-9 pl-4',
+                                'flex items-center rounded-md transition-all duration-300 cursor-pointer overflow-hidden w-full h-9 pl-4 shrink-0',
                                 isChildActive
                                   ? 'text-blue-500 bg-blue-500/10 font-medium'
                                   : 'text-subtle hover:text-strong hover:bg-surface-accent/30'
@@ -254,43 +268,53 @@ export default function Layout() {
                               </span>
                               {child.name === 'Git Repositories' && integrationsStatus && (
                                 <div className={cn(
-                                  "ml-auto mr-2 flex items-center space-x-1 shrink-0 transition-all duration-300 overflow-hidden",
+                                  "ml-auto mr-2 flex items-center space-x-1.5 shrink-0 transition-all duration-300 overflow-hidden",
                                   showExpanded ? "opacity-100 max-w-[120px] scale-100" : "opacity-0 max-w-0 scale-90"
                                 )}>
                                   <span
                                     title={`GitHub Integration: ${integrationsStatus.github?.label} (${integrationsStatus.github?.details})`}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      navigate('/git');
+                                    }}
                                     className={cn(
-                                      "inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border",
+                                      "relative inline-flex items-center justify-center p-1.5 rounded-md border transition-all duration-200 cursor-pointer hover:scale-110 hover:shadow-md active:scale-95",
                                       integrationsStatus.github?.color === 'emerald'
-                                        ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                        ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/20"
                                         : integrationsStatus.github?.color === 'amber'
-                                        ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                                        : "bg-slate-500/10 text-slate-400 border-slate-500/20"
+                                        ? "bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/20"
+                                        : "bg-slate-500/10 text-slate-400 border-slate-500/20 hover:bg-slate-500/20"
                                     )}
                                   >
+                                    <Github size={12} className="shrink-0" />
                                     <span className={cn(
-                                      "w-1.5 h-1.5 rounded-full shrink-0",
+                                      "absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full border border-surface-dim shrink-0",
                                       integrationsStatus.github?.color === 'emerald' ? "bg-emerald-500 animate-pulse" : (integrationsStatus.github?.color === 'amber' ? "bg-amber-500 animate-pulse" : "bg-slate-400")
                                     )} />
-                                    <span>GH</span>
                                   </span>
 
                                   <span
                                     title={`GitLab Integration: ${integrationsStatus.gitlab?.label} (${integrationsStatus.gitlab?.details})`}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      navigate('/git');
+                                    }}
                                     className={cn(
-                                      "inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border",
+                                      "relative inline-flex items-center justify-center p-1.5 rounded-md border transition-all duration-200 cursor-pointer hover:scale-110 hover:shadow-md active:scale-95",
                                       integrationsStatus.gitlab?.color === 'emerald'
-                                        ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                        ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/20"
                                         : integrationsStatus.gitlab?.color === 'amber'
-                                        ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                                        : "bg-slate-500/10 text-slate-400 border-slate-500/20"
+                                        ? "bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/20"
+                                        : "bg-slate-500/10 text-slate-400 border-slate-500/20 hover:bg-slate-500/20"
                                     )}
                                   >
+                                    <Gitlab size={12} className="shrink-0" />
                                     <span className={cn(
-                                      "w-1.5 h-1.5 rounded-full shrink-0",
+                                      "absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full border border-surface-dim shrink-0",
                                       integrationsStatus.gitlab?.color === 'emerald' ? "bg-emerald-500 animate-pulse" : (integrationsStatus.gitlab?.color === 'amber' ? "bg-amber-500 animate-pulse" : "bg-slate-400")
                                     )} />
-                                    <span>GL</span>
                                   </span>
                                 </div>
                               )}
@@ -311,7 +335,7 @@ export default function Layout() {
                 <Link
                   to={item.href}
                   className={cn(
-                    'flex items-center rounded-md transition-all duration-300 cursor-pointer overflow-hidden w-full h-10',
+                    'flex items-center rounded-md transition-all duration-300 cursor-pointer overflow-hidden w-full h-10 shrink-0',
                     isActive
                       ? 'text-blue-500 bg-blue-500/10 font-medium'
                       : 'text-subtle hover:text-strong hover:bg-surface-accent/30'
@@ -335,10 +359,6 @@ export default function Layout() {
         </nav>
 
         <div className="mt-auto pt-4 flex flex-col space-y-1 w-full border-t border-border-subtle/50 shrink-0">
-          <div className={cn("tour-notifications flex transition-all duration-300 w-full h-10 shrink-0", showExpanded ? "hover:bg-surface-accent/50 rounded-md" : "")}>
-            <NotificationsDropdown expanded={showExpanded} />
-          </div>
-
           <AnimatePresence>
             {isSettingsExpanded && (
               <motion.div 
@@ -397,54 +417,75 @@ export default function Layout() {
                 >
                   <div className="flex items-center justify-center w-10 h-10 shrink-0 relative">
                      <UserAvatar user={user} showTooltip={!showExpanded} />
-                     {!showExpanded && integrationsStatus && (
-                       <span
-                         title={`GitHub: ${integrationsStatus.github?.label} | GitLab: ${integrationsStatus.gitlab?.label}`}
-                         className={cn(
-                           "absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-surface shrink-0",
-                           integrationsStatus.github?.color === 'amber' || integrationsStatus.gitlab?.color === 'amber'
-                             ? "bg-amber-500 animate-pulse"
-                             : integrationsStatus.github?.color === 'emerald' || integrationsStatus.gitlab?.color === 'emerald'
-                             ? "bg-emerald-500"
-                             : "bg-slate-400"
-                         )}
-                       />
+                     {!showExpanded && unreadNotifications > 0 && (
+                       <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-red-500 text-white font-semibold text-[9px] rounded-full border-2 border-surface-dim flex items-center justify-center shadow-md select-none pointer-events-none animate-pulse">
+                         {unreadNotifications}
+                       </span>
                      )}
                   </div>
                   <div className={cn("flex flex-col min-w-0 transition-all duration-300 overflow-hidden ml-2 flex-1", showExpanded ? "opacity-100 max-w-full" : "opacity-0 max-w-0")}>
-                    <span className="text-sm font-bold text-strong truncate">{user?.name}</span>
-                    <span className="text-[10px] text-muted truncate">{user?.email}</span>
-                    {integrationsStatus && (
-                      <div className="flex items-center space-x-1.5 mt-1 pt-1 border-t border-border-subtle/40">
-                        <span className={cn(
-                          "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border inline-flex items-center space-x-1",
-                          integrationsStatus.github?.color === 'emerald'
-                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                            : integrationsStatus.github?.color === 'amber'
-                            ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                            : "bg-slate-500/10 text-slate-400 border-slate-500/20"
-                        )}>
-                          <span className={cn("w-1 h-1 rounded-full", integrationsStatus.github?.color === 'emerald' ? "bg-emerald-500" : (integrationsStatus.github?.color === 'amber' ? "bg-amber-500" : "bg-slate-400"))} />
-                          <span>GH: {integrationsStatus.github?.label}</span>
-                        </span>
-                        <span className={cn(
-                          "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border inline-flex items-center space-x-1",
-                          integrationsStatus.gitlab?.color === 'emerald'
-                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                            : integrationsStatus.gitlab?.color === 'amber'
-                            ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                            : "bg-slate-500/10 text-slate-400 border-slate-500/20"
-                        )}>
-                          <span className={cn("w-1 h-1 rounded-full", integrationsStatus.gitlab?.color === 'emerald' ? "bg-emerald-500" : (integrationsStatus.gitlab?.color === 'amber' ? "bg-amber-500" : "bg-slate-400"))} />
-                          <span>GL: {integrationsStatus.gitlab?.label}</span>
-                        </span>
+                    <div className="flex items-center justify-between min-w-0 mb-0.5">
+                      <span className="text-sm font-bold text-strong truncate mr-2">{user?.name}</span>
+                      <div className="flex items-center space-x-1.5 shrink-0" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                        <div className="tour-notifications">
+                          <NotificationsDropdown compact={true} />
+                        </div>
+                        {integrationsStatus && (
+                          <div className="flex items-center space-x-1 shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                navigate('/git');
+                              }}
+                              title={`GitHub: ${integrationsStatus.github?.label}`}
+                              className={cn(
+                                "relative inline-flex items-center justify-center p-1 rounded-md border transition-all duration-200 cursor-pointer hover:scale-110 hover:shadow-md active:scale-95",
+                                integrationsStatus.github?.color === 'emerald'
+                                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/20"
+                                  : integrationsStatus.github?.color === 'amber'
+                                  ? "bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/20"
+                                  : "bg-slate-500/10 text-slate-400 border-slate-500/20 hover:bg-slate-500/20"
+                              )}
+                            >
+                              <Github size={11} className="shrink-0" />
+                              <span className={cn(
+                                "absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full border border-surface-dim shrink-0",
+                                integrationsStatus.github?.color === 'emerald' ? "bg-emerald-500 animate-pulse" : (integrationsStatus.github?.color === 'amber' ? "bg-amber-500 animate-pulse" : "bg-slate-400")
+                              )} />
+                            </button>
+
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                navigate('/git');
+                              }}
+                              title={`GitLab: ${integrationsStatus.gitlab?.label}`}
+                              className={cn(
+                                "relative inline-flex items-center justify-center p-1 rounded-md border transition-all duration-200 cursor-pointer hover:scale-110 hover:shadow-md active:scale-95",
+                                integrationsStatus.gitlab?.color === 'emerald'
+                                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30 hover:bg-emerald-500/20"
+                                  : integrationsStatus.gitlab?.color === 'amber'
+                                  ? "bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/20"
+                                  : "bg-slate-500/10 text-slate-400 border-slate-500/20 hover:bg-slate-500/20"
+                              )}
+                            >
+                              <Gitlab size={11} className="shrink-0" />
+                              <span className={cn(
+                                "absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full border border-surface-dim shrink-0",
+                                integrationsStatus.gitlab?.color === 'emerald' ? "bg-emerald-500 animate-pulse" : (integrationsStatus.gitlab?.color === 'amber' ? "bg-amber-500 animate-pulse" : "bg-slate-400")
+                              )} />
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
+                    <span className="text-[10px] text-muted truncate">{user?.email}</span>
                   </div>
                 </Link>
              </Tooltip>
           </div>
-        </div>
         </div>
       </aside>
 

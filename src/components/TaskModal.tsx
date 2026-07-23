@@ -5,7 +5,7 @@ import { useToast } from '../contexts/ToastContext';
 import { X, GitBranch, Edit2, Calendar, Clock, CheckCircle2, Trash, Plus, FolderKanban, GitPullRequest, ExternalLink } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { format } from 'date-fns';
-import { cn } from '../lib/utils';
+import { cn, getIncrementedBranchName } from '../lib/utils';
 import UserAvatar from './UserAvatar';
 
 interface TaskModalProps {
@@ -206,7 +206,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
     const cleanTitle = (formData.title || 'task').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30);
     const proj = projectsList.find(p => p.id === formData.projectId);
     const keyPrefix = proj?.projectKey ? `${proj.projectKey}-` : '';
-    const targetBranch = formData.branchName || `feature/${keyPrefix}${cleanTitle}`;
+    const targetBranch = formData.branchName || `${keyPrefix}${cleanTitle}`;
 
     setGeneratingBranch(true);
     try {
@@ -928,11 +928,23 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
              </div>
              <input
               type="text"
-              placeholder="e.g. feature/PROJ-12-task-name"
+              placeholder="e.g. PROJ-12-task-name"
               className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 focus:border-blue-500 focus:outline-none font-mono text-xs text-blue-400 placeholder-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
               value={formData.branchName || ''}
               onChange={e => setFormData(p => ({ ...p, branchName: e.target.value }))}
             />
+            {formData.branchName && getIncrementedBranchName(formData.branchName) && (
+              <div className="flex items-center space-x-2 mt-1.5 animate-fade-in">
+                <span className="text-[10px] text-muted">💡 Increment suggestion:</span>
+                <button
+                  type="button"
+                  onClick={() => setFormData(p => ({ ...p, branchName: getIncrementedBranchName(formData.branchName) || '' }))}
+                  className="px-2 py-0.5 text-[10px] font-mono font-semibold text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded transition-all"
+                >
+                  {getIncrementedBranchName(formData.branchName)}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2 flex-1 flex flex-col min-h-[250px]">

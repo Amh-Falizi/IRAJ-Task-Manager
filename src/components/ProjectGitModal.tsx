@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Project, GitBranch, Task } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { getIncrementedBranchName, getBranchSuggestions } from '../lib/utils';
 import { 
   X, GitBranch as GitBranchIcon, Github, Gitlab, Link as LinkIcon, 
   ExternalLink, Plus, RefreshCw, CheckCircle2, GitPullRequest, 
@@ -201,9 +202,8 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
     const task = tasks.find(t => t.id === taskId);
     if (task) {
       const cleanTitle = task.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 30);
-      const prefix = task.priority === 'urgent' || task.priority === 'high' ? 'fix' : 'feature';
       const keyStr = project.projectKey ? `${project.projectKey}-` : '';
-      setNewBranchName(`${prefix}/${keyStr}${cleanTitle}`);
+      setNewBranchName(`${keyStr}${cleanTitle}`);
     }
   };
 
@@ -411,7 +411,7 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
                 <span className="font-bold text-strong flex items-center gap-1.5">
                   <Terminal size={14} className="text-blue-400" /> Branch Naming Standard
                 </span>
-                <p>Create feature or fix branches directly linked to tasks. Names like <code className="text-blue-400 bg-slate-900 px-1 py-0.5 rounded">feature/PROJ-101-user-login</code> facilitate automated tracking.</p>
+                <p>Create branches directly linked to tasks. Names like <code className="text-blue-400 bg-slate-900 px-1 py-0.5 rounded">PROJ-101-user-login</code> facilitate automated tracking.</p>
               </div>
 
               <div>
@@ -440,10 +440,55 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
                   type="text"
                   value={newBranchName}
                   onChange={(e) => setNewBranchName(e.target.value)}
-                  placeholder="e.g. feature/PROJ-12-auth-screen"
+                  placeholder="e.g. PROJ-12-auth-screen"
                   required
                   className="w-full px-3 py-2 text-xs font-mono bg-surface-dim border border-border-subtle rounded-lg text-strong focus:outline-none focus:border-blue-500"
                 />
+
+                {/* Dynamic Branch Name Increment and Suggestion Helper */}
+                {(() => {
+                  const incrementedVal = getIncrementedBranchName(newBranchName);
+                  const existingSuggestions = getBranchSuggestions(branches.map(b => b.name));
+
+                  if (!incrementedVal && existingSuggestions.length === 0) return null;
+
+                  return (
+                    <div className="mt-2.5 p-2.5 rounded-lg bg-surface border border-border-subtle space-y-2 text-xs animate-fade-in">
+                      {/* Typed Input Increment Suggestion */}
+                      {incrementedVal && (
+                        <div className="flex items-center space-x-2">
+                          <span className="text-muted">💡 Increment suggestion:</span>
+                          <button
+                            type="button"
+                            onClick={() => setNewBranchName(incrementedVal)}
+                            className="px-2 py-0.5 font-mono font-semibold text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded transition-all"
+                          >
+                            {incrementedVal}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Existing Branch Increment Suggestions */}
+                      {existingSuggestions.length > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-muted block font-medium">📈 Next suggestions from existing branches:</span>
+                          <div className="flex flex-wrap gap-1.5 pt-0.5">
+                            {existingSuggestions.map(s => (
+                              <button
+                                key={s}
+                                type="button"
+                                onClick={() => setNewBranchName(s)}
+                                className="px-2 py-0.5 font-mono text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded transition-all"
+                              >
+                                {s}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>
