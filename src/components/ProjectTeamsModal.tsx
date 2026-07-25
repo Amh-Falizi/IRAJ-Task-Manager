@@ -101,8 +101,8 @@ export default function ProjectTeamsModal({ project, onClose }: Props) {
   // Let's just say teams with no projectId.
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 text-strong">
-      <div className="bg-surface border border-border-subtle rounded-lg shadow-2xl w-full max-w-xl flex flex-col max-h-[80vh]">
+    <div className="fixed inset-y-0 right-0 left-0 md:left-[var(--sidebar-width,80px)] z-50 overflow-y-auto flex justify-center items-start p-4 bg-black/80 backdrop-blur-sm text-strong transition-all duration-300">
+      <div className="my-auto bg-surface border border-border-subtle rounded-lg shadow-2xl w-full max-w-xl flex flex-col max-h-[calc(100vh-2rem)] md:max-h-[80vh]">
         <div className="px-6 py-4 border-b border-border-subtle flex justify-between items-center bg-page-bg rounded-t-lg shrink-0">
           <div>
             <h2 className="text-sm font-bold text-strong uppercase tracking-widest">{project.name} - Teams</h2>

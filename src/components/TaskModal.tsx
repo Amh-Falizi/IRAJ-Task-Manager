@@ -194,6 +194,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
 
     onSave({
       ...formData,
+      branchName: formData.branchName ? formData.branchName.trim().toUpperCase() : '',
       assigneeId: formData.assigneeId === '' ? null : formData.assigneeId
     });
   };
@@ -292,8 +293,8 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
     const assignee = users.find(u => u.id === task.assigneeId);
     
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-        <div className="bg-surface border border-border-subtle rounded-lg shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col font-sans overflow-hidden">
+      <div className="fixed inset-y-0 right-0 left-0 md:left-[var(--sidebar-width,80px)] z-50 overflow-y-auto flex justify-center items-start p-4 bg-black/80 backdrop-blur-sm transition-all duration-300">
+        <div className="my-auto bg-surface border border-border-subtle rounded-lg shadow-2xl w-full max-w-3xl max-h-[calc(100vh-2rem)] md:max-h-[90vh] flex flex-col font-sans overflow-hidden">
           <div className="px-6 py-4 border-b border-border-subtle flex justify-between items-start bg-page-bg">
             <div className="flex-1 pr-4">
               <h2 className="text-xl font-bold text-strong mb-2">{task.title}</h2>
@@ -764,8 +765,8 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-surface border border-border-subtle rounded-lg shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col font-sans">
+    <div className="fixed inset-y-0 right-0 left-0 md:left-[var(--sidebar-width,80px)] z-50 overflow-y-auto flex justify-center items-start p-4 bg-black/80 backdrop-blur-sm transition-all duration-300">
+      <div className="my-auto bg-surface border border-border-subtle rounded-lg shadow-2xl w-full max-w-3xl max-h-[calc(100vh-2rem)] md:max-h-[90vh] flex flex-col font-sans">
         <div className="px-6 py-4 border-b border-border-subtle flex justify-between items-center bg-page-bg rounded-t-lg">
           <h2 className="text-sm font-bold text-strong uppercase tracking-widest">{isEdit ? 'Edit Task' : 'Create Task'}</h2>
           <button onClick={onClose} className="text-subtle hover:text-red-400 transition-colors">
@@ -931,7 +932,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
               placeholder="e.g. PROJ-12-task-name"
               className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 focus:border-blue-500 focus:outline-none font-mono text-xs text-blue-400 placeholder-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
               value={formData.branchName || ''}
-              onChange={e => setFormData(p => ({ ...p, branchName: e.target.value }))}
+              onChange={e => setFormData(p => ({ ...p, branchName: e.target.value.toUpperCase() }))}
             />
             {formData.branchName && getIncrementedBranchName(formData.branchName) && (
               <div className="flex items-center space-x-2 mt-1.5 animate-fade-in">

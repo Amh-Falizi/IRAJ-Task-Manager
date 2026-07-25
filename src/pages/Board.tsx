@@ -571,6 +571,13 @@ export default function Board() {
                 <GitBranch size={14} className="text-amber-400" />
                 <span>Git Repo</span>
               </button>
+              <Link
+                to={`/graph?projectId=${project.id}`}
+                className="flex items-center space-x-2 bg-indigo-500/10 border border-indigo-500/30 hover:border-indigo-500 hover:bg-indigo-500/20 text-indigo-400 hover:text-indigo-300 px-3 py-1.5 rounded transition-all text-sm font-medium shadow-sm hover:scale-105"
+              >
+                <Workflow size={14} className="text-indigo-400" />
+                <span>Task Graph</span>
+              </Link>
             </>
           )}
           <div className="flex items-center space-x-2 bg-surface border border-border-subtle rounded px-3 py-1.5 text-[10px]">

@@ -76,8 +76,8 @@ export default function UserModal({ user, onClose, onSave }: UserModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-surface border border-border-subtle rounded-xl w-full max-w-md shadow-2xl flex flex-col overflow-hidden max-h-[90vh]">
+    <div className="fixed inset-y-0 right-0 left-0 md:left-[var(--sidebar-width,80px)] z-50 overflow-y-auto flex justify-center items-start p-4 bg-black/50 backdrop-blur-sm transition-all duration-300">
+      <div className="my-auto bg-surface border border-border-subtle rounded-xl w-full max-w-md shadow-2xl flex flex-col overflow-hidden max-h-[calc(100vh-2rem)] md:max-h-[90vh]">
         <div className="flex justify-between items-center px-6 py-4 border-b border-border-subtle shrink-0">
           <h2 className="text-sm font-bold tracking-widest text-strong uppercase">
             {isEdit ? 'Edit User' : 'Create User'}

@@ -18,7 +18,7 @@ import nodemailer from "nodemailer";
 
 const app = express();
 app.set("trust proxy", 1); // Trust first proxy for rate limiting (Cloud Run/Nginx)
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3003;
+const PORT = 3000;
 
 // Security: Generate a secure secret if none is provided via environment
 const FALLBACK_SECRET = crypto.randomBytes(64).toString('hex');
@@ -141,6 +141,18 @@ class SqliteWrapper implements DatabaseWrapper {
       await this.db.close();
     }
   }
+}
+
+function extractTaskNumber(branchName: string | null | undefined): number | null {
+  if (!branchName || typeof branchName !== 'string') return null;
+  const match = branchName.match(/(\d+)(?!.*\d)/);
+  if (match) {
+    const num = parseInt(match[1], 10);
+    if (!isNaN(num)) {
+      return num;
+    }
+  }
+  return null;
 }
 
 let dbPromise: Promise<DatabaseWrapper>;
@@ -797,7 +809,7 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
       const id = uuidv4();
       const role = "developer";
       // generate dummy password hash for oauth
-      const randomPassword = require('crypto').randomBytes(16).toString('hex');
+      const randomPassword = crypto.randomBytes(16).toString('hex');
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(randomPassword, salt);
       await db.run(
@@ -896,7 +908,7 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
     if (!user) {
       const id = uuidv4();
       const role = "developer";
-      const randomPassword = require('crypto').randomBytes(16).toString('hex');
+      const randomPassword = crypto.randomBytes(16).toString('hex');
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(randomPassword, salt);
       await db.run(
@@ -1017,7 +1029,7 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
     if (!user) {
       const id = uuidv4();
       const role = "developer";
-      const randomPassword = require('crypto').randomBytes(16).toString('hex');
+      const randomPassword = crypto.randomBytes(16).toString('hex');
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(randomPassword, salt);
       await db.run(
@@ -1595,6 +1607,11 @@ app.post("/api/tasks", authenticateToken, async (req: any, res: any) => {
         await db.run("UPDATE projects SET taskCounter = ? WHERE id = ?", [nextCount, req.body.projectId]);
         branchName = `${project.projectKey}-${nextCount}`;
     }
+  } else {
+    const taskNum = extractTaskNumber(branchName);
+    if (taskNum !== null && taskNum > (project.taskCounter || 0)) {
+        await db.run("UPDATE projects SET taskCounter = ? WHERE id = ?", [taskNum, req.body.projectId]);
+    }
   }
 
   const newTask: Task = {
@@ -1740,6 +1757,16 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
     "UPDATE tasks SET title=?, description=?, status=?, priority=?, deadline=?, assigneeId=?, branchName=?, parentId=?, projectId=?, milestoneId=?, orderIndex=? WHERE id=?",
     [updated.title, updated.description, updated.status, updated.priority, updated.deadline, updated.assigneeId, updated.branchName, updated.parentId, updated.projectId, updated.milestoneId, updated.orderIndex !== undefined ? updated.orderIndex : task.orderIndex, updated.id]
   );
+
+  if (updated.branchName && updated.projectId) {
+    const taskNum = extractTaskNumber(updated.branchName);
+    if (taskNum !== null) {
+      const proj = await db.get("SELECT taskCounter FROM projects WHERE id = ?", updated.projectId);
+      if (proj && taskNum > (proj.taskCounter || 0)) {
+        await db.run("UPDATE projects SET taskCounter = ? WHERE id = ?", [taskNum, updated.projectId]);
+      }
+    }
+  }
   
   if (req.body.dependencies !== undefined && Array.isArray(req.body.dependencies)) {
     await db.run("DELETE FROM task_dependencies WHERE taskId = ?", updated.id);
@@ -2314,6 +2341,14 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
   // Save branch onto task if taskId provided
   if (taskId) {
     await db.run("UPDATE tasks SET branchName = ? WHERE id = ?", [branchName, taskId]);
+    
+    const taskNum = extractTaskNumber(branchName);
+    if (taskNum !== null) {
+      const proj = await db.get("SELECT taskCounter FROM projects WHERE id = ?", req.params.id);
+      if (proj && taskNum > (proj.taskCounter || 0)) {
+        await db.run("UPDATE projects SET taskCounter = ? WHERE id = ?", [taskNum, req.params.id]);
+      }
+    }
     
     // Add activity
     const activityId = uuidv4();

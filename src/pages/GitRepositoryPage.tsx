@@ -206,7 +206,7 @@ export default function GitRepositoryPage() {
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
-          branchName: newBranchName.trim(),
+          branchName: newBranchName.trim().toUpperCase(),
           taskId: selectedTaskId || null,
           baseBranch
         })
@@ -769,7 +769,7 @@ export default function GitRepositoryPage() {
                 <input
                   type="text"
                   value={newBranchName}
-                  onChange={(e) => setNewBranchName(e.target.value)}
+                  onChange={(e) => setNewBranchName(e.target.value.toUpperCase())}
                   placeholder="e.g. PROJ-12-auth-screen"
                   required
                   className="w-full px-3 py-2 text-xs font-mono bg-surface-dim border border-border-subtle rounded-lg text-strong focus:outline-none focus:border-blue-500"

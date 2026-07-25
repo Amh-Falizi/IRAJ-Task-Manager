@@ -40,8 +40,8 @@ export default function ProjectActivityModal({ projectId, projectName, users, on
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-surface border border-border-subtle rounded-lg shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col font-sans overflow-hidden">
+    <div className="fixed inset-y-0 right-0 left-0 md:left-[var(--sidebar-width,80px)] z-50 overflow-y-auto flex justify-center items-start p-4 bg-black/80 backdrop-blur-sm transition-all duration-300">
+      <div className="my-auto bg-surface border border-border-subtle rounded-lg shadow-2xl w-full max-w-2xl max-h-[calc(100vh-2rem)] md:max-h-[85vh] flex flex-col font-sans overflow-hidden">
         <div className="px-6 py-4 border-b border-border-subtle flex justify-between items-center bg-page-bg">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 rounded bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">

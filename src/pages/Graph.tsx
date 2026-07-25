@@ -290,6 +290,13 @@ export default function Graph() {
               <option value="low" className="bg-surface">LOW</option>
             </select>
           </div>
+          <Link
+            to={`/board?projectId=${projectId}`}
+            className="px-3 py-1.5 bg-blue-500/10 border border-blue-500/30 hover:border-blue-500 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 text-xs font-bold rounded shadow-sm hover:scale-105 transition-all flex items-center space-x-2"
+          >
+            <FolderKanban size={14} className="text-blue-400" />
+            <span>TASK BOARD</span>
+          </Link>
           {user?.role !== 'developer' && (
             <button
               onClick={handleCreateTask}

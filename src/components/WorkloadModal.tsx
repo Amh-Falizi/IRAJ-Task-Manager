@@ -69,8 +69,8 @@ export default function WorkloadModal({ projectId, projectName, onClose }: Workl
   }, [projectId, token]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-surface border border-border-subtle rounded-lg shadow-2xl w-full max-w-2xl flex flex-col font-sans max-h-[85vh]">
+    <div className="fixed inset-y-0 right-0 left-0 md:left-[var(--sidebar-width,80px)] z-50 overflow-y-auto flex justify-center items-start p-4 bg-black/80 backdrop-blur-sm transition-all duration-300">
+      <div className="my-auto bg-surface border border-border-subtle rounded-lg shadow-2xl w-full max-w-2xl flex flex-col font-sans max-h-[calc(100vh-2rem)] md:max-h-[85vh]">
         <div className="px-6 py-4 border-b border-border-subtle flex justify-between items-center bg-page-bg rounded-t-lg shrink-0">
           <div className="flex items-center space-x-2">
              <Activity className="text-blue-500" size={18} />

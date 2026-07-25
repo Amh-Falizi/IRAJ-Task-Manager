@@ -140,7 +140,10 @@ export default function Layout() {
   const showExpanded = isMobile ? true : isExpanded;
 
   return (
-    <div className="flex h-screen bg-page-bg text-primary font-sans overflow-hidden transition-colors duration-200 relative">
+    <div 
+      className="flex h-screen bg-page-bg text-primary font-sans overflow-hidden transition-colors duration-200 relative"
+      style={{ '--sidebar-width': showExpanded ? '256px' : '80px' } as React.CSSProperties}
+    >
       <WelcomeModal />
 
       {/* Mobile Sidebar Overlay Backdrop */}
@@ -490,8 +493,8 @@ export default function Layout() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 bg-page-bg transition-colors duration-200 overflow-hidden relative">
-        <header className="h-14 border-b border-border-subtle bg-surface flex items-center px-4 shrink-0 shadow-sm relative z-[100] gap-2">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden min-w-0 bg-page-bg transition-colors duration-200 relative">
+        <header className="h-14 border-b border-border-subtle bg-surface flex items-center px-4 shrink-0 shadow-sm relative z-20 gap-2">
           <button
             onClick={() => setIsMobileOpen(true)}
             className="md:hidden p-2 -ml-2 text-subtle hover:text-strong hover:bg-surface-accent rounded-md transition-colors"
@@ -556,7 +559,7 @@ export default function Layout() {
             </div>
           )}
         </header>
-        <div className="flex-1 w-full h-full flex flex-col min-h-0 relative z-0 overflow-y-auto overflow-x-auto custom-scrollbar">
+        <div className="flex-1 overflow-y-auto w-full flex flex-col min-h-0 relative overflow-x-auto custom-scrollbar">
           <Outlet />
         </div>
       </main>

@@ -27,7 +27,7 @@ export default function WelcomeModal() {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-y-0 right-0 left-0 md:left-[var(--sidebar-width,80px)] z-[100] overflow-y-auto flex justify-center items-start p-4 transition-all duration-300">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -39,7 +39,7 @@ export default function WelcomeModal() {
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            className="bg-surface border border-border-subtle rounded-2xl shadow-xl max-w-lg w-full overflow-hidden relative z-10"
+            className="my-auto bg-surface border border-border-subtle rounded-2xl shadow-xl max-w-lg w-full overflow-hidden relative z-10"
           >
             <div className="p-6">
               <div className="flex items-start justify-between mb-4">

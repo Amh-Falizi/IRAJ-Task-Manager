@@ -208,8 +208,8 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-3xl bg-surface border border-border-subtle rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-y-0 right-0 left-0 md:left-[var(--sidebar-width,80px)] z-50 overflow-y-auto flex justify-center items-start p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in transition-all duration-300">
+      <div className="my-auto relative w-full max-w-3xl bg-surface border border-border-subtle rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100vh-2rem)] md:max-h-[90vh]">
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border-subtle bg-surface-dim">
