@@ -180,7 +180,11 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
       const data = await res.json();
       if (res.ok && data.prUrl) {
         window.open(data.prUrl, '_blank');
-        success('Pull Request link opened!');
+        if (data.isFallback) {
+          info('Credentials unconfigured or API connection failed. Opened web compare page in a new tab for manual creation!');
+        } else {
+          success('Pull / Merge Request created via API! Link opened in a new tab');
+        }
         fetchBranches();
       } else {
         error('Failed to create Pull Request');

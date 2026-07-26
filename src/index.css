@@ -66,6 +66,21 @@ body {
   @apply bg-page-bg text-primary font-sans antialiased m-0 p-0 h-full w-full;
 }
 
+/* Tactile active state transition effect for standard buttons and interactive elements across the applet */
+button,
+a.button,
+[role="button"],
+.btn {
+  transition: transform 0.1s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
+
+button:active,
+a.button:active,
+[role="button"]:active,
+.btn:active {
+  transform: scale(0.95) !important;
+}
+
 html {
   @apply h-full w-full;
 }
@@ -92,6 +107,11 @@ html {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
+}
+
+.react-flow__controls-button:active {
+  transform: scale(0.85) !important;
+  background-color: var(--app-border-subtle) !important;
 }
 
 .react-flow__controls-button:last-child {

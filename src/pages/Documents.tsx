@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSearchParams, Link, Navigate } from 'react-router';
-import { FolderKanban, FileText, Plus, ChevronLeft, Save, Trash2, Edit3, X } from 'lucide-react';
+import { FolderKanban, FileText, Plus, ChevronLeft, Save, Trash2, Edit3, X, Download, Printer } from 'lucide-react';
 import { Project, Document } from '../types';
 import Markdown from 'react-markdown';
 import MDEditor from '@uiw/react-md-editor';
@@ -84,6 +84,22 @@ export default function Documents() {
       setEditContent('');
     }
     setIsEditing(true);
+  };
+
+  const handleDownloadMarkdown = () => {
+    if (!selectedDocument) return;
+    const blob = new Blob([selectedDocument.content], { type: 'text/markdown;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${selectedDocument.title.toLowerCase().replace(/\s+/g, '_')}.md`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handlePrint = () => {
+    window.print();
   };
 
   const handleSave = async () => {
@@ -315,13 +331,31 @@ export default function Documents() {
                       <span>Last updated: {new Date(selectedDocument.updatedAt).toLocaleDateString()}</span>
                     </p>
                   </div>
-                  <button 
-                    onClick={() => startEdit(selectedDocument)}
-                    className="flex items-center space-x-1.5 text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
-                  >
-                    <Edit3 size={14} />
-                    <span>Edit</span>
-                  </button>
+                  <div className="flex items-center space-x-2 shrink-0">
+                    <button 
+                      onClick={handleDownloadMarkdown}
+                      className="flex items-center space-x-1.5 text-muted hover:text-strong bg-surface border border-border-subtle hover:bg-surface-accent px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+                      title="Download raw Markdown (.md)"
+                    >
+                      <Download size={14} />
+                      <span className="hidden sm:inline">Export MD</span>
+                    </button>
+                    <button 
+                      onClick={handlePrint}
+                      className="flex items-center space-x-1.5 text-muted hover:text-strong bg-surface border border-border-subtle hover:bg-surface-accent px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+                      title="Print or Save as PDF"
+                    >
+                      <Printer size={14} />
+                      <span className="hidden sm:inline">Print / PDF</span>
+                    </button>
+                    <button 
+                      onClick={() => startEdit(selectedDocument)}
+                      className="flex items-center space-x-1.5 text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+                    >
+                      <Edit3 size={14} />
+                      <span>Edit</span>
+                    </button>
+                  </div>
                 </div>
                 
                 <div className="prose dark:prose-invert prose-blue max-w-none text-sm text-subtle leading-relaxed">

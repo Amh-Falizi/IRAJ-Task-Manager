@@ -51,6 +51,37 @@ export default function GitRepositoryPage() {
   const [prDescription, setPrDescription] = useState('');
   const [prTaskId, setPrTaskId] = useState('');
   const [creatingPR, setCreatingPR] = useState(false);
+  const [syncingPRs, setSyncingPRs] = useState(false);
+
+  const handleSyncPRs = async () => {
+    if (!selectedProjectId) return;
+    setSyncingPRs(true);
+    try {
+      const res = await fetch(`/api/projects/${selectedProjectId}/git/pull-requests/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.updatedCount > 0) {
+          success(`Successfully synchronized PRs! Updated ${data.updatedCount} task(s).`);
+        } else {
+          info('All Pull Request statuses are already up to date!');
+        }
+        fetchBranches();
+        fetchTasks();
+      } else {
+        error(data.error || 'Failed to sync PR statuses');
+      }
+    } catch (err) {
+      error('Error syncing Pull Requests');
+    } finally {
+      setSyncingPRs(false);
+    }
+  };
 
   // Fetch all projects
   useEffect(() => {
@@ -261,7 +292,11 @@ export default function GitRepositoryPage() {
       const data = await res.json();
       if (res.ok && data.prUrl) {
         window.open(data.prUrl, '_blank');
-        success('Pull / Merge Request created! Link opened in new tab');
+        if (data.isFallback) {
+          info('Credentials unconfigured or API connection failed. Opened web compare page in a new tab for manual creation!');
+        } else {
+          success('Pull / Merge Request created via API! Link opened in a new tab');
+        }
         fetchBranches();
         fetchTasks();
         setPrSourceBranch('');
@@ -582,6 +617,13 @@ export default function GitRepositoryPage() {
                         ) : (
                           <p className="text-xs text-muted italic">Unlinked repository branch</p>
                         )}
+
+                        {b.commitMessage && (
+                          <div className="text-[11px] text-muted font-mono mt-1 flex items-center gap-1.5 bg-slate-900/40 rounded px-2 py-1 border border-border-subtle/30 max-w-lg">
+                            <span className="text-blue-500 font-bold">&gt;</span>
+                            <span className="truncate">{b.commitMessage}</span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Actions */}
@@ -694,9 +736,22 @@ export default function GitRepositoryPage() {
 
               {/* Tasks with active PRs list */}
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-muted mb-3">
-                  Project Tasks with Linked Pull Requests
-                </h4>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted">
+                    Project Tasks with Linked Pull Requests
+                  </h4>
+                  {tasksWithPRs.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleSyncPRs}
+                      disabled={syncingPRs}
+                      className="flex items-center space-x-1.5 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700 rounded hover:bg-slate-700 hover:text-white transition-all disabled:opacity-50"
+                    >
+                      <RefreshCw size={10} className={syncingPRs ? 'animate-spin' : ''} />
+                      <span>{syncingPRs ? 'Syncing...' : 'Sync PR Statuses'}</span>
+                    </button>
+                  )}
+                </div>
 
                 {tasksWithPRs.length === 0 ? (
                   <div className="py-8 border border-dashed border-border-subtle rounded-xl text-center text-xs text-muted">

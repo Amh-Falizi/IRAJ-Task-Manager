@@ -13,6 +13,8 @@ import {
   isSameDay, 
   addMonths, 
   subMonths,
+  addWeeks,
+  subWeeks,
   parseISO
 } from 'date-fns';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, CheckCircle2, Plus, FolderKanban } from 'lucide-react';
@@ -31,6 +33,7 @@ export default function CalendarView() {
   const [project, setProject] = useState<Project | null>(null);
 
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -127,14 +130,16 @@ export default function CalendarView() {
     }
   };
 
-  const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
-  const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
+  const nextDateRange = () => {
+    setCurrentDate(viewMode === 'month' ? addMonths(currentDate, 1) : addWeeks(currentDate, 1));
+  };
+  const prevDateRange = () => {
+    setCurrentDate(viewMode === 'month' ? subMonths(currentDate, 1) : subWeeks(currentDate, 1));
+  };
   const today = () => setCurrentDate(new Date());
 
-  const monthStart = startOfMonth(currentDate);
-  const monthEnd = endOfMonth(currentDate);
-  const startDate = startOfWeek(monthStart);
-  const endDate = endOfWeek(monthEnd);
+  const startDate = viewMode === 'month' ? startOfWeek(startOfMonth(currentDate)) : startOfWeek(currentDate);
+  const endDate = viewMode === 'month' ? endOfWeek(endOfMonth(currentDate)) : endOfWeek(currentDate);
 
   const days = eachDayOfInterval({ start: startDate, end: endDate });
 
@@ -254,29 +259,54 @@ export default function CalendarView() {
         </div>
 
         <div className="flex items-center space-x-4">
+          <div className="flex bg-surface border border-border-subtle rounded p-0.5 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setViewMode('month')}
+              className={cn(
+                "px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded transition-all",
+                viewMode === 'month' ? "bg-blue-600 text-white" : "text-subtle hover:text-strong"
+              )}
+            >
+              Month
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('week')}
+              className={cn(
+                "px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded transition-all",
+                viewMode === 'week' ? "bg-blue-600 text-white" : "text-subtle hover:text-strong"
+              )}
+            >
+              Week
+            </button>
+          </div>
+
           <Tooltip content="Jump to current date" position="bottom">
             <button 
               onClick={today}
-              className="px-4 py-2 bg-surface border border-border-subtle hover:bg-surface-accent text-strong text-xs font-bold rounded transition-colors uppercase tracking-widest"
+              className="px-4 py-2 bg-surface border border-border-subtle hover:bg-surface-accent text-strong text-xs font-bold rounded transition-colors uppercase tracking-widest shadow-sm"
             >
               Today
             </button>
           </Tooltip>
-          <div className="flex items-center bg-surface border border-border-subtle rounded">
-            <Tooltip content="Previous Month" position="bottom">
+          <div className="flex items-center bg-surface border border-border-subtle rounded shadow-sm">
+            <Tooltip content={viewMode === 'month' ? "Previous Month" : "Previous Week"} position="bottom">
               <button 
-                onClick={prevMonth}
+                onClick={prevDateRange}
                 className="p-2 hover:bg-surface-accent text-muted hover:text-strong transition-colors"
               >
                 <ChevronLeft size={20} />
               </button>
             </Tooltip>
-            <div className="px-4 py-2 font-bold text-strong w-40 text-center uppercase tracking-widest text-sm">
-              {format(currentDate, 'MMMM yyyy')}
+            <div className="px-4 py-2 font-bold text-strong w-56 text-center uppercase tracking-widest text-xs truncate">
+              {viewMode === 'month' 
+                ? format(currentDate, 'MMMM yyyy') 
+                : `${format(startDate, 'MMM d')} - ${format(endDate, 'MMM d, yyyy')}`}
             </div>
-            <Tooltip content="Next Month" position="bottom">
+            <Tooltip content={viewMode === 'month' ? "Next Month" : "Next Week"} position="bottom">
               <button 
-                onClick={nextMonth}
+                onClick={nextDateRange}
                 className="p-2 hover:bg-surface-accent text-muted hover:text-strong transition-colors"
               >
                 <ChevronRight size={20} />
@@ -315,7 +345,7 @@ export default function CalendarView() {
                 key={day.toISOString()}
                 className={cn(
                   "border-border-subtle py-2 px-2 flex flex-col gap-2 transition-colors group",
-                  idx > 6 && "border-t",
+                  (viewMode === 'week' || idx > 6) && "border-t",
                   idx % 7 !== 6 && "border-r",
                   !isCurrentMonth ? "bg-surface-dim/50" : "bg-surface",
                   "hover:bg-surface-accent/30"

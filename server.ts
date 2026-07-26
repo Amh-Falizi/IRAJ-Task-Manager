@@ -1933,6 +1933,17 @@ app.get("/api/projects/:id/workload", authenticateToken, async (req: any, res: a
   res.json(result);
 });
 
+const sanitizeProject = (project: any) => {
+  if (!project) return project;
+  const sanitized = { ...project };
+  if (sanitized.repoToken && sanitized.repoToken.trim() !== '') {
+    sanitized.repoToken = '••••••••';
+  } else {
+    sanitized.repoToken = '';
+  }
+  return sanitized;
+};
+
 app.get("/api/projects", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
   let projects;
@@ -1952,7 +1963,7 @@ app.get("/api/projects", authenticateToken, async (req: any, res: any) => {
          OR t.assigneeId = ?
     `, [req.user.id, req.user.id, req.user.id, req.user.id]);
   }
-  res.json(projects);
+  res.json(projects.map(sanitizeProject));
 });
 
 app.post("/api/projects", authenticateToken, async (req: any, res: any) => {
@@ -1993,7 +2004,7 @@ app.post("/api/projects", authenticateToken, async (req: any, res: any) => {
   );
   
   const newProject = await db.get("SELECT * FROM projects WHERE id = ?", projectId);
-  res.json(newProject);
+  res.json(sanitizeProject(newProject));
 });
 
 // Get Project Activity
@@ -2032,7 +2043,7 @@ app.put("/api/projects/:id", authenticateToken, async (req: any, res: any) => {
   );
   
   const updatedProject = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
-  res.json(updatedProject);
+  res.json(sanitizeProject(updatedProject));
 });
 
 // Update Project Repository Settings
@@ -2078,14 +2089,14 @@ app.put("/api/projects/:id/repo", authenticateToken, async (req: any, res: any) 
       owner,
       name,
       repoUrl || '',
-      repoToken !== undefined ? repoToken : (project.repoToken || ''),
+      repoToken !== undefined && repoToken !== '••••••••' ? repoToken : (project.repoToken || ''),
       defaultBranch || 'main',
       req.params.id
     ]
   );
 
   const updated = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
-  res.json(updated);
+  res.json(sanitizeProject(updated));
 });
 
 // Get Live Branches from GitHub or GitLab for a Project
@@ -2389,8 +2400,10 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
 
   let prUrl = '';
   let prStatus = 'open';
+  let isFallback = false;
 
   if (!owner || !name || !token) {
+    isFallback = true;
     // If no token or repo configured, generate web creation URL
     if (provider === 'github') {
       prUrl = `https://github.com/${owner || 'owner'}/${name || 'repo'}/compare/${baseBranch}...${encodeURIComponent(sourceBranch)}?expand=1`;
@@ -2452,6 +2465,7 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
       }
     } catch (err: any) {
       console.error("PR Creation error:", err.message);
+      isFallback = true;
       // Fallback web URL
       if (provider === 'github') {
         prUrl = `https://github.com/${owner}/${name}/compare/${baseBranch}...${encodeURIComponent(sourceBranch)}?expand=1`;
@@ -2473,7 +2487,124 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
     );
   }
 
-  res.json({ success: true, prUrl, prStatus });
+  res.json({ success: true, prUrl, prStatus, isFallback });
+});
+
+// Sync and Update Statuses of Pull/Merge Requests of a Project
+app.post("/api/projects/:id/git/pull-requests/sync", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const provider = project.repoProvider || 'github';
+  const owner = project.repoOwner;
+  const name = project.repoName;
+  const token = project.repoToken;
+
+  const tasks = await db.all("SELECT id, title, prUrl, prStatus, status FROM tasks WHERE projectId = ? AND prUrl IS NOT NULL AND prUrl != ''", req.params.id);
+  if (tasks.length === 0) {
+    return res.json({ success: true, message: "No active Pull Requests to sync.", updatedCount: 0 });
+  }
+
+  if (!owner || !name || !token) {
+    return res.status(400).json({ error: "Repository or authentication credentials are not configured for this project." });
+  }
+
+  let updatedCount = 0;
+  const errors: string[] = [];
+
+  for (const task of tasks) {
+    try {
+      let prNumber: string | null = null;
+      if (provider === 'github') {
+        const match = task.prUrl.match(/\/pull\/(\d+)/);
+        if (match) prNumber = match[1];
+      } else if (provider === 'gitlab') {
+        const match = task.prUrl.match(/\/merge_requests\/(\d+)/);
+        if (match) prNumber = match[1];
+      }
+
+      if (!prNumber) continue;
+
+      let remotePrStatus = task.prStatus || 'open';
+      let remoteMerged = false;
+
+      if (provider === 'github') {
+        const headers: Record<string, string> = {
+          'User-Agent': 'devteam-taskmanager',
+          'Accept': 'application/vnd.github.v3+json',
+          'Authorization': `Bearer ${token}`
+        };
+        const ghRes = await fetch(`https://api.github.com/repos/${owner}/${name}/pulls/${prNumber}`, { headers });
+        if (ghRes.ok) {
+          const ghData = await ghRes.json();
+          remoteMerged = ghData.merged || false;
+          remotePrStatus = ghData.state; // 'open' or 'closed'
+          if (remoteMerged) {
+            remotePrStatus = 'merged';
+          }
+        } else {
+          errors.push(`GitHub error for task ${task.title}: ${ghRes.statusText}`);
+        }
+      } else if (provider === 'gitlab') {
+        const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
+        const projectPath = `${owner}/${name}`;
+        const headers = { 'PRIVATE-TOKEN': token };
+        const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests/${prNumber}`, { headers });
+        if (glRes.ok) {
+          const glData = await glRes.json();
+          const glState = glData.state; // 'opened', 'closed', 'merged', 'locked'
+          if (glState === 'opened') {
+            remotePrStatus = 'open';
+          } else if (glState === 'merged') {
+            remotePrStatus = 'merged';
+            remoteMerged = true;
+          } else if (glState === 'closed') {
+            remotePrStatus = 'closed';
+          }
+        } else {
+          errors.push(`GitLab error for task ${task.title}: ${glRes.statusText}`);
+        }
+      }
+
+      // If status changed, update the task!
+      if (remotePrStatus !== task.prStatus) {
+        let nextTaskStatus = task.status;
+        
+        // Auto-transition to 'done' column if merged!
+        if (remotePrStatus === 'merged' && task.status !== 'done') {
+          nextTaskStatus = 'done';
+        } else if (remotePrStatus === 'open' && (task.status === 'todo' || task.status === 'backlog')) {
+          // If PR is open, auto-transition to 'review' column
+          nextTaskStatus = 'review';
+        }
+
+        await db.run(
+          "UPDATE tasks SET prStatus = ?, status = ? WHERE id = ?",
+          [remotePrStatus, nextTaskStatus, task.id]
+        );
+
+        // Add activity
+        const activityId = uuidv4();
+        await db.run(
+          "INSERT INTO task_activities (id, taskId, userId, action, createdAt) VALUES (?, ?, ?, ?, ?)",
+          [activityId, task.id, req.user.id, `synchronized PR status: updated PR to '${remotePrStatus}' and Board Status to '${nextTaskStatus}'`, new Date().toISOString()]
+        );
+
+        updatedCount++;
+      }
+    } catch (err: any) {
+      console.error(`Sync error for task ${task.id}:`, err.message);
+      errors.push(`Failed to sync task ${task.title}: ${err.message}`);
+    }
+  }
+
+  res.json({
+    success: true,
+    updatedCount,
+    errors: errors.length > 0 ? errors : null,
+    message: `PR sync completed. Updated ${updatedCount} task(s).`
+  });
 });
 
 app.delete("/api/projects/:id", authenticateToken, async (req: any, res: any) => {
@@ -3191,6 +3322,112 @@ app.post("/api/backup/restore-json", authenticateToken, requireAdmin, async (req
 
 // Vite middleware for development
 
+async function runBackgroundPrSync() {
+  console.log("[Background Sync] Starting automatic pull request sync...");
+  try {
+    const db = await dbPromise;
+    // Get all projects with Git configured
+    const projects = await db.all("SELECT * FROM projects WHERE repoOwner IS NOT NULL AND repoName IS NOT NULL AND repoToken IS NOT NULL");
+    if (!projects || projects.length === 0) {
+      console.log("[Background Sync] No projects configured with Git. Skipping.");
+      return;
+    }
+
+    for (const project of projects) {
+      const provider = project.repoProvider || 'github';
+      const owner = project.repoOwner;
+      const name = project.repoName;
+      const token = project.repoToken;
+
+      const tasks = await db.all(
+        "SELECT id, title, prUrl, prStatus, status FROM tasks WHERE projectId = ? AND prUrl IS NOT NULL AND prUrl != '' AND prStatus != 'merged' AND prStatus != 'closed'",
+        [project.id]
+      );
+
+      if (!tasks || tasks.length === 0) continue;
+
+      for (const task of tasks) {
+        try {
+          let prNumber: string | null = null;
+          if (provider === 'github') {
+            const match = task.prUrl.match(/\/pull\/(\d+)/);
+            if (match) prNumber = match[1];
+          } else if (provider === 'gitlab') {
+            const match = task.prUrl.match(/\/merge_requests\/(\d+)/);
+            if (match) prNumber = match[1];
+          }
+
+          if (!prNumber) continue;
+
+          let remotePrStatus = task.prStatus || 'open';
+          let remoteMerged = false;
+
+          if (provider === 'github') {
+            const headers: Record<string, string> = {
+              'User-Agent': 'devteam-taskmanager',
+              'Accept': 'application/vnd.github.v3+json',
+              'Authorization': `Bearer ${token}`
+            };
+            const ghRes = await fetch(`https://api.github.com/repos/${owner}/${name}/pulls/${prNumber}`, { headers });
+            if (ghRes.ok) {
+              const ghData = await ghRes.json();
+              remoteMerged = ghData.merged || false;
+              remotePrStatus = ghData.state; // 'open' or 'closed'
+              if (remoteMerged) {
+                remotePrStatus = 'merged';
+              }
+            }
+          } else if (provider === 'gitlab') {
+            const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
+            const projectPath = `${owner}/${name}`;
+            const headers = { 'PRIVATE-TOKEN': token };
+            const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests/${prNumber}`, { headers });
+            if (glRes.ok) {
+              const glData = await glRes.json();
+              const glState = glData.state; // 'opened', 'closed', 'merged', 'locked'
+              if (glState === 'opened') {
+                remotePrStatus = 'open';
+              } else if (glState === 'merged') {
+                remotePrStatus = 'merged';
+                remoteMerged = true;
+              } else if (glState === 'closed') {
+                remotePrStatus = 'closed';
+              }
+            }
+          }
+
+          if (remotePrStatus !== task.prStatus) {
+            let nextTaskStatus = task.status;
+            if (remotePrStatus === 'merged' && task.status !== 'done') {
+              nextTaskStatus = 'done';
+            } else if (remotePrStatus === 'open' && (task.status === 'todo' || task.status === 'backlog')) {
+              nextTaskStatus = 'review';
+            }
+
+            await db.run(
+              "UPDATE tasks SET prStatus = ?, status = ? WHERE id = ?",
+              [remotePrStatus, nextTaskStatus, task.id]
+            );
+
+            // Add activity under system action
+            const activityId = uuidv4();
+            await db.run(
+              "INSERT INTO task_activities (id, taskId, userId, action, createdAt) VALUES (?, ?, ?, ?, ?)",
+              [activityId, task.id, "system", `automatically synchronized PR status: updated PR to '${remotePrStatus}' and Board Status to '${nextTaskStatus}'`, new Date().toISOString()]
+            );
+
+            console.log(`[Background Sync] Updated task "${task.title}" to ${nextTaskStatus} (PR ${remotePrStatus})`);
+          }
+        } catch (taskErr: any) {
+          console.error(`[Background Sync] Error syncing task ${task.id}:`, taskErr.message);
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error("[Background Sync] Error running background PR sync:", err.message);
+  }
+}
+
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -3216,9 +3453,15 @@ async function startServer() {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 
+  // Start automatic PR background sync on server startup (runs every 5 minutes)
+  const syncInterval = setInterval(runBackgroundPrSync, 5 * 60 * 1000);
+  // Also run once on startup
+  setTimeout(runBackgroundPrSync, 5000);
+
   // Graceful shutdown
   const shutdown = () => {
     console.log("Shutting down gracefully...");
+    clearInterval(syncInterval);
     server.close(() => {
       console.log("Closed out remaining connections.");
       process.exit(0);
