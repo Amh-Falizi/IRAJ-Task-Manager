@@ -38,9 +38,11 @@ import {
   AlertCircle,
   ExternalLink,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ChevronDown
 } from "lucide-react";
 import UserAvatar from "../components/UserAvatar";
+import CustomSelect from "../components/CustomSelect";
 
 export const STATUS_OPTIONS = [
   { value: "Available", label: "Available", color: "bg-green-500", text: "text-green-500" },
@@ -726,28 +728,21 @@ export default function Profile() {
                     <label className="text-[10px] font-bold text-subtle uppercase tracking-widest block mb-2">
                       Active Status Tag
                     </label>
-                    <div className="relative">
-                      <select
-                        value={statusText}
-                        onChange={(e) => setStatusText(e.target.value)}
-                        className="w-full bg-surface-dim border border-border-subtle rounded px-4 py-2 pl-10 text-strong focus:outline-none focus:border-blue-500 transition-colors appearance-none cursor-pointer"
-                      >
-                        {STATUS_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value} className="bg-surface text-strong">
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
-                        <span className={cn(
-                          "w-2.5 h-2.5 rounded-full ring-2 ring-surface",
-                          STATUS_OPTIONS.find(o => o.value === statusText)?.color || "bg-green-500"
-                        )} />
-                      </div>
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-subtle text-[8px]">
-                        ▼
-                      </div>
-                    </div>
+                    <CustomSelect
+                      value={statusText}
+                      onChange={setStatusText}
+                      options={STATUS_OPTIONS.map((opt) => ({
+                        value: opt.value,
+                        label: opt.label.toUpperCase(),
+                        icon: (
+                          <span className={cn(
+                            "w-2.5 h-2.5 rounded-full ring-2 ring-surface shrink-0 inline-block",
+                            opt.color
+                          )} />
+                        )
+                      }))}
+                      size="md"
+                    />
                   </div>
 
                   <div>

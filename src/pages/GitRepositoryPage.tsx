@@ -8,7 +8,7 @@ import {
   GitBranch as GitBranchIcon, Github, Gitlab, Link as LinkIcon, 
   ExternalLink, Plus, RefreshCw, CheckCircle2, GitPullRequest, 
   Copy, Check, Shield, Key, Layers, Terminal, Search, FolderKanban,
-  Code2, AlertCircle, Sparkles
+  Code2, AlertCircle, Sparkles, ChevronDown
 } from 'lucide-react';
 import TaskModal from '../components/TaskModal';
 
@@ -367,7 +367,7 @@ export default function GitRepositoryPage() {
             <select
               value={selectedProjectId}
               onChange={(e) => setSelectedProjectId(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 text-xs font-bold bg-surface border border-border-subtle rounded-xl text-strong focus:outline-none focus:border-blue-500 shadow-sm"
+              className="w-full pl-9 pr-8 py-2 text-xs font-bold bg-surface border border-border-subtle rounded-xl text-strong focus:outline-none focus:border-blue-500 shadow-sm appearance-none cursor-pointer"
             >
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -376,6 +376,7 @@ export default function GitRepositoryPage() {
               ))}
             </select>
             <FolderKanban size={14} className="absolute left-3 top-2.5 text-muted pointer-events-none" />
+            <ChevronDown size={14} className="absolute right-3 top-2.5 text-muted pointer-events-none" />
           </div>
           
           <button
@@ -803,18 +804,21 @@ export default function GitRepositoryPage() {
                 <label className="block text-xs font-bold uppercase tracking-wider text-subtle mb-1">
                   Select Associated Task (Optional)
                 </label>
-                <select
-                  value={selectedTaskId}
-                  onChange={(e) => autoGenerateBranchFromTask(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-surface-dim border border-border-subtle rounded-lg text-strong focus:outline-none focus:border-blue-500"
-                >
-                  <option value="">-- No specific task --</option>
-                  {tasks.map(t => (
-                    <option key={t.id} value={t.id}>
-                      [{activeProject?.projectKey || 'TASK'}] {t.title} ({t.status})
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <select
+                    value={selectedTaskId}
+                    onChange={(e) => autoGenerateBranchFromTask(e.target.value)}
+                    className="w-full pl-3 pr-8 py-2 text-xs bg-surface-dim border border-border-subtle rounded-lg text-strong focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+                  >
+                    <option value="">-- No specific task --</option>
+                    {tasks.map(t => (
+                      <option key={t.id} value={t.id}>
+                        [{activeProject?.projectKey || 'TASK'}] {t.title} ({t.status})
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+                </div>
               </div>
 
               <div>

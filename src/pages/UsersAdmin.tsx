@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { User } from '../types';
-import { Shield, UserCog, Plus, Edit2, Trash2, X, Save } from 'lucide-react';
+import { Shield, UserCog, Plus, Edit2, Trash2, X, Save, ChevronDown } from 'lucide-react';
 import UserModal from '../components/UserModal';
 import UserAvatar from '../components/UserAvatar';
+import CustomSelect from '../components/CustomSelect';
 
 export default function UsersAdmin() {
   const { token, user: currentUser } = useAuth();
@@ -333,19 +334,18 @@ export default function UsersAdmin() {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    className="rounded bg-surface-dim border border-border-subtle px-3 py-1.5 text-xs text-strong focus:border-blue-500 focus:outline-none"
-                    value={bulkRole}
-                    onChange={e => setBulkRole(e.target.value)}
-                    disabled={updatingBulk}
-                  >
-                    <option value="">-- Apply Specific Role --</option>
-                    {roles.map(r => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="min-w-44">
+                    <CustomSelect
+                      value={bulkRole}
+                      onChange={setBulkRole}
+                      options={[
+                        { value: '', label: '-- APPLY SPECIFIC ROLE --' },
+                        ...roles.map(r => ({ value: r.id, label: r.name.toUpperCase() }))
+                      ]}
+                      disabled={updatingBulk}
+                      size="xs"
+                    />
+                  </div>
                   <button
                     onClick={handleBulkRoleUpdate}
                     disabled={!bulkRole || updatingBulk}

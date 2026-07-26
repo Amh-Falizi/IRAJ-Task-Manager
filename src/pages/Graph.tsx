@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Task, User, Project } from '../types';
 import TaskModal from '../components/TaskModal';
-import { Plus, Search, Filter, FolderKanban, Workflow } from 'lucide-react';
+import { Plus, Search, Filter, FolderKanban, Workflow, ChevronDown } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useSearchParams, Link, Navigate } from 'react-router';
 import TaskDiagram from '../components/TaskDiagram';
@@ -268,27 +268,33 @@ export default function Graph() {
           </div>
           <div className="flex items-center space-x-2 bg-surface border border-border-subtle rounded px-3 py-1.5 text-[10px] flex-wrap">
             <Filter size={12} className="text-subtle shrink-0" />
-            <select 
-              className="bg-transparent text-strong uppercase outline-none cursor-pointer font-bold tracking-wider appearance-none focus:outline-none"
-              value={filterAssignee}
-              onChange={(e) => setFilterAssignee(e.target.value)}
-            >
-              <option value="all" className="bg-surface">ALL USERS</option>
-              {user && <option value={user.id} className="bg-surface">ASSIGNED TO ME</option>}
-              {users.filter(u => u.id !== user?.id).map(u => <option key={u.id} value={u.id} className="bg-surface">{u.name}</option>)}
-            </select>
+            <div className="flex items-center gap-1 group/select cursor-pointer">
+              <select 
+                className="bg-transparent text-strong uppercase outline-none cursor-pointer font-bold tracking-wider appearance-none focus:outline-none group-hover/select:text-blue-400 transition-colors"
+                value={filterAssignee}
+                onChange={(e) => setFilterAssignee(e.target.value)}
+              >
+                <option value="all" className="bg-surface">ALL USERS</option>
+                {user && <option value={user.id} className="bg-surface">ASSIGNED TO ME</option>}
+                {users.filter(u => u.id !== user?.id).map(u => <option key={u.id} value={u.id} className="bg-surface">{u.name}</option>)}
+              </select>
+              <ChevronDown size={10} className="text-muted group-hover/select:text-blue-400 transition-colors pointer-events-none" />
+            </div>
             <span className="text-border-strong px-1">|</span>
-            <select 
-              className="bg-transparent text-strong uppercase outline-none cursor-pointer font-bold tracking-wider appearance-none focus:outline-none"
-              value={filterPriority}
-              onChange={(e) => setFilterPriority(e.target.value)}
-            >
-              <option value="all" className="bg-surface">ALL PRIORITIES</option>
-              <option value="urgent" className="bg-surface">URGENT</option>
-              <option value="high" className="bg-surface">HIGH</option>
-              <option value="medium" className="bg-surface">MEDIUM</option>
-              <option value="low" className="bg-surface">LOW</option>
-            </select>
+            <div className="flex items-center gap-1 group/select cursor-pointer">
+              <select 
+                className="bg-transparent text-strong uppercase outline-none cursor-pointer font-bold tracking-wider appearance-none focus:outline-none group-hover/select:text-blue-400 transition-colors"
+                value={filterPriority}
+                onChange={(e) => setFilterPriority(e.target.value)}
+              >
+                <option value="all" className="bg-surface">ALL PRIORITIES</option>
+                <option value="urgent" className="bg-surface">URGENT</option>
+                <option value="high" className="bg-surface">HIGH</option>
+                <option value="medium" className="bg-surface">MEDIUM</option>
+                <option value="low" className="bg-surface">LOW</option>
+              </select>
+              <ChevronDown size={10} className="text-muted group-hover/select:text-blue-400 transition-colors pointer-events-none" />
+            </div>
           </div>
           <Link
             to={`/board?projectId=${projectId}`}

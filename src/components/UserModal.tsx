@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
-import { X, Save } from 'lucide-react';
+import { X, Save, ChevronDown } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import CustomSelect from './CustomSelect';
 
 interface UserModalProps {
   user?: User;
@@ -118,18 +119,13 @@ export default function UserModal({ user, onClose, onSave }: UserModalProps) {
             
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Role</label>
-              <select
-                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-sm text-strong uppercase focus:border-blue-500 focus:outline-none appearance-none disabled:opacity-50"
-                 value={formData.role}
-                onChange={e => setFormData(p => ({ ...p, role: e.target.value }))}
+              <CustomSelect
                 disabled={isSelf}
-              >
-                {roles.map(r => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
+                value={formData.role}
+                onChange={val => setFormData(p => ({ ...p, role: val }))}
+                options={roles.map(r => ({ value: r.id, label: r.name.toUpperCase() }))}
+                size="sm"
+              />
             </div>
 
             {formData.role !== 'admin' && (

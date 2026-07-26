@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { useSearchParams, Link, Navigate } from 'react-router';
-import { FolderKanban, Map, Milestone as MilestoneIcon, Plus, Calendar, Settings, Trash2, Edit, GitBranch, CheckCircle } from 'lucide-react';
+import { FolderKanban, Map, Milestone as MilestoneIcon, Plus, Calendar, Settings, Trash2, Edit, GitBranch, CheckCircle, ChevronDown } from 'lucide-react';
 import { Project, Milestone, User, Task } from '../types';
 import TaskTimelineD3 from '../components/TaskTimelineD3';
 import TaskModal from '../components/TaskModal';
+import CustomSelect from '../components/CustomSelect';
 import { HelpIcon, Tooltip } from '../components/Tooltip';
 
 export default function Planning() {
@@ -588,15 +589,16 @@ export default function Planning() {
 
               <div>
                 <label className="block text-xs font-bold text-subtle uppercase tracking-wider mb-1">Status</label>
-                <select
+                <CustomSelect
                   value={formData.status}
-                  onChange={e => setFormData(p => ({ ...p, status: e.target.value as any }))}
-                  className="w-full bg-surface-dim border border-border-subtle rounded px-3 py-2 text-strong focus:outline-none focus:border-blue-500 text-sm"
-                >
-                  <option value="pending">Pending</option>
-                  <option value="active">Active</option>
-                  <option value="completed">Completed</option>
-                </select>
+                  onChange={val => setFormData(p => ({ ...p, status: val as any }))}
+                  options={[
+                    { value: 'pending', label: 'PENDING' },
+                    { value: 'active', label: 'ACTIVE' },
+                    { value: 'completed', label: 'COMPLETED' },
+                  ]}
+                  size="sm"
+                />
               </div>
 
               <div className="flex justify-end space-x-3 pt-4 border-t border-border-subtle mt-6">

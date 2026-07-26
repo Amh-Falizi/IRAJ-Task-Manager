@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { Task, User, Project, Milestone } from '../types';
 import TaskModal from '../components/TaskModal';
+import CustomSelect from '../components/CustomSelect';
 import WorkloadModal from '../components/WorkloadModal';
 import ProjectActivityModal from '../components/ProjectActivityModal';
 import { Plus, MoreVertical, Calendar, ArrowUpDown, CornerDownRight, Search, Filter, AlertCircle, ChevronUp, Minus, ChevronDown, X, FolderKanban, Activity, CheckCircle2, Workflow, Clock, Pencil, Trash2, UserPlus, Download, GitBranch, GitPullRequest } from 'lucide-react';
@@ -590,61 +591,75 @@ export default function Board() {
               className="bg-transparent text-strong uppercase font-bold tracking-widest outline-none w-32 md:w-48 placeholder-muted"
             />
           </div>
-          <div className="flex items-center space-x-2 bg-surface border border-border-subtle rounded px-3 py-1.5 text-[10px] flex-wrap">
+          <div className="flex items-center space-x-3 bg-surface border border-border-subtle rounded px-3 py-1.5 text-[10px] flex-wrap">
             <Filter size={12} className="text-subtle shrink-0" />
-            <select 
-              className="bg-transparent text-strong uppercase outline-none cursor-pointer font-bold tracking-wider appearance-none focus:outline-none"
-              value={filterAssignee}
-              onChange={(e) => setFilterAssignee(e.target.value)}
-            >
-              <option value="all" className="bg-surface">ALL USERS</option>
-              {user && <option value={user.id} className="bg-surface">ASSIGNED TO ME</option>}
-              {users.filter(u => u.id !== user?.id).map(u => <option key={u.id} value={u.id} className="bg-surface">{u.name}</option>)}
-            </select>
+            <div className="min-w-28">
+              <CustomSelect
+                value={filterAssignee}
+                onChange={setFilterAssignee}
+                options={[
+                  { value: 'all', label: 'ALL USERS' },
+                  ...(user ? [{ value: user.id, label: 'ASSIGNED TO ME' }] : []),
+                  ...users.filter(u => u.id !== user?.id).map(u => ({ value: u.id, label: u.name.toUpperCase() }))
+                ]}
+                variant="borderless"
+                size="xs"
+              />
+            </div>
             <span className="text-border-strong px-1">|</span>
-            <select 
-              className="bg-transparent text-strong uppercase outline-none cursor-pointer font-bold tracking-wider appearance-none focus:outline-none"
-              value={filterPriority}
-              onChange={(e) => setFilterPriority(e.target.value)}
-            >
-              <option value="all" className="bg-surface">ALL PRIORITIES</option>
-              <option value="urgent" className="bg-surface">URGENT</option>
-              <option value="high" className="bg-surface">HIGH</option>
-              <option value="medium" className="bg-surface">MEDIUM</option>
-              <option value="low" className="bg-surface">LOW</option>
-            </select>
+            <div className="min-w-32">
+              <CustomSelect
+                value={filterPriority}
+                onChange={setFilterPriority}
+                options={[
+                  { value: 'all', label: 'ALL PRIORITIES' },
+                  { value: 'urgent', label: 'URGENT' },
+                  { value: 'high', label: 'HIGH' },
+                  { value: 'medium', label: 'MEDIUM' },
+                  { value: 'low', label: 'LOW' }
+                ]}
+                variant="borderless"
+                size="xs"
+              />
+            </div>
             <span className="text-border-strong px-1">|</span>
-            <select 
-              className="bg-transparent text-strong uppercase outline-none cursor-pointer font-bold tracking-wider appearance-none focus:outline-none"
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-            >
-              <option value="all" className="bg-surface">ALL STATUSES</option>
-              {columns.map(c => (
-                <option key={c.id} value={c.id} className="bg-surface">{c.title}</option>
-              ))}
-            </select>
+            <div className="min-w-32">
+              <CustomSelect
+                value={filterStatus}
+                onChange={setFilterStatus}
+                options={[
+                  { value: 'all', label: 'ALL STATUSES' },
+                  ...columns.map(c => ({ value: c.id, label: c.title.toUpperCase() }))
+                ]}
+                variant="borderless"
+                size="xs"
+              />
+            </div>
           </div>
           <div className="flex items-center space-x-2 bg-surface border border-border-subtle rounded px-3 py-1.5 text-[10px]">
              <ArrowUpDown size={12} className="text-subtle" />
              <span className="text-subtle font-bold uppercase tracking-widest border-r border-border-subtle pr-2">SORT BY</span>
-             <select 
-               className="bg-transparent text-strong uppercase outline-none cursor-pointer font-bold tracking-wider appearance-none pl-1"
-               value={`${sortBy}-${sortDir}`}
-               onChange={(e) => {
-                 const [by, dir] = e.target.value.split('-');
-                 setSortBy(by as SortOption);
-                 setSortDir(dir as SortDirection);
-               }}
-             >
-               <option value="custom-asc" className="bg-surface">Custom (Drag & Drop)</option>
-               <option value="priority-desc" className="bg-surface">Highest Priority</option>
-               <option value="priority-asc" className="bg-surface">Lowest Priority</option>
-               <option value="deadline-asc" className="bg-surface">Nearest Deadline</option>
-               <option value="deadline-desc" className="bg-surface">Furthest Deadline</option>
-               <option value="createdAt-desc" className="bg-surface">Newest First</option>
-               <option value="createdAt-asc" className="bg-surface">Oldest First</option>
-             </select>
+             <div className="min-w-40">
+               <CustomSelect
+                 value={`${sortBy}-${sortDir}`}
+                 onChange={(val) => {
+                   const [by, dir] = val.split('-');
+                   setSortBy(by as SortOption);
+                   setSortDir(dir as SortDirection);
+                 }}
+                 options={[
+                   { value: 'custom-asc', label: 'CUSTOM (DRAG & DROP)' },
+                   { value: 'priority-desc', label: 'HIGHEST PRIORITY' },
+                   { value: 'priority-asc', label: 'LOWEST PRIORITY' },
+                   { value: 'deadline-asc', label: 'NEAREST DEADLINE' },
+                   { value: 'deadline-desc', label: 'FURTHEST DEADLINE' },
+                   { value: 'createdAt-desc', label: 'NEWEST FIRST' },
+                   { value: 'createdAt-asc', label: 'OLDEST FIRST' }
+                 ]}
+                 variant="borderless"
+                 size="xs"
+               />
+             </div>
           </div>
           <div className="relative">
             <button

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { Team, TeamMember, User, Project } from '../types';
-import { Users, Plus, X, Trash2, Shield, FolderKanban } from 'lucide-react';
+import { Users, Plus, X, Trash2, Shield, FolderKanban, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 import Markdown from 'react-markdown';
 import UserAvatar from '../components/UserAvatar';
@@ -237,16 +237,19 @@ function CreateTeamModal({ team, onClose, onSuccess }: { team?: Team | null, onC
           {projects.length > 0 && (
             <div>
               <label className="text-[10px] font-bold text-subtle uppercase tracking-widest block mb-2">Assign to Project (Optional)</label>
-              <select
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                className="w-full bg-surface border border-border-subtle rounded px-3 py-2 text-strong focus:outline-none focus:border-blue-500 text-sm"
-              >
-                <option value="">Global Team (No Project)</option>
-                {projects.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={projectId}
+                  onChange={(e) => setProjectId(e.target.value)}
+                  className="w-full bg-surface border border-border-subtle rounded pl-3 pr-8 py-2 text-strong focus:outline-none focus:border-blue-500 text-sm appearance-none cursor-pointer"
+                >
+                  <option value="">Global Team (No Project)</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+              </div>
               <p className="text-xs text-muted mt-1">If a project is selected, only admins or project members can manage this team.</p>
             </div>
           )}

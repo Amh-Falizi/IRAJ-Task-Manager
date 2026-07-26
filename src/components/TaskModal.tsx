@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Task, User, Project } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { X, GitBranch, Edit2, Calendar, Clock, CheckCircle2, Trash, Plus, FolderKanban, GitPullRequest, ExternalLink } from 'lucide-react';
+import { X, GitBranch, Edit2, Calendar, Clock, CheckCircle2, Trash, Plus, FolderKanban, GitPullRequest, ExternalLink, ChevronDown } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { format } from 'date-fns';
 import { cn, getIncrementedBranchName } from '../lib/utils';
 import UserAvatar from './UserAvatar';
+import CustomSelect from './CustomSelect';
 
 interface TaskModalProps {
   task: Task | null;
@@ -786,84 +787,76 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
             />
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block font-sans">Status</label>
-              <select
-                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong uppercase focus:border-blue-500 focus:outline-none appearance-none"
+              <CustomSelect
                 value={formData.status}
-                onChange={e => setFormData(p => ({ ...p, status: e.target.value as any }))}
-              >
-                {(columns || [
+                onChange={(val) => setFormData(p => ({ ...p, status: val as any }))}
+                options={(columns || [
                   { id: 'todo', title: 'To Do' },
                   { id: 'in_progress', title: 'In Progress' },
                   { id: 'review', title: 'Review' },
                   { id: 'done', title: 'Done' }
-                ]).map(c => (
-                  <option key={c.id} value={c.id}>{c.title}</option>
-                ))}
-              </select>
+                ]).map(c => ({ value: c.id, label: c.title.toUpperCase() }))}
+                size="sm"
+              />
             </div>
 
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block font-sans">Priority</label>
-              <select
+              <CustomSelect
                 disabled={isDeveloper}
-                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong uppercase focus:border-blue-500 focus:outline-none appearance-none disabled:opacity-60 disabled:cursor-not-allowed"
                 value={formData.priority}
-                onChange={e => setFormData(p => ({ ...p, priority: e.target.value as any }))}
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
+                onChange={(val) => setFormData(p => ({ ...p, priority: val as any }))}
+                options={[
+                  { value: 'low', label: 'LOW' },
+                  { value: 'medium', label: 'MEDIUM' },
+                  { value: 'high', label: 'HIGH' },
+                  { value: 'urgent', label: 'URGENT' },
+                ]}
+                size="sm"
+              />
             </div>
 
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block font-sans">Assignee</label>
-              <select
+              <CustomSelect
                 disabled={isDeveloper}
-                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong uppercase focus:border-blue-500 focus:outline-none appearance-none disabled:opacity-60 disabled:cursor-not-allowed"
                 value={formData.assigneeId || ''}
-                onChange={e => setFormData(p => ({ ...p, assigneeId: e.target.value }))}
-              >
-                <option value="">UNASSIGNED</option>
-                {users.map(u => (
-                  <option key={u.id} value={u.id}>{u.name} ({u.role.replace('_', ' ')})</option>
-                ))}
-              </select>
+                onChange={(val) => setFormData(p => ({ ...p, assigneeId: val || null }))}
+                options={[
+                  { value: '', label: 'UNASSIGNED' },
+                  ...users.map(u => ({ value: u.id, label: `${u.name.toUpperCase()} (${u.role.replace('_', ' ').toUpperCase()})` }))
+                ]}
+                size="sm"
+              />
             </div>
 
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block font-sans">Project</label>
-              <select
+              <CustomSelect
                 disabled={isDeveloper}
-                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong focus:border-blue-500 focus:outline-none appearance-none disabled:opacity-60 disabled:cursor-not-allowed"
                 value={formData.projectId || ''}
-                onChange={e => setFormData(p => ({ ...p, projectId: e.target.value, milestoneId: null }))}
-                required
-              >
-                <option value="" disabled hidden>Select Project...</option>
-                {projectsList.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+                onChange={(val) => setFormData(p => ({ ...p, projectId: val, milestoneId: null }))}
+                options={projectsList.map(p => ({ value: p.id, label: p.name.toUpperCase() }))}
+                placeholder="SELECT PROJECT..."
+                size="sm"
+              />
             </div>
 
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block font-sans">Milestone</label>
-              <select
-                className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 text-xs text-strong focus:border-blue-500 focus:outline-none appearance-none disabled:opacity-60 disabled:cursor-not-allowed"
-                value={formData.milestoneId || ''}
-                onChange={e => setFormData(p => ({ ...p, milestoneId: e.target.value }))}
+              <CustomSelect
                 disabled={isDeveloper || !formData.projectId || milestones.length === 0}
-              >
-                <option value="">No Milestone</option>
-                {milestones.map(m => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
+                value={formData.milestoneId || ''}
+                onChange={(val) => setFormData(p => ({ ...p, milestoneId: val || null }))}
+                options={[
+                  { value: '', label: 'NO MILESTONE' },
+                  ...milestones.map(m => ({ value: m.id, label: m.name.toUpperCase() }))
+                ]}
+                size="sm"
+              />
             </div>
 
             <div className="space-y-1">

@@ -3,10 +3,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { Task, User } from '../types';
 import { format, isPast, isToday } from 'date-fns';
-import { CheckCircle2, Clock, AlertCircle, FileText, Activity, Edit3, Settings, Eye, EyeOff, ArrowUp, ArrowDown, Layout, Grid } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, FileText, Activity, Edit3, Settings, Eye, EyeOff, ArrowUp, ArrowDown, Layout, Grid, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router';
 import { cn } from '../lib/utils';
 import TaskModal from '../components/TaskModal';
+import CustomSelect from '../components/CustomSelect';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar } from 'recharts';
 import { HelpIcon, Tooltip } from '../components/Tooltip';
 import { EmptyState } from '../components/EmptyState';
@@ -100,19 +101,21 @@ function SortableWidget({
               {widget.visible ? <Eye size={16}/> : <EyeOff size={16} className="text-red-400"/>}
             </button>
             <div className="w-px h-6 bg-border-subtle mx-1" />
-            <select 
-              value={widget.colSpan} 
-              onChange={(e) => updateSize(widget.id, parseInt(e.target.value))}
-              className="p-1 px-2 text-xs font-medium bg-surface border border-border-subtle hover:border-blue-500 text-strong rounded transition-colors focus:outline-none cursor-pointer"
-              title="Widget Size"
-            >
-              <option value={12}>100% Width</option>
-              <option value={8}>Large (8 cols)</option>
-              <option value={7}>Wide (7 cols)</option>
-              <option value={6}>Half (6 cols)</option>
-              <option value={5}>Narrow (5 cols)</option>
-              <option value={4}>Small (4 cols)</option>
-            </select>
+            <div className="w-56">
+              <CustomSelect
+                value={String(widget.colSpan)}
+                onChange={(val) => updateSize(widget.id, parseInt(val))}
+                options={[
+                  { value: '12', label: '100% Width' },
+                  { value: '8', label: 'Large (8 cols)' },
+                  { value: '7', label: 'Wide (7 cols)' },
+                  { value: '6', label: 'Half (6 cols)' },
+                  { value: '5', label: 'Narrow (5 cols)' },
+                  { value: '4', label: 'Small (4 cols)' },
+                ]}
+                size="xs"
+              />
+            </div>
           </div>
         </div>
       )}
@@ -840,16 +843,17 @@ export default function Dashboard() {
 
           {projects.length > 0 && (
             <Tooltip content="Filter dashboard by project" position="bottom">
-              <select
-                value={selectedProjectId}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
-                className="text-xs bg-surface-dim hover:bg-surface-accent transition-colors border border-border-subtle text-strong px-3 py-1.5 rounded focus:outline-none focus:border-blue-500 appearance-none font-medium"
-              >
-                <option value="all">All Projects</option>
-                {projects.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
+              <div className="w-48 text-left">
+                <CustomSelect
+                  value={selectedProjectId}
+                  onChange={(val) => setSelectedProjectId(val)}
+                  options={[
+                    { value: 'all', label: 'All Projects' },
+                    ...projects.map(p => ({ value: p.id, label: p.name }))
+                  ]}
+                  size="sm"
+                />
+              </div>
             </Tooltip>
           )}
 

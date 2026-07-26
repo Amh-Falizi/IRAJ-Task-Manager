@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Project, User, ProjectMember } from '../types';
-import { X, Trash2, UserPlus, Settings, Shield } from 'lucide-react';
+import { X, Trash2, UserPlus, Settings, Shield, ChevronDown } from 'lucide-react';
 import UserAvatar from './UserAvatar';
+import CustomSelect from './CustomSelect';
 
 interface Props {
   project: Project;
@@ -120,28 +121,26 @@ export default function ProjectMembersModal({ project, allUsers, onClose }: Prop
             <form onSubmit={handleAddMember} className="mb-6 bg-surface-dim p-4 rounded border border-border-subtle flex items-end space-x-3">
               <div className="flex-1">
                 <label className="block text-[10px] font-bold text-subtle uppercase tracking-widest mb-1">Add Member</label>
-                <select
+                <CustomSelect
                   value={selectedUserId}
-                  onChange={(e) => setSelectedUserId(e.target.value)}
-                  className="w-full bg-surface border border-border-subtle rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-                >
-                  <option value="" disabled hidden>Select user...</option>
-                  {nonMembers.map(u => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
-                  ))}
-                </select>
+                  onChange={setSelectedUserId}
+                  options={nonMembers.map(u => ({ value: u.id, label: u.name.toUpperCase() }))}
+                  placeholder="SELECT USER..."
+                  size="sm"
+                />
               </div>
               <div className="w-32">
                 <label className="block text-[10px] font-bold text-subtle uppercase tracking-widest mb-1">Role</label>
-                <select
+                <CustomSelect
                   value={selectedRole}
-                  onChange={(e) => setSelectedRole(e.target.value as any)}
-                  className="w-full bg-surface border border-border-subtle rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-                >
-                  <option value="member">Member</option>
-                  <option value="viewer">Viewer</option>
-                  <option value="admin">Admin</option>
-                </select>
+                  onChange={val => setSelectedRole(val as any)}
+                  options={[
+                    { value: 'member', label: 'MEMBER' },
+                    { value: 'viewer', label: 'VIEWER' },
+                    { value: 'admin', label: 'ADMIN' },
+                  ]}
+                  size="sm"
+                />
               </div>
               <button
                 type="submit"
@@ -183,15 +182,18 @@ export default function ProjectMembersModal({ project, allUsers, onClose }: Prop
                   </div>
                   <div className="flex items-center space-x-3">
                     {canManage ? (
-                      <select 
-                        value={member.role}
-                        onChange={(e) => handleUpdateRole(member.id, e.target.value)}
-                        className="bg-surface-dim border border-border-subtle rounded px-2 py-1 text-xs text-strong outline-none"
-                      >
-                         <option value="admin">Admin</option>
-                         <option value="member">Member</option>
-                         <option value="viewer">Viewer</option>
-                      </select>
+                      <div className="w-24">
+                        <CustomSelect 
+                          value={member.role}
+                          onChange={(val) => handleUpdateRole(member.id, val)}
+                          options={[
+                            { value: 'admin', label: 'ADMIN' },
+                            { value: 'member', label: 'MEMBER' },
+                            { value: 'viewer', label: 'VIEWER' },
+                          ]}
+                          size="xs"
+                        />
+                      </div>
                     ) : (
                       <span className="text-xs text-muted uppercase tracking-wider">{member.role}</span>
                     )}
