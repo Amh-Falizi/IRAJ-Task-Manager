@@ -658,7 +658,7 @@ app.post("/api/auth/login", async (req, res) => {
     email = email.toLowerCase().trim();
     const db = await dbPromise;
     
-    const user = await db.get("SELECT * FROM users WHERE email = ? COLLATE NOCASE", email);
+    const user = await db.get("SELECT * FROM users WHERE email = ? ", email);
     if (!user) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
@@ -687,7 +687,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     email = email.toLowerCase().trim();
 
     const db = await dbPromise;
-    const user = await db.get("SELECT * FROM users WHERE email = ? COLLATE NOCASE", email);
+    const user = await db.get("SELECT * FROM users WHERE email = ? ", email);
     if (!user) {
       // Return success to avoid email enumeration
       return res.json({ message: "If that email is registered, a password reset link has been sent." });
@@ -823,7 +823,7 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
     if (!userData.email) throw new Error('GitLab account has no email address. Please make sure your email is public/verified.');
 
     const db = await dbPromise;
-    let user = await db.get("SELECT * FROM users WHERE email = ? COLLATE NOCASE", userData.email);
+    let user = await db.get("SELECT * FROM users WHERE email = ? ", userData.email.toLowerCase().trim());
 
     if (!user) {
       const id = uuidv4();
@@ -834,7 +834,7 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
       const hash = await bcrypt.hash(randomPassword, salt);
       await db.run(
         "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
-        [id, userData.name || userData.username || 'GitLab User', userData.email, hash, role]
+        [id, userData.name || userData.username || 'GitLab User', userData.email.toLowerCase().trim(), hash, role]
       );
       user = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", id);
     }
@@ -923,7 +923,7 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
     if (!userData.email) throw new Error('Google account has no email address.');
 
     const db = await dbPromise;
-    let user = await db.get("SELECT * FROM users WHERE email = ? COLLATE NOCASE", userData.email);
+    let user = await db.get("SELECT * FROM users WHERE email = ? ", userData.email.toLowerCase().trim());
 
     if (!user) {
       const id = uuidv4();
@@ -933,7 +933,7 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
       const hash = await bcrypt.hash(randomPassword, salt);
       await db.run(
         "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
-        [id, userData.name || userData.given_name || 'Google User', userData.email, hash, role]
+        [id, userData.name || userData.given_name || 'Google User', userData.email.toLowerCase().trim(), hash, role]
       );
       user = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", id);
     }
@@ -1044,7 +1044,7 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
     if (!email) throw new Error('GitHub account has no primary email address. Please make sure your email is public or verified on GitHub.');
 
     const db = await dbPromise;
-    let user = await db.get("SELECT * FROM users WHERE email = ? COLLATE NOCASE", email);
+    let user = await db.get("SELECT * FROM users WHERE email = ? ", email);
 
     if (!user) {
       const id = uuidv4();
@@ -1176,8 +1176,8 @@ app.get("/api/users/me/stats", authenticateToken, async (req: any, res: any) => 
   `, [req.user.id]);
 
   res.json({
-    tasks: tasksCount ? tasksCount.count : 0,
-    projects: projectsCount ? projectsCount.count : 0,
+    tasks: tasksCount ? Number(tasksCount.count) : 0,
+    projects: projectsCount ? Number(projectsCount.count) : 0,
     recentActivity
   });
 });
@@ -1189,7 +1189,7 @@ app.get("/api/search", authenticateToken, async (req: any, res: any) => {
 
   const userId = req.user.id;
   const userRole = req.user.role;
-  const searchTerm = `%${query}%`;
+  const searchTerm = `%${query.toLowerCase()}%`;
   const db = await dbPromise;
 
   try {
@@ -1197,7 +1197,7 @@ app.get("/api/search", authenticateToken, async (req: any, res: any) => {
       SELECT p.id, p.name as title, p.description, 'project' as type 
       FROM projects p
       LEFT JOIN project_members pm ON p.id = pm.projectId
-      WHERE (p.ownerId = ? OR pm.userId = ?) AND (p.name LIKE ? OR p.description LIKE ?)
+      WHERE (p.ownerId = ? OR pm.userId = ?) AND (LOWER(p.name) LIKE ? OR LOWER(p.description) LIKE ?)
       GROUP BY p.id
     `, [userId, userId, searchTerm, searchTerm]);
 
@@ -1207,7 +1207,7 @@ app.get("/api/search", authenticateToken, async (req: any, res: any) => {
       LEFT JOIN projects p ON t.projectId = p.id
       LEFT JOIN project_members pm ON p.id = pm.projectId
       WHERE (p.ownerId = ? OR pm.userId = ? OR t.creatorId = ? OR t.assigneeId = ?) 
-      AND (t.title LIKE ? OR t.description LIKE ?)
+      AND (LOWER(t.title) LIKE ? OR LOWER(t.description) LIKE ?)
       GROUP BY t.id
     `, [userId, userId, userId, userId, searchTerm, searchTerm]);
 
@@ -1217,7 +1217,7 @@ app.get("/api/search", authenticateToken, async (req: any, res: any) => {
       LEFT JOIN projects p ON d.projectId = p.id
       LEFT JOIN project_members pm ON p.id = pm.projectId
       WHERE (p.ownerId = ? OR pm.userId = ? OR d.authorId = ?) 
-      AND (d.title LIKE ? OR d.content LIKE ?)
+      AND (LOWER(d.title) LIKE ? OR LOWER(d.content) LIKE ?)
       GROUP BY d.id
     `, [userId, userId, userId, searchTerm, searchTerm]);
 
@@ -1226,7 +1226,7 @@ app.get("/api/search", authenticateToken, async (req: any, res: any) => {
       users = await db.all(`
         SELECT id, name as title, email as description, 'user' as type
         FROM users
-        WHERE name LIKE ? OR email LIKE ?
+        WHERE LOWER(name) LIKE ? OR LOWER(email) LIKE ?
       `, [searchTerm, searchTerm]);
     }
 
@@ -1253,7 +1253,7 @@ app.post("/api/users", authenticateToken, async (req: any, res: any) => {
   if (email) email = email.toLowerCase().trim();
   
   const db = await dbPromise;
-  const existing = await db.get("SELECT * FROM users WHERE email = ? COLLATE NOCASE", email);
+  const existing = await db.get("SELECT * FROM users WHERE email = ? ", email);
   if (existing) return res.status(400).json({ error: "Email already registered." });
 
   const roleExists = role ? await db.get("SELECT * FROM roles WHERE id = ?", role) : null;
@@ -2775,7 +2775,7 @@ app.post("/api/projects/:id/members", authenticateToken, async (req: any, res: a
     );
     res.json({ success: true });
   } catch (e) {
-    if (e.message?.includes("UNIQUE constraint failed") || e.code === 'SQLITE_CONSTRAINT') {
+    if (e.message?.includes("UNIQUE constraint failed") || e.code === 'SQLITE_CONSTRAINT' || e.code === '23505' || e.message?.includes("duplicate key value")) {
       await db.run("UPDATE project_members SET role = ? WHERE projectId = ? AND userId = ?", [role || 'member', projectId, userId]);
       res.json({ success: true });
     } else {
@@ -2889,7 +2889,7 @@ app.post("/api/teams/:id/members", authenticateToken, async (req: any, res: any)
     );
     res.json({ success: true, memberId: newMemberId });
   } catch (err: any) {
-    if (err.message.includes("UNIQUE constraint failed")) {
+    if (err.message?.includes("UNIQUE constraint failed") || err.code === '23505' || err.message?.includes("duplicate key value")) {
       res.status(400).json({ error: "User is already in team" });
     } else {
       res.status(500).json({ error: "Failed to add member" });
@@ -2939,7 +2939,7 @@ app.post("/api/teams/:id/projects", authenticateToken, async (req: any, res: any
     );
     res.json({ success: true });
   } catch (err: any) {
-    if (err.message.includes("UNIQUE constraint failed")) {
+    if (err.message?.includes("UNIQUE constraint failed") || err.code === '23505' || err.message?.includes("duplicate key value")) {
       res.status(400).json({ error: "Project is already in team" });
     } else {
       res.status(500).json({ error: "Failed to add project" });
