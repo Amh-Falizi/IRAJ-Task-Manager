@@ -1989,11 +1989,6 @@ app.get("/api/projects", authenticateToken, async (req: any, res: any) => {
 app.post("/api/projects", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
 
-  const canManageProjects = await hasPermission(req.user, "manage_projects");
-  if (!canManageProjects) {
-    return res.status(403).json({ error: "You do not have permission to create projects." });
-  }
-
   const { name, description, projectKey: customProjectKey } = req.body;
   if (!name || typeof name !== 'string' || name.trim() === '') {
     return res.status(400).json({ error: "Project name is required" });
@@ -2012,19 +2007,34 @@ app.post("/api/projects", authenticateToken, async (req: any, res: any) => {
       projectKey = Array.from({length: 3}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
     }
   }
-  
-  await db.run(
-    "INSERT INTO projects (id, name, description, ownerId, projectKey, taskCounter, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    [projectId, name, description || "", req.user.id, projectKey, 0, new Date().toISOString()]
-  );
-  
-  await db.run(
-    "INSERT INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, 'admin', ?)",
-    [projectId, req.user.id, new Date().toISOString()]
-  );
-  
-  const newProject = await db.get("SELECT * FROM projects WHERE id = ?", projectId);
-  res.json(sanitizeProject(newProject));
+
+  try {
+    if (db.isPg) {
+      await db.run(
+        "INSERT INTO projects (id, name, description, ownerId, projectKey, taskCounter, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [projectId, name, description || "", req.user.id, projectKey, 0, new Date().toISOString()]
+      );
+      await db.run(
+        "INSERT INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, 'admin', ?) ON CONFLICT (projectId, userId) DO NOTHING",
+        [projectId, req.user.id, new Date().toISOString()]
+      );
+    } else {
+      await db.run(
+        "INSERT INTO projects (id, name, description, ownerId, projectKey, taskCounter, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [projectId, name, description || "", req.user.id, projectKey, 0, new Date().toISOString()]
+      );
+      await db.run(
+        "INSERT INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, 'admin', ?)",
+        [projectId, req.user.id, new Date().toISOString()]
+      );
+    }
+    
+    const newProject = await db.get("SELECT * FROM projects WHERE id = ?", projectId);
+    res.json(sanitizeProject(newProject));
+  } catch (err: any) {
+    console.error("Error creating project:", err);
+    res.status(500).json({ error: err?.message || "Failed to create project" });
+  }
 });
 
 // Get Project Activity

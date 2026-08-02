@@ -113,15 +113,16 @@ export default function Projects() {
               </>
             )}
           </div>
-          {(currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md shadow hover:scale-105 font-bold transition-all text-sm"
-            >
-              <Plus size={16} />
-              <span>New Project</span>
-            </button>
-          )}
+          <button
+            onClick={() => {
+              setSelectedProject(null);
+              setShowCreateModal(true);
+            }}
+            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md shadow hover:scale-105 font-bold transition-all text-sm"
+          >
+            <Plus size={16} />
+            <span>New Project</span>
+          </button>
         </div>
       </header>
       
@@ -134,8 +135,11 @@ export default function Projects() {
               icon={FolderKanban}
               title="No projects yet"
               description="Create a new project to start organizing tasks and collaborating with your team."
-              actionText={(currentUser?.role === 'admin' || currentUser?.role === 'manager') ? "New Project" : undefined}
-              onAction={() => setShowCreateModal(true)}
+              actionText="New Project"
+              onAction={() => {
+                setSelectedProject(null);
+                setShowCreateModal(true);
+              }}
             />
           </div>
         ) : (
@@ -381,11 +385,13 @@ function CreateProjectModal({ project, onClose, onSuccess }: { project?: Project
   const [description, setDescription] = useState(project?.description || '');
   const [previewMode, setPreviewMode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     
+    setError(null);
     setSubmitting(true);
     try {
       const res = await fetch(project ? `/api/projects/${project.id}` : '/api/projects', {
@@ -398,9 +404,13 @@ function CreateProjectModal({ project, onClose, onSuccess }: { project?: Project
       });
       if (res.ok) {
         onSuccess();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Failed to save project. Please try again.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setError('An error occurred. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -417,6 +427,11 @@ function CreateProjectModal({ project, onClose, onSuccess }: { project?: Project
         </div>
         
         <form onSubmit={handleSubmit} className="p-6">
+          {error && (
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded text-red-400 text-xs mb-4 font-medium">
+              {error}
+            </div>
+          )}
           <div className="space-y-4">
             <div>
               <label className="text-[10px] font-bold text-subtle uppercase tracking-widest block mb-2">Project Name</label>
