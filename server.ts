@@ -18,7 +18,8 @@ import nodemailer from "nodemailer";
 
 const app = express();
 app.set("trust proxy", 1); // Trust first proxy for rate limiting (Cloud Run/Nginx)
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const HOST = process.env.HOST || "0.0.0.0";
 
 // Security: Generate a secure secret if none is provided via environment
 const FALLBACK_SECRET = crypto.randomBytes(64).toString('hex');
@@ -3468,8 +3469,8 @@ async function startServer() {
     res.status(500).json({ error: "Internal Server Error" });
   });
 
-  const server = app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  const server = app.listen(PORT, HOST, () => {
+    console.log(`Server running on http://${HOST}:${PORT}`);
   });
 
   // Start automatic PR background sync on server startup (runs every 5 minutes)

@@ -28,6 +28,7 @@ services:
         condition: service_healthy
     environment:
       - NODE_ENV=production
+      - HOST=${HOST:-0.0.0.0}
       - PORT=${PORT:-3000}
       - DATABASE_URL=postgres://${POSTGRES_USER:-devuser}:${POSTGRES_PASSWORD:-devpassword}@postgres:5432/${POSTGRES_DB:-devdb}
       - GEMINI_API_KEY=${GEMINI_API_KEY}

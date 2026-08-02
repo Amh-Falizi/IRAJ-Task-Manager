@@ -32,9 +32,10 @@ COPY --from=builder /app/dist ./dist
 # Note: In production you'd likely use Cloud SQL or mount a volume for SQLite,
 # but we leave it here just in case.
 
-EXPOSE 3000
+ARG PORT=3000
+ENV PORT=${PORT}
 
+EXPOSE ${PORT}
 ENV NODE_ENV=production
-ENV PORT=3000
 
 CMD ["npm", "start"]
