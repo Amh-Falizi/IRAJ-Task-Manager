@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useGitFeature } from '../contexts/GitFeatureContext';
 import { Task, User, Project, Milestone } from '../types';
 import TaskModal from '../components/TaskModal';
 import CustomSelect from '../components/CustomSelect';
@@ -43,6 +44,7 @@ const priorityWeight = {
 export default function Board() {
   const { token, user } = useAuth();
   const { success, error, info } = useToast();
+  const { gitEnabled } = useGitFeature();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('projectId');
@@ -565,13 +567,15 @@ export default function Board() {
                 <Clock size={14} className="text-blue-500" />
                 <span>Project Activity</span>
               </button>
-              <button
-                onClick={() => navigate(`/git?projectId=${project.id}`)}
-                className="flex items-center space-x-2 bg-surface border border-border-subtle hover:border-amber-500/50 text-primary hover:text-amber-400 px-3 py-1.5 rounded transition-all text-sm font-medium"
-              >
-                <GitBranch size={14} className="text-amber-400" />
-                <span>Git Repo</span>
-              </button>
+              {gitEnabled && (
+                <button
+                  onClick={() => navigate(`/git?projectId=${project.id}`)}
+                  className="flex items-center space-x-2 bg-surface border border-border-subtle hover:border-amber-500/50 text-primary hover:text-amber-400 px-3 py-1.5 rounded transition-all text-sm font-medium"
+                >
+                  <GitBranch size={14} className="text-amber-400" />
+                  <span>Git Repo</span>
+                </button>
+              )}
               <Link
                 to={`/graph?projectId=${project.id}`}
                 className="flex items-center space-x-2 bg-indigo-500/10 border border-indigo-500/30 hover:border-indigo-500 hover:bg-indigo-500/20 text-indigo-400 hover:text-indigo-300 px-3 py-1.5 rounded transition-all text-sm font-medium shadow-sm hover:scale-105"
@@ -929,7 +933,7 @@ export default function Board() {
                       </div>
 
                       <h4 className="text-xs font-bold text-strong mb-1 leading-snug">{task.title}</h4>
-                      {task.branchName ? (
+                      {gitEnabled && task.branchName ? (
                         <div className="flex items-center space-x-1 mb-2 flex-wrap gap-1">
                           <button
                             type="button"

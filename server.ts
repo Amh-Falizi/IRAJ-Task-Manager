@@ -68,6 +68,7 @@ app.use(express.json({ limit: '10mb' })); // Limit body size to prevent payload 
 const DATABASE_URL = process.env.DATABASE_URL || "postgres://user:password@localhost:5432/dbname";
 
 interface DatabaseWrapper {
+  isPg: boolean;
   exec(sql: string): Promise<void>;
   run(sql: string, params?: any | any[]): Promise<void>;
   get(sql: string, params?: any | any[]): Promise<any>;
@@ -76,6 +77,7 @@ interface DatabaseWrapper {
 }
 
 class PgWrapper implements DatabaseWrapper {
+  public isPg = true;
   private pool: Pool;
   constructor(connectionString: string) {
     this.pool = new Pool({ connectionString });
@@ -117,6 +119,7 @@ class PgWrapper implements DatabaseWrapper {
 }
 
 class SqliteWrapper implements DatabaseWrapper {
+  public isPg = false;
   public db: any;
   constructor(db: any) {
     this.db = db;
@@ -421,8 +424,13 @@ async function initDb(): Promise<DatabaseWrapper> {
         value TEXT
       );
     `);
-    await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('manager_prefix', 'Engineering')");
-    await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('developer_prefix', 'Lead')");
+    if (db.isPg) {
+      await db.run("INSERT INTO settings (key, value) VALUES ('manager_prefix', 'Engineering') ON CONFLICT (key) DO NOTHING");
+      await db.run("INSERT INTO settings (key, value) VALUES ('developer_prefix', 'Lead') ON CONFLICT (key) DO NOTHING");
+    } else {
+      await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('manager_prefix', 'Engineering')");
+      await db.run("INSERT OR IGNORE INTO settings (key, value) VALUES ('developer_prefix', 'Lead')");
+    }
   } catch (e) {
     console.error("Failed to create/seed settings table:", e);
   }
@@ -453,10 +461,17 @@ async function initDb(): Promise<DatabaseWrapper> {
       { id: "viewer", name: "Viewer", description: "Read-only access to view projects and boards", is_custom: 0, permissions: '{"create_tasks":false,"edit_all_tasks":false,"delete_tasks":false,"manage_projects":false,"manage_teams":false}' }
     ];
     for (const role of defaultRoles) {
-      await db.run(
-        "INSERT OR IGNORE INTO roles (id, name, description, is_custom, permissions) VALUES (?, ?, ?, ?, ?)",
-        [role.id, role.name, role.description, role.is_custom, role.permissions]
-      );
+      if (db.isPg) {
+        await db.run(
+          "INSERT INTO roles (id, name, description, is_custom, permissions) VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING",
+          [role.id, role.name, role.description, role.is_custom, role.permissions]
+        );
+      } else {
+        await db.run(
+          "INSERT OR IGNORE INTO roles (id, name, description, is_custom, permissions) VALUES (?, ?, ?, ?, ?)",
+          [role.id, role.name, role.description, role.is_custom, role.permissions]
+        );
+      }
       // Backfill existing empty permissions
       await db.run(
         "UPDATE roles SET permissions = ? WHERE id = ? AND (permissions IS NULL OR permissions = '')",
@@ -471,7 +486,11 @@ async function initDb(): Promise<DatabaseWrapper> {
   try {
     const existingProjects = await db.all("SELECT id, ownerId, createdAt FROM projects");
     for (const p of existingProjects) {
-      await db.run("INSERT OR IGNORE INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, 'admin', ?)", [p.id, p.ownerId, p.createdAt]);
+      if (db.isPg) {
+        await db.run("INSERT INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, 'admin', ?) ON CONFLICT (projectId, userId) DO NOTHING", [p.id, p.ownerId, p.createdAt]);
+      } else {
+        await db.run("INSERT OR IGNORE INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, 'admin', ?)", [p.id, p.ownerId, p.createdAt]);
+      }
     }
   } catch(e) {
     // Tables might not exist or error during insert

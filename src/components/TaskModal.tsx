@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Task, User, Project } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useGitFeature } from '../contexts/GitFeatureContext';
 import { X, GitBranch, Edit2, Calendar, Clock, CheckCircle2, Trash, Plus, FolderKanban, GitPullRequest, ExternalLink, ChevronDown } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { format } from 'date-fns';
@@ -28,6 +29,7 @@ interface TaskModalProps {
 export default function TaskModal({ task, users, tasks = [], columns, onClose, onSave, onUpdateTask, onDeleteTask, onCreateSubtask, parentId, projectId, initialStatus, initialDeadline }: TaskModalProps) {
   const { token, user } = useAuth();
   const { success, error, info } = useToast();
+  const { gitEnabled } = useGitFeature();
   const isEdit = !!task;
   const isDeveloper = user?.role === 'developer';
   const canEdit = isDeveloper 
@@ -312,7 +314,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                 <span className="px-2 py-0.5 rounded font-bold uppercase tracking-wider bg-surface-accent text-strong">
                   {getStatusTitle(task.status)}
                 </span>
-                {task.branchName && (
+                {gitEnabled && task.branchName && (
                   <div className="flex items-center space-x-1">
                     <span className="flex items-center space-x-1 text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 font-mono">
                       <GitBranch size={12} />
@@ -329,7 +331,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                     </button>
                   </div>
                 )}
-                {task.prUrl && (
+                {gitEnabled && task.prUrl && (
                   <a
                     href={task.prUrl}
                     target="_blank"
@@ -903,7 +905,8 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
              </div>
           </div>
 
-           <div className="space-y-1">
+           {gitEnabled && (
+             <div className="space-y-1">
              <div className="flex justify-between items-center mb-1">
                 <label className="text-[9px] font-bold text-subtle uppercase tracking-widest flex items-center space-x-2">
                   <GitBranch size={12} /> <span>Git Branch & Remote Sync</span>
@@ -940,6 +943,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
               </div>
             )}
           </div>
+            )}
 
           <div className="space-y-2 flex-1 flex flex-col min-h-[250px]">
             <div className="flex justify-between items-center border-b border-border-subtle pb-2 shrink-0">

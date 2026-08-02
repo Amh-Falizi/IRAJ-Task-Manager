@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { useToast } from "../contexts/ToastContext";
+import { useGitFeature } from "../contexts/GitFeatureContext";
 import { cn, getUserColor, getUserGradient } from "../lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -57,6 +58,7 @@ export default function Profile() {
   const { user, token, updateUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { success, error } = useToast();
+  const { gitEnabled } = useGitFeature();
 
   const [name, setName] = useState(user?.name || "");
   const [statusText, setStatusText] = useState(user?.status || "Available");
@@ -100,7 +102,7 @@ export default function Profile() {
     { id: 'activity', label: 'Recent Activity', icon: Activity },
     { id: 'security', label: 'Security Log', icon: Shield },
     { id: 'skills', label: 'Skills & Expertise', icon: Code },
-    ...(isManagerOrAdmin ? [{ id: 'integrations', label: 'Integrations', icon: GitBranch }] : []),
+    ...(isManagerOrAdmin && gitEnabled ? [{ id: 'integrations', label: 'Integrations', icon: GitBranch }] : []),
     ...(user?.role === 'admin' ? [{ id: 'backup', label: 'Backup & Restore', icon: Database }] : []),
   ];
 
@@ -537,7 +539,7 @@ export default function Profile() {
               </div>
 
               {/* Git Integrations Status Card */}
-              {isManagerOrAdmin && integrationsStatus && (
+              {isManagerOrAdmin && integrationsStatus && gitEnabled && (
                 <div className="w-full border-t border-border-subtle pt-4 mt-4 flex flex-col space-y-2">
                   <div className="flex items-center justify-between text-left px-1">
                     <span className="text-[10px] font-bold text-muted uppercase tracking-widest flex items-center space-x-1">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useGitFeature } from '../contexts/GitFeatureContext';
 import { Project, User } from '../types';
 import { FolderKanban, Plus, X, Trash2, Calendar, LayoutDashboard, Activity, Clock, Download, Users, User as UserIcon, GitBranch } from 'lucide-react';
 import { format } from 'date-fns';
@@ -18,6 +19,7 @@ import { Tooltip } from '../components/Tooltip';
 export default function Projects() {
   const { token, user: currentUser } = useAuth();
   const { success, error, info } = useToast();
+  const { gitEnabled } = useGitFeature();
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -264,17 +266,19 @@ export default function Projects() {
                         <Clock size={14} />
                       </button>
                     </Tooltip>
-                    <Tooltip content="Git Repository Hub" position="bottom">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/git?projectId=${project.id}`);
-                        }}
-                        className="flex items-center space-x-1.5 text-xs text-amber-400 hover:text-amber-300 font-medium bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1.5 rounded transition-colors border border-amber-500/20"
-                      >
-                        <GitBranch size={14} />
-                      </button>
-                    </Tooltip>
+                    {gitEnabled && (
+                      <Tooltip content="Git Repository Hub" position="bottom">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/git?projectId=${project.id}`);
+                          }}
+                          className="flex items-center space-x-1.5 text-xs text-amber-400 hover:text-amber-300 font-medium bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1.5 rounded transition-colors border border-amber-500/20"
+                        >
+                          <GitBranch size={14} />
+                        </button>
+                      </Tooltip>
+                    )}
                     <Tooltip content="Task Board" position="bottom">
                       <button
                         onClick={(e) => {

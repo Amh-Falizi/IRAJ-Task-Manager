@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useGitFeature } from '../contexts/GitFeatureContext';
 import { LayoutDashboard, KanbanSquare, LogOut, Users, Calendar, FolderKanban, FileText, Map, Sun, Moon, Shield, PanelLeftClose, PanelLeft, Workflow, Settings, ChevronUp, ChevronDown, ChevronRight, Menu, X, GitBranch, Github, Gitlab } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -16,6 +17,7 @@ import GlobalSearch from './GlobalSearch';
 export default function Layout() {
   const { user, token, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { gitEnabled, setGitEnabled } = useGitFeature();
   const location = useLocation();
   const navigate = useNavigate();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -89,7 +91,7 @@ export default function Layout() {
       icon: FolderKanban, 
       children: [
         { name: 'Projects', href: '/projects', icon: FolderKanban },
-        { name: 'Git Repositories', href: '/git', icon: GitBranch },
+        ...(gitEnabled ? [{ name: 'Git Repositories', href: '/git', icon: GitBranch }] : []),
         { name: 'Planning', href: '/planning', icon: Map },
         { name: 'Documents', href: '/documents', icon: FileText },
       ]
@@ -381,6 +383,30 @@ export default function Layout() {
                      <span className={cn("text-sm transition-all duration-300 whitespace-nowrap", showExpanded ? "opacity-100 max-w-full" : "opacity-0 max-w-0")}>Theme</span>
                    </button>
                  </Tooltip>
+
+                 <Tooltip content={showExpanded ? undefined : `Git: ${gitEnabled ? 'ON' : 'OFF'}`} position="right">
+                   <button
+                     onClick={() => setGitEnabled(!gitEnabled)}
+                     className={cn("flex items-center text-subtle hover:text-strong rounded-md transition-all duration-300 hover:bg-surface-accent/50 overflow-hidden w-full h-10 shrink-0")}
+                   >
+                     <div className="flex items-center justify-center w-10 h-10 shrink-0 relative">
+                       <GitBranch size={18} className={cn(gitEnabled ? "text-blue-500" : "text-muted")} />
+                       <span className={cn(
+                         "absolute bottom-2.5 right-2.5 w-1.5 h-1.5 rounded-full border border-surface-dim",
+                         gitEnabled ? "bg-emerald-500" : "bg-red-500"
+                       )} />
+                     </div>
+                     <span className={cn("text-sm transition-all duration-300 whitespace-nowrap flex-1 text-left", showExpanded ? "opacity-100 max-w-full" : "opacity-0 max-w-0")}>Git Integration</span>
+                     {showExpanded && (
+                       <span className={cn(
+                         "text-[9px] px-1.5 py-0.5 rounded font-bold mr-2 select-none",
+                         gitEnabled ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-400"
+                       )}>
+                         {gitEnabled ? 'ON' : 'OFF'}
+                       </span>
+                     )}
+                   </button>
+                 </Tooltip>
                  
                  <Tooltip content={showExpanded ? undefined : "Logout"} position="right">
                    <button
@@ -433,7 +459,7 @@ export default function Layout() {
                         <div className="tour-notifications">
                           <NotificationsDropdown compact={true} />
                         </div>
-                        {integrationsStatus && (
+                        {integrationsStatus && gitEnabled && (
                           <div className="flex items-center space-x-1 shrink-0">
                             <button
                               onClick={(e) => {
@@ -505,7 +531,7 @@ export default function Layout() {
           <GlobalSearch />
 
           {/* Visual Integration Status Badges */}
-          {integrationsStatus && (
+          {integrationsStatus && gitEnabled && (
             <div className="hidden sm:flex items-center space-x-2 ml-auto shrink-0">
               <Link
                 to="/git"

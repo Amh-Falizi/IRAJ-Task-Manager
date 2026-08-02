@@ -5,6 +5,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { TooltipProvider } from './components/Tooltip';
 import { LoadingProvider, useLoading } from './contexts/LoadingContext';
+import { GitFeatureProvider } from './contexts/GitFeatureContext';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Board from './pages/Board';
@@ -39,39 +40,41 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <ThemeProvider>
-      <ToastProvider>
-        <TooltipProvider>
-          <LoadingProvider>
-            <AuthProvider>
-              <BrowserRouter>
-              <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-                <Route path="/forgot-password" element={<ForgotPassword />} />
-                <Route path="/reset-password/:token" element={<ResetPassword />} />
-                <Route path="/" element={
-                  <ProtectedRoute>
-                    <Layout />
-                  </ProtectedRoute>
-                }>
-                  <Route index element={<Dashboard />} />
-                  <Route path="projects" element={<Projects />} />
-                  <Route path="board" element={<Board />} />
-                  <Route path="graph" element={<Graph />} />
-                  <Route path="calendar" element={<CalendarView />} />
-                  <Route path="teams" element={<Teams />} />
-                  <Route path="documents" element={<Documents />} />
-                  <Route path="planning" element={<Planning />} />
-                  <Route path="git" element={<GitRepositoryPage />} />
-                  <Route path="profile" element={<Profile />} />
-                  <Route path="admin/users" element={<UsersAdmin />} />
-                </Route>
-              </Routes>
-            </BrowserRouter>
-            </AuthProvider>
-          </LoadingProvider>
-        </TooltipProvider>
-      </ToastProvider>
+      <GitFeatureProvider>
+        <ToastProvider>
+          <TooltipProvider>
+            <LoadingProvider>
+              <AuthProvider>
+                <BrowserRouter>
+                <Routes>
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/register" element={<Register />} />
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
+                  <Route path="/reset-password/:token" element={<ResetPassword />} />
+                  <Route path="/" element={
+                    <ProtectedRoute>
+                      <Layout />
+                    </ProtectedRoute>
+                  }>
+                    <Route index element={<Dashboard />} />
+                    <Route path="projects" element={<Projects />} />
+                    <Route path="board" element={<Board />} />
+                    <Route path="graph" element={<Graph />} />
+                    <Route path="calendar" element={<CalendarView />} />
+                    <Route path="teams" element={<Teams />} />
+                    <Route path="documents" element={<Documents />} />
+                    <Route path="planning" element={<Planning />} />
+                    <Route path="git" element={<GitRepositoryPage />} />
+                    <Route path="profile" element={<Profile />} />
+                    <Route path="admin/users" element={<UsersAdmin />} />
+                  </Route>
+                </Routes>
+              </BrowserRouter>
+              </AuthProvider>
+            </LoadingProvider>
+          </TooltipProvider>
+        </ToastProvider>
+      </GitFeatureProvider>
     </ThemeProvider>
   );
 }
