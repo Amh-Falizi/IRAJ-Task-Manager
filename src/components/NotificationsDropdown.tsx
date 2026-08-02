@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Task } from '../types';
 import { differenceInHours, isPast, parseISO, formatDistanceToNow } from 'date-fns';
 import { Link } from 'react-router';
-import { cn } from '../lib/utils';
+import { cn, safeFormatDistanceToNow } from '../lib/utils';
 
 interface Notification {
   id: string;
@@ -79,7 +79,7 @@ export default function NotificationsDropdown({ expanded, compact }: { expanded?
           
           if (isPast(deadline)) {
             type = 'overdue';
-            message = `Overdue by ${formatDistanceToNow(deadline)}`;
+            message = `Overdue by ${safeFormatDistanceToNow(deadline)}`;
           } else if (hoursLeft <= 24) {
             type = 'approaching';
             message = `Due in ${hoursLeft} hours`;
@@ -102,7 +102,9 @@ export default function NotificationsDropdown({ expanded, compact }: { expanded?
         // Sort: overdue first, then approaching. If same, closest deadline first.
         newNotifications.sort((a, b) => {
           if (a.type !== b.type) return a.type === 'overdue' ? -1 : 1;
-          return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+          const tA = new Date(a.timestamp).getTime();
+          const tB = new Date(b.timestamp).getTime();
+          return (isNaN(tA) ? 0 : tA) - (isNaN(tB) ? 0 : tB);
         });
         
         setNotifications(newNotifications);

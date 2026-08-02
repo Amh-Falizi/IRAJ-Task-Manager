@@ -5,8 +5,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useGitFeature } from '../contexts/GitFeatureContext';
 import { X, GitBranch, Edit2, Calendar, Clock, CheckCircle2, Trash, Plus, FolderKanban, GitPullRequest, ExternalLink, ChevronDown } from 'lucide-react';
 import Markdown from 'react-markdown';
-import { format } from 'date-fns';
-import { cn, getIncrementedBranchName } from '../lib/utils';
+import { cn, getIncrementedBranchName, safeFormatDate } from '../lib/utils';
 import UserAvatar from './UserAvatar';
 import CustomSelect from './CustomSelect';
 
@@ -515,7 +514,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                                   <div className="flex items-center justify-between mb-2">
                                      <div className="flex items-center space-x-2">
                                        <span className="text-xs font-bold text-strong">{author ? author.name : 'Unknown'}</span>
-                                       <span className="text-[9px] text-subtle font-mono">{format(new Date(c.createdAt), 'MMM d, h:mm a')}</span>
+                                       <span className="text-[9px] text-subtle font-mono">{safeFormatDate(c.createdAt, 'MMM d, h:mm a')}</span>
                                      </div>
                                      {canModify && !isEditing && (
                                        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity space-x-1">
@@ -658,7 +657,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                         <div className="flex items-center justify-center p-4">
                           <span className="text-xs text-subtle uppercase tracking-widest font-bold animate-pulse">Loading...</span>
                         </div>
-                      ) : activities.length > 0 ? (
+                       ) : activities.length > 0 ? (
                         <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border-strong before:to-transparent">
                           {activities.map(a => {
                             const author = users.find(u => u.id === a.userId);
@@ -670,7 +669,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                                  <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-3 rounded border border-border-strong bg-surface-accent shadow">
                                    <div className="flex items-center justify-between mb-1">
                                       <div className="font-bold text-strong text-xs">{author ? author.name : 'Unknown User'}</div>
-                                      <time className="font-mono text-[9px] text-muted">{format(new Date(a.createdAt), 'MMM d, h:mm a')}</time>
+                                      <time className="font-mono text-[9px] text-muted">{safeFormatDate(a.createdAt, 'MMM d, h:mm a')}</time>
                                    </div>
                                    <div className="text-xs text-primary">{a.action}</div>
                                  </div>
@@ -703,7 +702,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                                  <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-3 rounded border border-border-strong bg-surface-accent shadow">
                                    <div className="flex items-center justify-between mb-1">
                                       <div className="font-bold text-strong text-xs">{author ? author.name : 'Unknown User'}</div>
-                                      <time className="font-mono text-[9px] text-muted">{format(new Date(a.createdAt), 'MMM d, h:mm a')}</time>
+                                      <time className="font-mono text-[9px] text-muted">{safeFormatDate(a.createdAt, 'MMM d, h:mm a')}</time>
                                    </div>
                                    <div className="text-xs text-primary">{a.action}</div>
                                    {taskRef && <div className="text-[10px] text-muted mt-1 uppercase">Task: {taskRef.title}</div>}
@@ -748,14 +747,14 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                     <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block mb-1">Deadline</label>
                     <div className="flex items-center space-x-2 text-sm text-strong bg-surface-dim p-2 rounded border border-border-subtle">
                       <Calendar size={14} className="text-muted" />
-                      <span>{task.deadline && !isNaN(new Date(task.deadline).getTime()) ? format(new Date(task.deadline), 'PP') : 'No Deadline'}</span>
+                      <span>{safeFormatDate(task.deadline, 'PP', 'No Deadline')}</span>
                     </div>
                   </div>
                   <div>
                     <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block mb-1">Created</label>
                     <div className="flex items-center space-x-2 text-sm text-strong bg-surface-dim p-2 rounded border border-border-subtle">
                       <Clock size={14} className="text-muted" />
-                      <span>{format(new Date(task.createdAt), 'PP')}</span>
+                      <span>{safeFormatDate(task.createdAt, 'PP')}</span>
                     </div>
                   </div>
                 </div>

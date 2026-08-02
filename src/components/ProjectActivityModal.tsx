@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { User } from '../types';
 import { X, Activity, Clock, FileText, CheckCircle2, MessageSquare, AlertCircle } from 'lucide-react';
-import { format } from 'date-fns';
+import { safeFormatDate } from '../lib/utils';
 
 interface ProjectActivityModalProps {
   projectId: string;
@@ -73,7 +73,7 @@ export default function ProjectActivityModal({ projectId, projectName, users, on
                        <div className="flex items-center justify-between mb-2">
                           <div className="font-bold text-strong text-sm">{author ? author.name : 'Unknown User'}</div>
                           <time className="font-mono text-[10px] text-muted bg-surface-dim px-2 py-0.5 rounded border border-border-subtle">
-                            {format(new Date(a.createdAt), 'MMM d, h:mm a')}
+                            {safeFormatDate(a.createdAt, 'MMM d, h:mm a')}
                           </time>
                        </div>
                        <div className="text-xs text-primary">

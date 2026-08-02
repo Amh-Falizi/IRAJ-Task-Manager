@@ -5,8 +5,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { useToast } from "../contexts/ToastContext";
 import { useGitFeature } from "../contexts/GitFeatureContext";
-import { cn, getUserColor, getUserGradient } from "../lib/utils";
-import { formatDistanceToNow } from "date-fns";
+import { cn, getUserColor, getUserGradient, safeFormatDistanceToNow } from "../lib/utils";
 import {
   User as UserIcon,
   Save,
@@ -861,7 +860,7 @@ export default function Profile() {
                             <h4 className="text-sm font-bold text-strong leading-tight">{activity.taskTitle || "Task"}</h4>
                             <p className="text-xs text-muted mt-1 capitalize">{activity.action}</p>
                             <span className="text-[10px] text-subtle uppercase tracking-wider font-bold mt-2 block">
-                              {formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true })}
+                              {safeFormatDistanceToNow(activity.createdAt, { addSuffix: true })}
                             </span>
                           </div>
                         </div>

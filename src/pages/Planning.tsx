@@ -4,6 +4,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useSearchParams, Link, Navigate } from 'react-router';
 import { FolderKanban, Map, Milestone as MilestoneIcon, Plus, Calendar, Settings, Trash2, Edit, GitBranch, CheckCircle, ChevronDown } from 'lucide-react';
 import { Project, Milestone, User, Task } from '../types';
+import { safeFormatDate } from '../lib/utils';
 import TaskTimelineD3 from '../components/TaskTimelineD3';
 import TaskModal from '../components/TaskModal';
 import CustomSelect from '../components/CustomSelect';
@@ -78,16 +79,20 @@ export default function Planning() {
     const allStarts = milestones.map(m => m.startDate).filter(Boolean) as string[];
     const allEnds = milestones.map(m => m.endDate).filter(Boolean) as string[];
     
-    if (allStarts.length === 0 || allEnds.length === 0) return null;
+    const validStarts = allStarts.map(d => new Date(d).getTime()).filter(t => !isNaN(t));
+    const validEnds = allEnds.map(d => new Date(d).getTime()).filter(t => !isNaN(t));
 
-    let minD = new Date(Math.min(...allStarts.map(d => new Date(d).getTime())));
-    let maxD = new Date(Math.max(...allEnds.map(d => new Date(d).getTime())));
+    if (validStarts.length === 0 || validEnds.length === 0) return null;
+
+    let minD = new Date(Math.min(...validStarts));
+    let maxD = new Date(Math.max(...validEnds));
     
     // Add 15 days padding to min and max for better visual spacing
     minD = new Date(minD.setDate(minD.getDate() - 15));
     maxD = new Date(maxD.setDate(maxD.getDate() + 15));
 
     const totalTime = maxD.getTime() - minD.getTime();
+    if (isNaN(totalTime) || totalTime <= 0) return null;
     
     // Generate tick marks (roughly 5-6 points)
     const ticks = [];
@@ -95,7 +100,7 @@ export default function Planning() {
     for (let i = 0; i <= numTicks; i++) {
         const tickTime = minD.getTime() + (totalTime * (i / numTicks));
         ticks.push({
-            date: new Date(tickTime).toLocaleDateString([], { month: 'short', year: 'numeric' }),
+            date: safeFormatDate(tickTime, 'MMM yyyy'),
             left: `${(i / numTicks) * 100}%`
         });
     }
@@ -352,7 +357,7 @@ export default function Planning() {
                        <div className="absolute left-0 w-48 truncate pr-4 mt-1">
                          <span className="text-sm font-medium text-strong block truncate">{m.name}</span>
                          <span className="block text-xs text-muted truncate">
-                           {m.startDate && new Date(m.startDate).toLocaleDateString()} - {m.endDate && new Date(m.endDate).toLocaleDateString()}
+                           {m.startDate ? safeFormatDate(m.startDate, 'PP') : ''}{m.startDate && m.endDate ? ' - ' : ''}{m.endDate ? safeFormatDate(m.endDate, 'PP') : ''}
                          </span>
                          {mTasks.length > 0 && (
                            <span className="text-[10px] text-muted">
@@ -431,7 +436,7 @@ export default function Planning() {
                       {m.endDate && (
                         <span className="flex items-center text-muted">
                           <Calendar size={10} className="mr-1" />
-                          {new Date(m.endDate).toLocaleDateString()}
+                          {safeFormatDate(m.endDate, 'PP')}
                         </span>
                       )}
                     </div>
@@ -489,7 +494,7 @@ export default function Planning() {
                       {m.endDate && (
                         <span className="flex items-center text-muted">
                           <Calendar size={10} className="mr-1" />
-                          {new Date(m.endDate).toLocaleDateString()}
+                          {safeFormatDate(m.endDate, 'PP')}
                         </span>
                       )}
                     </div>

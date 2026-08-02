@@ -9,7 +9,7 @@ import WorkloadModal from '../components/WorkloadModal';
 import ProjectActivityModal from '../components/ProjectActivityModal';
 import { Plus, MoreVertical, Calendar, ArrowUpDown, CornerDownRight, Search, Filter, AlertCircle, ChevronUp, Minus, ChevronDown, X, FolderKanban, Activity, CheckCircle2, Workflow, Clock, Pencil, Trash2, UserPlus, Download, GitBranch, GitPullRequest } from 'lucide-react';
 import { format } from 'date-fns';
-import { cn } from '../lib/utils';
+import { cn, safeFormatDate } from '../lib/utils';
 import { useSearchParams, Link, Navigate, useNavigate } from 'react-router';
 import TaskDiagram from '../components/TaskDiagram';
 import Markdown from 'react-markdown';
@@ -197,9 +197,13 @@ export default function Board() {
       } else if (sortBy === 'priority') {
         comparison = priorityWeight[a.priority] - priorityWeight[b.priority];
       } else if (sortBy === 'deadline') {
-        comparison = new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+        const tA = a.deadline ? new Date(a.deadline).getTime() : 0;
+        const tB = b.deadline ? new Date(b.deadline).getTime() : 0;
+        comparison = (isNaN(tA) ? 0 : tA) - (isNaN(tB) ? 0 : tB);
       } else if (sortBy === 'createdAt') {
-        comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        comparison = (isNaN(tA) ? 0 : tA) - (isNaN(tB) ? 0 : tB);
       }
 
       return sortDir === 'asc' ? comparison : -comparison;
@@ -1091,9 +1095,7 @@ export default function Board() {
                         <div className="flex items-center space-x-1 font-mono">
                           <Calendar size={12} />
                           <span>
-                            {task.deadline && !isNaN(new Date(task.deadline).getTime())
-                              ? format(new Date(task.deadline), 'MMM dd').toUpperCase()
-                              : 'NO DEADLINE'}
+                            {safeFormatDate(task.deadline, 'MMM dd', 'NO DEADLINE').toUpperCase()}
                           </span>
                         </div>
                         <div className="flex items-center space-x-2 relative group/assignee" title={assignee ? assignee.name : 'Unassigned'}>

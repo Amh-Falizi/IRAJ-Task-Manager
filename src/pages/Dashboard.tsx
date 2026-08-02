@@ -5,7 +5,7 @@ import { Task, User } from '../types';
 import { format, isPast, isToday } from 'date-fns';
 import { CheckCircle2, Clock, AlertCircle, FileText, Activity, Edit3, Settings, Eye, EyeOff, ArrowUp, ArrowDown, Layout, Grid, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router';
-import { cn } from '../lib/utils';
+import { cn, safeFormatDate } from '../lib/utils';
 import TaskModal from '../components/TaskModal';
 import CustomSelect from '../components/CustomSelect';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend, AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar } from 'recharts';
@@ -529,9 +529,7 @@ export default function Dashboard() {
               </div>
               <div className="text-right shrink-0">
                 <div className="text-[10px] font-mono text-muted">
-                  {task.deadline && !isNaN(new Date(task.deadline).getTime()) 
-                    ? format(new Date(task.deadline), 'MMM dd').toUpperCase() 
-                    : 'NO DEADLINE'}
+                  {safeFormatDate(task.deadline, 'MMM dd', 'NO DEADLINE').toUpperCase()}
                 </div>
                 <div className="text-[9px] bg-surface-accent text-muted px-1.5 py-0.5 rounded mt-1 uppercase inline-block">
                   {task.status.replace('_', ' ')}

@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { Team, TeamMember, User, Project } from '../types';
 import { Users, Plus, X, Trash2, Shield, FolderKanban, ChevronDown } from 'lucide-react';
-import { format } from 'date-fns';
+import { safeFormatDate } from '../lib/utils';
 import Markdown from 'react-markdown';
 import UserAvatar from '../components/UserAvatar';
 import SearchableSelect from '../components/SearchableSelect';
@@ -143,7 +143,7 @@ export default function Teams() {
                     )}
                   </div>
                   <div className="text-[10px] text-subtle pt-3 border-t border-border-subtle">
-                    Created {format(new Date(team.createdAt), 'MMM d, yyyy')}
+                    Created {safeFormatDate(team.createdAt, 'MMM d, yyyy')}
                   </div>
                 </div>
               ))}
@@ -467,7 +467,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
       <div className="flex justify-between items-center p-6 border-b border-border-subtle">
         <div>
           <h2 className="text-xl font-semibold text-strong">{team.name}</h2>
-          <p className="text-xs text-muted mt-1">Created on {format(new Date(team.createdAt), 'MMM d, yyyy')}</p>
+          <p className="text-xs text-muted mt-1">Created on {safeFormatDate(team.createdAt, 'MMM d, yyyy')}</p>
         </div>
         <div className="flex items-center gap-2">
           {isAdminOrOwner && (

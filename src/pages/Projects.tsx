@@ -4,7 +4,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useGitFeature } from '../contexts/GitFeatureContext';
 import { Project, User } from '../types';
 import { FolderKanban, Plus, X, Trash2, Calendar, LayoutDashboard, Activity, Clock, Download, Users, User as UserIcon, GitBranch } from 'lucide-react';
-import { format } from 'date-fns';
+import { safeFormatDate } from '../lib/utils';
 import { useNavigate } from 'react-router';
 import WorkloadModal from '../components/WorkloadModal';
 import ProjectActivityModal from '../components/ProjectActivityModal';
@@ -215,7 +215,7 @@ export default function Projects() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-4 border-t border-border-subtle gap-3 mt-auto">
                   <div className="flex items-center text-[10px] text-subtle font-medium shrink-0">
                     <Calendar size={12} className="mr-1.5" />
-                    {format(new Date(project.createdAt), 'MMM d, yyyy')}
+                    {safeFormatDate(project.createdAt, 'MMM d, yyyy')}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Tooltip content="Members" position="bottom">

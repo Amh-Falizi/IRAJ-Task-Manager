@@ -1,8 +1,31 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { format as dateFnsFormat, formatDistanceToNow as dateFnsFormatDistanceToNow, isValid } from "date-fns";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+
+export function safeFormatDate(dateVal: any, formatStr: string, fallback: string = 'N/A'): string {
+  if (!dateVal) return fallback;
+  const d = dateVal instanceof Date ? dateVal : new Date(dateVal);
+  if (!isValid(d) || isNaN(d.getTime())) return fallback;
+  try {
+    return dateFnsFormat(d, formatStr);
+  } catch (e) {
+    return fallback;
+  }
+}
+
+export function safeFormatDistanceToNow(dateVal: any, options?: any, fallback: string = 'recently'): string {
+  if (!dateVal) return fallback;
+  const d = dateVal instanceof Date ? dateVal : new Date(dateVal);
+  if (!isValid(d) || isNaN(d.getTime())) return fallback;
+  try {
+    return dateFnsFormatDistanceToNow(d, options);
+  } catch (e) {
+    return fallback;
+  }
 }
 
 const colors = [

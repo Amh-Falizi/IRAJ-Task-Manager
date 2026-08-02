@@ -18,7 +18,12 @@ export default function TaskTimelineD3({ tasks, width = 800, onTaskClick }: Task
     d3.select(d3Container.current).selectAll('svg').remove();
     d3.select(d3Container.current).selectAll('.d3-tooltip').remove();
 
-    const validTasks = tasks.filter(t => t.createdAt && t.deadline).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const validTasks = tasks.filter(t => 
+      t.createdAt && 
+      t.deadline && 
+      !isNaN(new Date(t.createdAt).getTime()) && 
+      !isNaN(new Date(t.deadline).getTime())
+    ).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     if (validTasks.length === 0) return;
 
     const margin = { top: 40, right: 30, bottom: 30, left: 160 };
