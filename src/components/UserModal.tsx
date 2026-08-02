@@ -120,10 +120,13 @@ export default function UserModal({ user, onClose, onSave }: UserModalProps) {
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Role</label>
               <CustomSelect
-                disabled={isSelf}
+                disabled={isSelf || (user?.role === 'super_admin' && currentUser?.role !== 'super_admin')}
                 value={formData.role}
                 onChange={val => setFormData(p => ({ ...p, role: val }))}
-                options={roles.map(r => ({ value: r.id, label: r.name.toUpperCase() }))}
+                options={roles
+                  .filter(r => currentUser?.role === 'super_admin' || r.id !== 'super_admin')
+                  .map(r => ({ value: r.id, label: r.name.toUpperCase() }))
+                }
                 size="sm"
               />
             </div>

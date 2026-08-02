@@ -135,7 +135,7 @@ export default function Layout() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [toggleTheme]);
 
-  if (user?.role === 'admin') {
+  if (user?.role === 'admin' || user?.role === 'super_admin') {
     navItems.push({ name: 'Admin', href: '/admin/users', icon: Shield });
   }
 

@@ -222,6 +222,8 @@ export default function UsersAdmin() {
 
   const getRoleBadgeStyle = (role: string) => {
     switch (role) {
+      case 'super_admin':
+        return 'bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold';
       case 'admin':
         return 'bg-purple-500/10 text-purple-400 border border-purple-500/20';
       case 'manager':
@@ -243,7 +245,7 @@ export default function UsersAdmin() {
     }
   };
 
-  if (currentUser?.role !== 'admin') {
+  if (currentUser?.role !== 'admin' && currentUser?.role !== 'super_admin') {
     return (
       <div className="flex h-full items-center justify-center p-6 bg-page-bg">
         <div className="text-center space-y-4">
@@ -612,6 +614,16 @@ export default function UsersAdmin() {
               {/* Dynamic Permissions Section */}
               <div className="space-y-3 pt-2">
                 <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Role Permissions</label>
+                {editingRole?.id === 'super_admin' && (
+                  <p className="text-xs text-amber-500 font-semibold bg-amber-500/10 border border-amber-500/20 p-2.5 rounded">
+                    Super Admin permissions are immutable and grant full, unrestricted system control.
+                  </p>
+                )}
+                {editingRole?.id === 'admin' && currentUser?.role !== 'super_admin' && (
+                  <p className="text-xs text-amber-500 font-semibold bg-amber-500/10 border border-amber-500/20 p-2.5 rounded">
+                    Only Super Admins can customize standard Admin role permissions.
+                  </p>
+                )}
                 <div className="space-y-2.5 bg-surface-dim/50 border border-border-subtle rounded-lg p-3">
                   {[
                     { key: 'create_tasks', label: 'Create Tasks', desc: 'Can create new tasks within projects' },
@@ -619,12 +631,22 @@ export default function UsersAdmin() {
                     { key: 'delete_tasks', label: 'Delete Tasks', desc: 'Can delete tasks' },
                     { key: 'manage_projects', label: 'Manage Projects', desc: 'Can create, edit, and delete projects' },
                     { key: 'manage_teams', label: 'Manage Teams', desc: 'Can create, edit, and delete teams' },
+                    { key: 'manage_users', label: 'Manage Users', desc: 'Can create, edit, assign roles, and manage user accounts' },
+                    { key: 'manage_roles', label: 'Manage Roles', desc: 'Can create, edit, and configure custom role permissions' },
                   ].map((perm) => (
                     <label key={perm.key} className="flex items-start gap-3 cursor-pointer group">
                       <input
                         type="checkbox"
-                        className="mt-0.5 rounded border-border-subtle text-blue-600 focus:ring-blue-500/20 bg-surface-dim"
-                        checked={roleForm.permissions[perm.key as keyof typeof roleForm.permissions] || false}
+                        disabled={
+                          editingRole?.id === 'super_admin' ||
+                          (editingRole?.id === 'admin' && currentUser?.role !== 'super_admin')
+                        }
+                        className="mt-0.5 rounded border-border-subtle text-blue-600 focus:ring-blue-500/20 bg-surface-dim disabled:opacity-50"
+                        checked={
+                          editingRole?.id === 'super_admin' 
+                            ? true 
+                            : (roleForm.permissions[perm.key as keyof typeof roleForm.permissions] || false)
+                        }
                         onChange={(e) => setRoleForm(prev => ({
                           ...prev,
                           permissions: {

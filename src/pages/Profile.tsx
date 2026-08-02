@@ -94,7 +94,7 @@ export default function Profile() {
     }
   };
 
-  const isManagerOrAdmin = user?.role === 'admin' || user?.role === 'manager';
+  const isManagerOrAdmin = user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'manager';
 
   const profileTabs = [
     { id: 'general', label: 'General Settings', icon: Settings },
@@ -102,7 +102,7 @@ export default function Profile() {
     { id: 'security', label: 'Security Log', icon: Shield },
     { id: 'skills', label: 'Skills & Expertise', icon: Code },
     ...(isManagerOrAdmin && gitEnabled ? [{ id: 'integrations', label: 'Integrations', icon: GitBranch }] : []),
-    ...(user?.role === 'admin' ? [{ id: 'backup', label: 'Backup & Restore', icon: Database }] : []),
+    ...((user?.role === 'admin' || user?.role === 'super_admin') ? [{ id: 'backup', label: 'Backup & Restore', icon: Database }] : []),
   ];
 
   const handleNextTab = () => {
@@ -438,6 +438,7 @@ export default function Profile() {
 
   const roleInfo = (() => {
     switch (user?.role) {
+      case 'super_admin': return { label: 'Super Admin', icon: Shield, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-500/20' };
       case 'admin': return { label: 'Administrator', icon: Shield, color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20' };
       case 'manager': return { label: `${user?.rolePrefix || 'Engineering'} Manager`, icon: Briefcase, color: 'text-indigo-500', bg: 'bg-indigo-500/10', border: 'border-indigo-500/20' };
       case 'developer': return { label: `${user?.rolePrefix || 'Lead'} Developer`, icon: Code, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20' };
@@ -1045,7 +1046,7 @@ export default function Profile() {
                 </div>
               )}
 
-              {activeTab === 'backup' && user?.role === 'admin' && (
+              {activeTab === 'backup' && (user?.role === 'admin' || user?.role === 'super_admin') && (
                 <div className="space-y-6 animate-fade-in">
                   {/* Database Info Card */}
                   <div className="bg-surface border border-border-subtle rounded-xl overflow-hidden shadow-sm animate-slide-up">

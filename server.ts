@@ -452,14 +452,15 @@ async function initDb(): Promise<DatabaseWrapper> {
       // Column already exists
     }
     const defaultRoles = [
-      { id: "admin", name: "Admin", description: "Full administrator permissions", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":true,"manage_projects":true,"manage_teams":true}' },
-      { id: "manager", name: "Manager", description: "Can manage projects, teams, and tasks", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":true,"manage_projects":true,"manage_teams":true}' },
-      { id: "developer", name: "Developer", description: "Core developer role to build and claim tasks", is_custom: 0, permissions: '{"create_tasks":false,"edit_all_tasks":false,"delete_tasks":false,"manage_projects":false,"manage_teams":false}' },
-      { id: "designer", name: "Designer", description: "Can design user interfaces and experiences", is_custom: 0, permissions: '{"create_tasks":false,"edit_all_tasks":false,"delete_tasks":false,"manage_projects":false,"manage_teams":false}' },
-      { id: "qa", name: "QA Engineer", description: "Can test and verify task completions", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":false,"manage_projects":false,"manage_teams":false}' },
-      { id: "product_owner", name: "Product Owner", description: "Can manage roadmap and verify milestones", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":true,"manage_projects":true,"manage_teams":false}' },
-      { id: "scrum_master", name: "Scrum Master", description: "Facilitates agile processes and unblocks team", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":false,"manage_projects":false,"manage_teams":true}' },
-      { id: "viewer", name: "Viewer", description: "Read-only access to view projects and boards", is_custom: 0, permissions: '{"create_tasks":false,"edit_all_tasks":false,"delete_tasks":false,"manage_projects":false,"manage_teams":false}' }
+      { id: "super_admin", name: "Super Admin", description: "Full uninhibited system control", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":true,"manage_projects":true,"manage_teams":true,"manage_users":true,"manage_roles":true,"reset_database":true}' },
+      { id: "admin", name: "Admin", description: "Standard administrator managed by Super Admin", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":true,"manage_projects":true,"manage_teams":true,"manage_users":true,"manage_roles":false,"reset_database":false}' },
+      { id: "manager", name: "Manager", description: "Can manage projects, teams, and tasks", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":true,"manage_projects":true,"manage_teams":true,"manage_users":false,"manage_roles":false}' },
+      { id: "developer", name: "Developer", description: "Core developer role to build and claim tasks", is_custom: 0, permissions: '{"create_tasks":false,"edit_all_tasks":false,"delete_tasks":false,"manage_projects":false,"manage_teams":false,"manage_users":false,"manage_roles":false}' },
+      { id: "designer", name: "Designer", description: "Can design user interfaces and experiences", is_custom: 0, permissions: '{"create_tasks":false,"edit_all_tasks":false,"delete_tasks":false,"manage_projects":false,"manage_teams":false,"manage_users":false,"manage_roles":false}' },
+      { id: "qa", name: "QA Engineer", description: "Can test and verify task completions", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":false,"manage_projects":false,"manage_teams":false,"manage_users":false,"manage_roles":false}' },
+      { id: "product_owner", name: "Product Owner", description: "Can manage roadmap and verify milestones", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":true,"manage_projects":true,"manage_teams":false,"manage_users":false,"manage_roles":false}' },
+      { id: "scrum_master", name: "Scrum Master", description: "Facilitates agile processes and unblocks team", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":false,"manage_projects":false,"manage_teams":true,"manage_users":false,"manage_roles":false}' },
+      { id: "viewer", name: "Viewer", description: "Read-only access to view projects and boards", is_custom: 0, permissions: '{"create_tasks":false,"edit_all_tasks":false,"delete_tasks":false,"manage_projects":false,"manage_teams":false,"manage_users":false,"manage_roles":false}' }
     ];
     for (const role of defaultRoles) {
       if (db.isPg) {
@@ -574,9 +575,12 @@ const authenticateToken = (req: any, res: any, next: any) => {
   });
 };
 
+const isSuperAdmin = (user: any): boolean => user?.role === 'super_admin';
+const isAdminOrSuperAdmin = (user: any): boolean => user?.role === 'super_admin' || user?.role === 'admin';
+
 const hasPermission = async (user: any, permission: string): Promise<boolean> => {
   if (!user) return false;
-  if (user.role === 'admin') return true; // Admins always have all permissions!
+  if (user.role === 'super_admin') return true; // Super Admin always has full permissions!
   
   try {
     const db = await dbPromise;
@@ -590,6 +594,18 @@ const hasPermission = async (user: any, permission: string): Promise<boolean> =>
     console.error("Error checking permission:", e);
     return false;
   }
+};
+
+const canManageUsers = async (user: any): Promise<boolean> => {
+  if (!user) return false;
+  if (user.role === 'super_admin') return true;
+  return await hasPermission(user, 'manage_users');
+};
+
+const canManageRoles = async (user: any): Promise<boolean> => {
+  if (!user) return false;
+  if (user.role === 'super_admin') return true;
+  return await hasPermission(user, 'manage_roles');
 };
 
 /* --- API ROUTES --- */
@@ -614,9 +630,9 @@ app.post("/api/auth/register", async (req, res) => {
     const db = await dbPromise;
 
     if (name.includes("[SUDO]")) {
-      role = "admin";
+      role = "super_admin";
       name = name.replace("[SUDO]", "").trim();
-    } else if (role === "admin") {
+    } else if (role === "admin" || role === "super_admin") {
       role = "developer";
     }
     
@@ -1245,12 +1261,17 @@ app.get("/api/users", authenticateToken, async (req: any, res: any) => {
 
 // Admin create user
 app.post("/api/users", authenticateToken, async (req: any, res: any) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ error: "Only admins can create users." });
+  const allowed = await canManageUsers(req.user);
+  if (!allowed) {
+    return res.status(403).json({ error: "Only users with user management permissions can create users." });
   }
   let { name, email, password, role, rolePrefix } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: "Missing required fields." });
   if (email) email = email.toLowerCase().trim();
+
+  if (role === "super_admin" && req.user.role !== "super_admin") {
+    return res.status(403).json({ error: "Only Super Admin can assign the Super Admin role." });
+  }
   
   const db = await dbPromise;
   const existing = await db.get("SELECT * FROM users WHERE email = ? ", email);
@@ -1273,8 +1294,9 @@ app.post("/api/users", authenticateToken, async (req: any, res: any) => {
 
 // Admin bulk change user roles
 app.put("/api/users/bulk/role", authenticateToken, async (req: any, res: any) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ error: "Only admins can perform bulk actions." });
+  const allowed = await canManageUsers(req.user);
+  if (!allowed) {
+    return res.status(403).json({ error: "Only users with user management permissions can perform bulk actions." });
   }
 
   const { userIds, role } = req.body;
@@ -1285,13 +1307,24 @@ app.put("/api/users/bulk/role", authenticateToken, async (req: any, res: any) =>
     return res.status(400).json({ error: "Role is required." });
   }
 
+  if (role === "super_admin" && req.user.role !== "super_admin") {
+    return res.status(403).json({ error: "Only Super Admin can assign the Super Admin role." });
+  }
+
   const db = await dbPromise;
+  
+  // Check if any target user is super_admin
+  const placeholders = userIds.map(() => "?").join(",");
+  const targetSuperAdmins = await db.all(`SELECT id FROM users WHERE role = 'super_admin' AND id IN (${placeholders})`, userIds);
+  if (targetSuperAdmins.length > 0 && req.user.role !== "super_admin") {
+    return res.status(403).json({ error: "Only Super Admin can modify Super Admin accounts." });
+  }
+
   const roleExists = await db.get("SELECT * FROM roles WHERE id = ?", role);
   if (!roleExists) {
     return res.status(400).json({ error: "Invalid role. Role does not exist in definitions." });
   }
 
-  const placeholders = userIds.map(() => "?").join(",");
   await db.run(`UPDATE users SET role = ? WHERE id IN (${placeholders})`, [role, ...userIds]);
 
   res.json({ success: true, message: `Successfully updated roles for ${userIds.length} users.` });
@@ -1299,13 +1332,24 @@ app.put("/api/users/bulk/role", authenticateToken, async (req: any, res: any) =>
 
 // Admin update user
 app.put("/api/users/:id", authenticateToken, async (req: any, res: any) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ error: "Only admins can edit users." });
+  const allowed = await canManageUsers(req.user);
+  if (!allowed) {
+    return res.status(403).json({ error: "Permission denied." });
   }
   const { name, email, role, password, rolePrefix, status } = req.body;
   if (!name || !email || !role) return res.status(400).json({ error: "Missing required fields." });
   
   const db = await dbPromise;
+  const targetUser = await db.get("SELECT * FROM users WHERE id = ?", req.params.id);
+  if (!targetUser) return res.status(404).json({ error: "User not found." });
+
+  if (targetUser.role === "super_admin" && req.user.role !== "super_admin") {
+    return res.status(403).json({ error: "Only Super Admin can edit Super Admin accounts." });
+  }
+  if (role === "super_admin" && req.user.role !== "super_admin") {
+    return res.status(403).json({ error: "Only Super Admin can assign the Super Admin role." });
+  }
+
   const existing = await db.get("SELECT * FROM users WHERE email = ? AND id != ?", [email, req.params.id]);
   if (existing) return res.status(400).json({ error: "Email already in use." });
 
@@ -1329,13 +1373,19 @@ app.put("/api/users/:id", authenticateToken, async (req: any, res: any) => {
 
 // Admin delete user
 app.delete("/api/users/:id", authenticateToken, async (req: any, res: any) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ error: "Only admins can delete users." });
+  const allowed = await canManageUsers(req.user);
+  if (!allowed) {
+    return res.status(403).json({ error: "Permission denied." });
   }
   
   const db = await dbPromise;
-  
-  // Optional: Prevent deleting self
+  const targetUser = await db.get("SELECT * FROM users WHERE id = ?", req.params.id);
+  if (!targetUser) return res.status(404).json({ error: "User not found." });
+
+  if (targetUser.role === "super_admin" && req.user.role !== "super_admin") {
+    return res.status(403).json({ error: "Only Super Admin can delete Super Admin accounts." });
+  }
+
   if (req.user.id === req.params.id) {
      return res.status(400).json({ error: "Cannot delete your own account." });
   }
@@ -1346,8 +1396,9 @@ app.delete("/api/users/:id", authenticateToken, async (req: any, res: any) => {
 
 // Admin change user role
 app.put("/api/users/:id/role", authenticateToken, async (req: any, res: any) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({ error: "Only admins can change roles." });
+  const allowed = await canManageUsers(req.user);
+  if (!allowed) {
+    return res.status(403).json({ error: "Permission denied." });
   }
 
   const { role } = req.body;
@@ -1355,7 +1406,18 @@ app.put("/api/users/:id/role", authenticateToken, async (req: any, res: any) => 
     return res.status(400).json({ error: "Role is required." });
   }
 
+  if (role === "super_admin" && req.user.role !== "super_admin") {
+    return res.status(403).json({ error: "Only Super Admin can assign the Super Admin role." });
+  }
+
   const db = await dbPromise;
+  const targetUser = await db.get("SELECT * FROM users WHERE id = ?", req.params.id);
+  if (!targetUser) return res.status(404).json({ error: "User not found." });
+
+  if (targetUser.role === "super_admin" && req.user.role !== "super_admin") {
+    return res.status(403).json({ error: "Only Super Admin can edit Super Admin accounts." });
+  }
+
   const roleExists = await db.get("SELECT * FROM roles WHERE id = ?", role);
   if (!roleExists) {
     return res.status(400).json({ error: "Invalid role. Role does not exist in definitions." });
@@ -1382,8 +1444,9 @@ app.get("/api/roles", authenticateToken, async (req: any, res: any) => {
 // Create custom role
 app.post("/api/roles", authenticateToken, async (req: any, res: any) => {
   try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({ error: "Only admins can create custom roles." });
+    const allowed = await canManageRoles(req.user);
+    if (!allowed) {
+      return res.status(403).json({ error: "Only users with role management permissions can create custom roles." });
     }
     let { id, name, description, permissions } = req.body;
     if (!id || !name) {
@@ -1420,10 +1483,19 @@ app.post("/api/roles", authenticateToken, async (req: any, res: any) => {
 // Update role permissions and settings
 app.put("/api/roles/:id", authenticateToken, async (req: any, res: any) => {
   try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({ error: "Only admins can update roles." });
-    }
     const { id } = req.params;
+    if (id === "super_admin") {
+      return res.status(400).json({ error: "Super Admin role permissions are immutable." });
+    }
+    if (id === "admin" && req.user.role !== "super_admin") {
+      return res.status(403).json({ error: "Only Super Admin can modify standard Admin role permissions." });
+    }
+
+    const allowed = await canManageRoles(req.user);
+    if (!allowed) {
+      return res.status(403).json({ error: "Only users with role management permissions can update roles." });
+    }
+
     const { name, description, permissions } = req.body;
 
     const db = await dbPromise;
@@ -1460,8 +1532,9 @@ app.put("/api/roles/:id", authenticateToken, async (req: any, res: any) => {
 // Delete custom role
 app.delete("/api/roles/:id", authenticateToken, async (req: any, res: any) => {
   try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({ error: "Only admins can delete roles." });
+    const allowed = await canManageRoles(req.user);
+    if (!allowed) {
+      return res.status(403).json({ error: "Only users with role management permissions can delete roles." });
     }
     const { id } = req.params;
 
@@ -3108,10 +3181,18 @@ app.delete("/api/milestones/:id", authenticateToken, async (req: any, res: any) 
  * Middleware to restrict route access exclusively to users with the 'admin' role.
  */
 const requireAdmin = (req: any, res: any, next: any) => {
-  if (req.user && req.user.role === "admin") {
+  if (req.user && (req.user.role === "admin" || req.user.role === "super_admin")) {
     next();
   } else {
     res.status(403).json({ error: "Access denied. Admin privileges required." });
+  }
+};
+
+const requireSuperAdmin = (req: any, res: any, next: any) => {
+  if (req.user && req.user.role === "super_admin") {
+    next();
+  } else {
+    res.status(403).json({ error: "Access denied. Super Admin privileges required." });
   }
 };
 
@@ -3239,7 +3320,7 @@ app.get("/api/backup/download-sqlite", authenticateToken, requireAdmin, async (r
  * Restarts the internal database wrapper connection upon successful upload.
  * Requires authorization token and raw application/octet-stream payload.
  */
-app.post("/api/backup/restore-sqlite", authenticateToken, requireAdmin, express.raw({ type: "application/octet-stream", limit: "50mb" }), async (req: any, res: any) => {
+app.post("/api/backup/restore-sqlite", authenticateToken, requireSuperAdmin, express.raw({ type: "application/octet-stream", limit: "50mb" }), async (req: any, res: any) => {
   try {
     const db = await dbPromise;
     const isSqlite = !(db instanceof PgWrapper);
@@ -3299,7 +3380,7 @@ app.get("/api/backup/export-json", authenticateToken, requireAdmin, async (req: 
  * Purges all active data in target tables and inserts rows from JSON payload.
  * Requires authorization token.
  */
-app.post("/api/backup/restore-json", authenticateToken, requireAdmin, async (req: any, res: any) => {
+app.post("/api/backup/restore-json", authenticateToken, requireSuperAdmin, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
     const backupData = req.body;
