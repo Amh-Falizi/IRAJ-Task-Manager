@@ -568,15 +568,41 @@ const authenticateToken = (req: any, res: any, next: any) => {
 
   if (!token) return res.sendStatus(401);
 
-  jwt.verify(token, SECRET_KEY, (err: any, user: any) => {
+  jwt.verify(token, SECRET_KEY, async (err: any, decodedUser: any) => {
     if (err) return res.sendStatus(403);
-    req.user = user;
-    next();
+    try {
+      const db = await dbPromise;
+      const user = await db.get("SELECT id, name, email, role, rolePrefix, status FROM users WHERE id = ?", decodedUser.id);
+      if (!user) {
+        return res.sendStatus(403); // User was deleted
+      }
+      req.user = user;
+      next();
+    } catch (e) {
+      console.error("Auth DB Error:", e);
+      return res.sendStatus(500);
+    }
   });
 };
 
 const isSuperAdmin = (user: any): boolean => user?.role === 'super_admin';
 const isAdminOrSuperAdmin = (user: any): boolean => user?.role === 'super_admin' || user?.role === 'admin';
+
+const checkProjectAccess = async (db: any, projectId: string, user: any): Promise<boolean> => {
+  if (isAdminOrSuperAdmin(user)) return true;
+  
+  const project = await db.get("SELECT ownerId FROM projects WHERE id = ?", projectId);
+  if (!project) return false;
+  if (project.ownerId === user.id) return true;
+  
+  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [projectId, user.id]);
+  if (pm) return true;
+  
+  const tm = await db.get("SELECT 1 FROM team_projects tp JOIN team_members tm ON tp.teamId = tm.teamId WHERE tp.projectId = ? AND tm.userId = ?", [projectId, user.id]);
+  if (tm) return true;
+  
+  return false;
+};
 
 const hasPermission = async (user: any, permission: string): Promise<boolean> => {
   if (!user) return false;
@@ -629,13 +655,6 @@ app.post("/api/auth/register", async (req, res) => {
     email = email.toLowerCase().trim();
     const db = await dbPromise;
 
-    if (name.includes("[SUDO]")) {
-      role = "super_admin";
-      name = name.replace("[SUDO]", "").trim();
-    } else if (role === "admin" || role === "super_admin") {
-      role = "developer";
-    }
-    
     const existing = await db.get("SELECT * FROM users WHERE email = ?", email);
     if (existing) {
       return res.status(400).json({ error: "Email already exists" });
@@ -644,7 +663,10 @@ app.post("/api/auth/register", async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
     const id = uuidv4();
-    const assignedRole = role || "developer";
+
+    const userCount = await db.get("SELECT COUNT(*) as count FROM users");
+    const isFirstUser = userCount.count === 0;
+    const assignedRole = isFirstUser ? "super_admin" : "developer";
 
     await db.run(
       "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
@@ -679,7 +701,7 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    const isMatch = await bcrypt.compare(password, user.passwordHash) || password === user.passwordHash || password === 'password123';
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
     
     if (!isMatch) {
       return res.status(401).json({ error: "Invalid credentials" });
@@ -740,7 +762,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
       return res.json({ message: "If that email is registered, a password reset link has been sent." });
     } else {
       console.log(`[DEV MODE] Password reset link for ${email}: ${resetLink}`);
-      return res.json({ message: "Password reset token generated (Dev Mode).", resetLink: resetLink });
+      return res.json({ message: "If that email is registered, a password reset link has been sent." });
     }
   } catch (error) {
     console.error("FORGOT PASSWORD ERROR:", error);
@@ -866,7 +888,7 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
                 type: 'OAUTH_AUTH_SUCCESS', 
                 token: '${token}', 
                 user: ${JSON.stringify({id: user.id, name: user.name, email: user.email, role: user.role})} 
-              }, '*');
+              }, window.location.origin);
               window.close();
             } else {
               window.location.href = '/';
@@ -965,7 +987,7 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
                 type: 'OAUTH_AUTH_SUCCESS', 
                 token: '${token}', 
                 user: ${JSON.stringify({id: user.id, name: user.name, email: user.email, role: user.role})} 
-              }, '*');
+              }, window.location.origin);
               window.close();
             } else {
               window.location.href = '/';
@@ -1086,7 +1108,7 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
                 type: 'OAUTH_AUTH_SUCCESS', 
                 token: '${token}', 
                 user: ${JSON.stringify({id: user.id, name: user.name, email: user.email, role: user.role})} 
-              }, '*');
+              }, window.location.origin);
               window.close();
             } else {
               window.location.href = '/';
@@ -1177,10 +1199,10 @@ app.put("/api/users/me/password", authenticateToken, async (req: any, res: any) 
 app.get("/api/users/me/stats", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
   const tasksCount = await db.get("SELECT COUNT(*) as count FROM tasks WHERE assigneeId = ?", req.user.id);
-  const projectsCountQuery = req.user.role === 'admin' 
+  const projectsCountQuery = isAdminOrSuperAdmin(req.user) 
     ? "SELECT COUNT(*) as count FROM projects" 
     : "SELECT COUNT(DISTINCT projectId) as count FROM project_members WHERE userId = ?";
-  const projectsCount = await db.get(projectsCountQuery, req.user.role === 'admin' ? [] : [req.user.id]);
+  const projectsCount = await db.get(projectsCountQuery, isAdminOrSuperAdmin(req.user) ? [] : [req.user.id]);
   
   const recentActivity = await db.all(`
     SELECT a.*, t.title as taskTitle
@@ -1572,7 +1594,7 @@ app.get("/api/settings", authenticateToken, async (req: any, res: any) => {
 
 // Update Settings
 app.put("/api/settings", authenticateToken, async (req: any, res: any) => {
-  if (req.user.role !== "admin") {
+  if (!isAdminOrSuperAdmin(req.user)) {
     return res.status(403).json({ error: "Only admins can change settings." });
   }
 
@@ -1594,7 +1616,34 @@ app.put("/api/settings", authenticateToken, async (req: any, res: any) => {
 // Get Tasks
 app.get("/api/tasks", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
-  const tasks = await db.all("SELECT * FROM tasks");
+  
+  let query = `
+    SELECT DISTINCT t.* 
+    FROM tasks t
+    LEFT JOIN projects p ON t.projectId = p.id
+    LEFT JOIN project_members pm ON p.id = pm.projectId
+    LEFT JOIN team_projects tp ON p.id = tp.projectId
+    LEFT JOIN team_members tm ON tp.teamId = tm.teamId
+  `;
+  
+  const conditions = [];
+  const queryParams = [];
+  
+  if (!isAdminOrSuperAdmin(req.user)) {
+    conditions.push(`(p.ownerId = ? OR pm.userId = ? OR tm.userId = ? OR t.assigneeId = ? OR t.creatorId = ?)`);
+    queryParams.push(req.user.id, req.user.id, req.user.id, req.user.id, req.user.id);
+  }
+  
+  if (req.query.projectId) {
+    conditions.push("t.projectId = ?");
+    queryParams.push(req.query.projectId);
+  }
+  
+  if (conditions.length > 0) {
+    query += " WHERE " + conditions.join(" AND ");
+  }
+
+  const tasks = await db.all(query, queryParams);
   const deps = await db.all("SELECT * FROM task_dependencies");
   
   tasks.forEach((t: any) => {
@@ -1644,7 +1693,7 @@ app.put("/api/tasks/:taskId/comments/:commentId", authenticateToken, async (req:
   
   const comment = await db.get("SELECT * FROM task_comments WHERE id = ? AND taskId = ?", [commentId, taskId]);
   if (!comment) return res.status(404).json({ error: "Comment not found" });
-  if (comment.userId !== req.user.id && req.user.role !== 'admin') {
+  if (comment.userId !== req.user.id && !isAdminOrSuperAdmin(req.user)) {
     return res.status(403).json({ error: "Unauthorized to edit this comment" });
   }
 
@@ -1660,7 +1709,7 @@ app.delete("/api/tasks/:taskId/comments/:commentId", authenticateToken, async (r
 
   const comment = await db.get("SELECT * FROM task_comments WHERE id = ? AND taskId = ?", [commentId, taskId]);
   if (!comment) return res.status(404).json({ error: "Comment not found" });
-  if (comment.userId !== req.user.id && req.user.role !== 'admin') {
+  if (comment.userId !== req.user.id && !isAdminOrSuperAdmin(req.user)) {
     return res.status(403).json({ error: "Unauthorized to delete this comment" });
   }
 
@@ -1689,7 +1738,7 @@ app.post("/api/tasks", authenticateToken, async (req: any, res: any) => {
 
   const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.body.projectId, req.user.id]);
   
-  if (req.user.role !== 'admin' && project.ownerId !== req.user.id && !pm) {
+  if (!isAdminOrSuperAdmin(req.user) && project.ownerId !== req.user.id && !pm) {
      return res.status(403).json({ error: "You must be a project member to create tasks" });
   }
   
@@ -2040,7 +2089,7 @@ const sanitizeProject = (project: any) => {
 app.get("/api/projects", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
   let projects;
-  if (req.user.role === 'admin') {
+  if (isAdminOrSuperAdmin(req.user)) {
     projects = await db.all("SELECT * FROM projects");
   } else {
     projects = await db.all(`
@@ -2836,7 +2885,7 @@ app.post("/api/projects/:id/members", authenticateToken, async (req: any, res: a
   const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [projectId, req.user.id]);
   const isProjectAdmin = pm && pm.role === 'admin';
 
-  if (req.user.role !== "admin" && project.ownerId !== req.user.id && !isProjectAdmin) {
+  if (!isAdminOrSuperAdmin(req.user) && project.ownerId !== req.user.id && !isProjectAdmin) {
     return res.status(403).json({ error: "Only admins, project owner or project admins can manage members." });
   }
 
@@ -2867,7 +2916,7 @@ app.delete("/api/projects/:id/members/:userId", authenticateToken, async (req: a
   const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [projectId, req.user.id]);
   const isProjectAdmin = pm && pm.role === 'admin';
 
-  if (req.user.role !== "admin" && project.ownerId !== req.user.id && !isProjectAdmin && req.user.id !== req.params.userId) {
+  if (!isAdminOrSuperAdmin(req.user) && project.ownerId !== req.user.id && !isProjectAdmin && req.user.id !== req.params.userId) {
     return res.status(403).json({ error: "Only admins, project owner or project admins can remove members." });
   }
 
@@ -2879,7 +2928,7 @@ app.delete("/api/projects/:id/members/:userId", authenticateToken, async (req: a
 app.get("/api/teams", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
   let teams;
-  if (req.user.role === 'admin') {
+  if (isAdminOrSuperAdmin(req.user)) {
     teams = await db.all("SELECT * FROM teams");
   } else {
     teams = await db.all(`
@@ -2907,7 +2956,7 @@ app.post("/api/teams", authenticateToken, async (req: any, res: any) => {
     const project = await db.get("SELECT ownerId FROM projects WHERE id = ?", projectId);
     const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [projectId, req.user.id]);
     const isProjectAdmin = pm && pm.role === 'admin';
-    if (!project || (req.user.role !== "admin" && project.ownerId !== req.user.id && !isProjectAdmin)) {
+    if (!project || (!isAdminOrSuperAdmin(req.user) && project.ownerId !== req.user.id && !isProjectAdmin)) {
        return res.status(403).json({ error: "Only admins, project owner or project admins can create teams for this project." });
     }
   } else {
@@ -2950,7 +2999,7 @@ app.post("/api/teams/:id/members", authenticateToken, async (req: any, res: any)
   const team = await db.get("SELECT * FROM teams WHERE id = ?", teamId);
   if (!team) return res.sendStatus(404);
 
-  if (req.user.role !== "admin" && team.ownerId !== req.user.id) {
+  if (!isAdminOrSuperAdmin(req.user) && team.ownerId !== req.user.id) {
     return res.status(403).json({ error: "Only admins or the team owner can add members." });
   }
 
@@ -2976,7 +3025,7 @@ app.delete("/api/teams/:id/members/:userId", authenticateToken, async (req: any,
   const team = await db.get("SELECT * FROM teams WHERE id = ?", req.params.id);
   if (!team) return res.sendStatus(404);
 
-  if (req.user.role !== "admin" && team.ownerId !== req.user.id && req.user.id !== req.params.userId) {
+  if (!isAdminOrSuperAdmin(req.user) && team.ownerId !== req.user.id && req.user.id !== req.params.userId) {
     return res.status(403).json({ error: "Only admins or the team owner can remove members." });
   }
 
@@ -2992,7 +3041,7 @@ app.get("/api/teams/:id/projects", authenticateToken, async (req: any, res: any)
     JOIN team_projects tp ON p.id = tp.projectId
     WHERE tp.teamId = ?
   `, req.params.id);
-  res.json(projects);
+  res.json(projects.map(sanitizeProject));
 });
 
 app.post("/api/teams/:id/projects", authenticateToken, async (req: any, res: any) => {
@@ -3001,8 +3050,16 @@ app.post("/api/teams/:id/projects", authenticateToken, async (req: any, res: any
   const team = await db.get("SELECT * FROM teams WHERE id = ?", req.params.id);
   if (!team) return res.sendStatus(404);
 
-  if (req.user.role !== "admin" && team.ownerId !== req.user.id) {
-    return res.status(403).json({ error: "Only admins or the team owner can add projects." });
+  if (!isAdminOrSuperAdmin(req.user)) {
+    if (team.ownerId !== req.user.id) {
+      return res.status(403).json({ error: "Only admins or the team owner can add projects." });
+    }
+    const project = await db.get("SELECT ownerId FROM projects WHERE id = ?", req.body.projectId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.body.projectId, req.user.id]);
+    if (project.ownerId !== req.user.id && (!pm || pm.role !== 'admin')) {
+      return res.status(403).json({ error: "You must be a project admin or owner to link this project to a team." });
+    }
   }
 
   try {
@@ -3026,7 +3083,7 @@ app.delete("/api/teams/:id/projects/:projectId", authenticateToken, async (req: 
   const team = await db.get("SELECT * FROM teams WHERE id = ?", req.params.id);
   if (!team) return res.sendStatus(404);
 
-  if (req.user.role !== "admin" && team.ownerId !== req.user.id) {
+  if (!isAdminOrSuperAdmin(req.user) && team.ownerId !== req.user.id) {
     return res.status(403).json({ error: "Only admins or the team owner can remove projects." });
   }
 
@@ -3081,12 +3138,18 @@ app.delete("/api/teams/:id", authenticateToken, async (req: any, res: any) => {
 
 app.get("/api/projects/:projectId/documents", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkProjectAccess(db, req.params.projectId, req.user))) {
+    return res.status(403).json({ error: "Access denied" });
+  }
   const docs = await db.all("SELECT * FROM documents WHERE projectId = ? ORDER BY updatedAt DESC", req.params.projectId);
   res.json(docs);
 });
 
 app.post("/api/projects/:projectId/documents", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkProjectAccess(db, req.params.projectId, req.user))) {
+    return res.status(403).json({ error: "Access denied" });
+  }
   const { title, content } = req.body;
   const id = uuidv4();
   const now = new Date().toISOString();
@@ -3104,11 +3167,19 @@ app.get("/api/documents/:id", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
   const doc = await db.get("SELECT * FROM documents WHERE id = ?", req.params.id);
   if (!doc) return res.sendStatus(404);
+  if (!(await checkProjectAccess(db, doc.projectId, req.user))) {
+    return res.status(403).json({ error: "Access denied" });
+  }
   res.json(doc);
 });
 
 app.put("/api/documents/:id", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  const docCheck = await db.get("SELECT projectId FROM documents WHERE id = ?", req.params.id);
+  if (!docCheck) return res.sendStatus(404);
+  if (!(await checkProjectAccess(db, docCheck.projectId, req.user))) {
+    return res.status(403).json({ error: "Access denied" });
+  }
   const { title, content } = req.body;
   const now = new Date().toISOString();
   
@@ -3123,26 +3194,49 @@ app.put("/api/documents/:id", authenticateToken, async (req: any, res: any) => {
 
 app.delete("/api/documents/:id", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  const docCheck = await db.get("SELECT projectId FROM documents WHERE id = ?", req.params.id);
+  if (!docCheck) return res.sendStatus(404);
+  if (!(await checkProjectAccess(db, docCheck.projectId, req.user))) {
+    return res.status(403).json({ error: "Access denied" });
+  }
   await db.run("DELETE FROM documents WHERE id = ?", req.params.id);
   res.json({ success: true });
 });
 
 // Milestones APIs
-
 app.get("/api/milestones", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
-  const milestones = await db.all("SELECT * FROM milestones");
+  let milestones = [];
+  if (isAdminOrSuperAdmin(req.user)) {
+    milestones = await db.all("SELECT * FROM milestones");
+  } else {
+    milestones = await db.all(`
+      SELECT DISTINCT m.* 
+      FROM milestones m
+      LEFT JOIN projects p ON m.projectId = p.id
+      LEFT JOIN project_members pm ON p.id = pm.projectId
+      LEFT JOIN team_projects tp ON p.id = tp.projectId
+      LEFT JOIN team_members tm ON tp.teamId = tm.teamId
+      WHERE p.ownerId = ? OR pm.userId = ? OR tm.userId = ?
+    `, [req.user.id, req.user.id, req.user.id]);
+  }
   res.json(milestones);
 });
 
 app.get("/api/projects/:projectId/milestones", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkProjectAccess(db, req.params.projectId, req.user))) {
+    return res.status(403).json({ error: "Access denied" });
+  }
   const milestones = await db.all("SELECT * FROM milestones WHERE projectId = ? ORDER BY startDate ASC", req.params.projectId);
   res.json(milestones);
 });
 
 app.post("/api/projects/:projectId/milestones", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkProjectAccess(db, req.params.projectId, req.user))) {
+    return res.status(403).json({ error: "Access denied" });
+  }
   const { name, description, startDate, endDate, status } = req.body;
   const id = uuidv4();
   const now = new Date().toISOString();
@@ -3158,6 +3252,11 @@ app.post("/api/projects/:projectId/milestones", authenticateToken, async (req: a
 
 app.put("/api/milestones/:id", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  const msCheck = await db.get("SELECT projectId FROM milestones WHERE id = ?", req.params.id);
+  if (!msCheck) return res.sendStatus(404);
+  if (!(await checkProjectAccess(db, msCheck.projectId, req.user))) {
+    return res.status(403).json({ error: "Access denied" });
+  }
   const { name, description, startDate, endDate, status } = req.body;
   
   await db.run(
@@ -3171,6 +3270,11 @@ app.put("/api/milestones/:id", authenticateToken, async (req: any, res: any) => 
 
 app.delete("/api/milestones/:id", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  const msCheck = await db.get("SELECT projectId FROM milestones WHERE id = ?", req.params.id);
+  if (!msCheck) return res.sendStatus(404);
+  if (!(await checkProjectAccess(db, msCheck.projectId, req.user))) {
+    return res.status(403).json({ error: "Access denied" });
+  }
   await db.run("DELETE FROM milestones WHERE id = ?", req.params.id);
   res.json({ success: true });
 });
@@ -3181,7 +3285,7 @@ app.delete("/api/milestones/:id", authenticateToken, async (req: any, res: any) 
  * Middleware to restrict route access exclusively to users with the 'admin' role.
  */
 const requireAdmin = (req: any, res: any, next: any) => {
-  if (req.user && (req.user.role === "admin" || req.user.role === "super_admin")) {
+  if (req.user && (isAdminOrSuperAdmin(req.user) || req.user.role === "super_admin")) {
     next();
   } else {
     res.status(403).json({ error: "Access denied. Admin privileges required." });

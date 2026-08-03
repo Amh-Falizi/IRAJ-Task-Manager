@@ -49,7 +49,7 @@ export default function Teams() {
           <h1 className="text-xl font-semibold text-strong tracking-tight">Teams</h1>
           <p className="text-xs text-muted mt-1">Manage development teams and members</p>
         </div>
-        {(currentUser?.role === 'admin' || currentUser?.role === 'manager') && (
+        {(currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.role === 'manager') && (
           <button
             onClick={() => setShowCreateModal(true)}
             className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md shadow hover:scale-105 font-bold transition-all text-sm self-end sm:self-auto"
@@ -71,7 +71,7 @@ export default function Teams() {
                   icon={Users}
                   title="No teams available"
                   description="There are no development teams available yet. Create a team to organize your members and assign them to projects."
-                  actionText={(currentUser?.role === 'admin' || currentUser?.role === 'manager') ? "New Team" : undefined}
+                  actionText={(currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.role === 'manager') ? "New Team" : undefined}
                   onAction={() => setShowCreateModal(true)}
                 />
               </div>
@@ -94,7 +94,7 @@ export default function Teams() {
                       {team.ownerId === currentUser?.id && (
                         <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full font-bold">OWNER</span>
                       )}
-                      {(currentUser?.role === 'admin' || team.ownerId === currentUser?.id) && (
+                      {(currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || team.ownerId === currentUser?.id) && (
                         <>
                           <button
                             onClick={(e) => {
@@ -337,7 +337,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
   const [addingUser, setAddingUser] = useState(false);
   const [addingProject, setAddingProject] = useState(false);
 
-  const isAdminOrOwner = currentUser?.role === 'admin' || currentUser?.id === team.ownerId;
+  const isAdminOrOwner = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.id === team.ownerId;
 
   const fetchData = async () => {
     setLoading(true);

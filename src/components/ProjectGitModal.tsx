@@ -19,7 +19,7 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
   const { token, user } = useAuth();
   const { success, error, info } = useToast();
 
-  const canManageRepoSettings = user?.role === 'admin' || user?.role === 'manager' || project.ownerId === user?.id;
+  const canManageRepoSettings = user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'manager' || project.ownerId === user?.id;
 
   const [activeTab, setActiveTab] = useState<'branches' | 'settings' | 'create_branch'>('branches');
   const [loading, setLoading] = useState(false);

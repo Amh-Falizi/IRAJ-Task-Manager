@@ -17,7 +17,7 @@ export default function Register() {
     const handleMessage = (event: MessageEvent) => {
       // Validate origin is from an expected host (run.app or localhost)
       const origin = event.origin;
-      if (!origin.endsWith('.run.app') && !origin.includes('localhost')) {
+      if (origin !== window.location.origin) {
         return;
       }
       if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {

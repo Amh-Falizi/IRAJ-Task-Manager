@@ -33,7 +33,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
   const isDeveloper = user?.role === 'developer';
   const canEdit = isDeveloper 
     ? (isEdit && user?.id === task?.assigneeId)
-    : (user?.role === 'admin' || user?.role === 'manager' || user?.id === task?.creatorId || user?.id === task?.assigneeId);
+    : (user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'manager' || user?.id === task?.creatorId || user?.id === task?.assigneeId);
   const [isViewMode, setIsViewMode] = useState(isEdit);
 
   const getStatusTitle = (id: string) => columns?.find(c => c.id === id)?.title || id.replace('_', ' ');
@@ -349,7 +349,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
               </div>
             </div>
             <div className="flex items-center space-x-2 shrink-0">
-              {onDeleteTask && !isDeveloper && (user?.role === 'admin' || user?.role === 'manager' || user?.id === task.creatorId) && (
+              {onDeleteTask && !isDeveloper && (user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'manager' || user?.id === task.creatorId) && (
                 <button
                   onClick={() => {
                     onDeleteTask(task.id);
@@ -506,7 +506,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                             comments.map(c => {
                               const author = users.find(u => u.id === c.userId);
                               const isMe = c.userId === user?.id;
-                              const canModify = isMe || user?.role === 'admin';
+                              const canModify = isMe || user?.role === 'admin' || user?.role === 'super_admin';
                               const isEditing = editingCommentId === c.id;
 
                               return (

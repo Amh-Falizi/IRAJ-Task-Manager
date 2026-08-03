@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { useGitFeature } from '../contexts/GitFeatureContext';
@@ -89,21 +89,8 @@ export default function Board() {
     setColumns(columns.filter(c => c.id !== id));
   };
 
-  const currentProjectIdRef = useRef(projectId);
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(`board-columns-${projectId || 'all'}`);
-      setColumns(saved ? JSON.parse(saved) : DEFAULT_COLUMNS);
-    } catch (e) {
-      setColumns(DEFAULT_COLUMNS);
-    }
-    currentProjectIdRef.current = projectId;
-  }, [projectId]);
-
-  useEffect(() => {
-    if (currentProjectIdRef.current === projectId) {
-      localStorage.setItem(`board-columns-${projectId || 'all'}`, JSON.stringify(columns));
-    }
+    localStorage.setItem(`board-columns-${projectId || 'all'}`, JSON.stringify(columns));
   }, [columns, projectId]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);

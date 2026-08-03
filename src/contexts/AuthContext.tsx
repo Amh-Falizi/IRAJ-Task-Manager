@@ -86,21 +86,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
             return res.json();
           }
-          if (res.status === 401 || res.status === 403) {
+          if (res.status === 401 || res.status === 403 || res.status === 404) {
             throw new Error("Invalid token");
           }
           const text = await res.text();
           console.error("Auth /me failed:", res.status, text);
-          throw new Error("Invalid token");
+          throw new Error("Server Error");
         })
         .then((data) => setUser(data))
         .catch((err) => {
-          if (err.message !== "Invalid token") {
-            console.error("Auth context catch:", err);
+          console.error("Auth context catch:", err);
+          if (err.message === "Invalid token") {
+            setToken(null);
+            setUser(null);
+            localStorage.removeItem("token");
           }
-          setToken(null);
-          setUser(null);
-          localStorage.removeItem("token");
         })
         .finally(() => setLoading(false));
     } else {

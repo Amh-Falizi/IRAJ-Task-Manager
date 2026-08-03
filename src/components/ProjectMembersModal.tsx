@@ -100,7 +100,7 @@ export default function ProjectMembersModal({ project, allUsers, onClose }: Prop
   };
 
   const currentUserMember = members.find(m => m.id === currentUser?.id);
-  const canManage = currentUser?.role === 'admin' || currentUser?.id === project.ownerId || currentUserMember?.role === 'admin';
+  const canManage = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.id === project.ownerId || currentUserMember?.role === 'admin';
 
   const nonMembers = allUsers.filter(u => !members.find(m => m.id === u.id) && u.id !== project.ownerId);
 

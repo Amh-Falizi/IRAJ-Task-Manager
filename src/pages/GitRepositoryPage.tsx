@@ -169,7 +169,7 @@ export default function GitRepositoryPage() {
     }
   }, [selectedProjectId]);
 
-  const isManagerOrAdmin = user?.role === 'admin' || user?.role === 'manager' || (activeProject && activeProject.ownerId === user?.id);
+  const isManagerOrAdmin = user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'manager' || (activeProject && activeProject.ownerId === user?.id);
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
