@@ -525,6 +525,24 @@ async function initDb(): Promise<DatabaseWrapper> {
     }
   }
 
+  // Create performance indexes on high volume foreign keys and lookup columns
+  try {
+    await db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_tasks_projectId ON tasks(projectId);
+      CREATE INDEX IF NOT EXISTS idx_tasks_assigneeId ON tasks(assigneeId);
+      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+      CREATE INDEX IF NOT EXISTS idx_task_activities_taskId ON task_activities(taskId);
+      CREATE INDEX IF NOT EXISTS idx_task_comments_taskId ON task_comments(taskId);
+      CREATE INDEX IF NOT EXISTS idx_project_members_userId ON project_members(userId);
+      CREATE INDEX IF NOT EXISTS idx_team_members_userId ON team_members(userId);
+      CREATE INDEX IF NOT EXISTS idx_task_dependencies_blocked ON task_dependencies(blockedByTaskId);
+      CREATE INDEX IF NOT EXISTS idx_documents_projectId ON documents(projectId);
+      CREATE INDEX IF NOT EXISTS idx_milestones_projectId ON milestones(projectId);
+    `);
+  } catch (idxErr) {
+    // ignore index creation errors if any
+  }
+
   // Auto-seed block removed per user request to clean up pre-made testing users
 } catch (error) {
   console.warn("DB Connection/Init Error. The app will run, but DB features will fail until DATABASE_URL is correct:", error);
@@ -602,6 +620,18 @@ const checkProjectAccess = async (db: any, projectId: string, user: any): Promis
   if (tm) return true;
   
   return false;
+};
+
+const checkTaskAccess = async (db: any, taskId: string, user: any): Promise<{ allowed: boolean; task: any | null }> => {
+  const task = await db.get("SELECT * FROM tasks WHERE id = ?", taskId);
+  if (!task) return { allowed: false, task: null };
+  if (isAdminOrSuperAdmin(user)) return { allowed: true, task };
+  if (task.creatorId === user.id || task.assigneeId === user.id) return { allowed: true, task };
+  if (task.projectId) {
+    const hasProjAccess = await checkProjectAccess(db, task.projectId, user);
+    if (hasProjAccess) return { allowed: true, task };
+  }
+  return { allowed: false, task };
 };
 
 const hasPermission = async (user: any, permission: string): Promise<boolean> => {
@@ -808,11 +838,49 @@ const getAppUrl = (req: any) => {
   return `${protocol}://${host}`;
 };
 
+const getSafeOAuthRedirectUri = (req: any, provider: string) => {
+  const defaultBase = getAppUrl(req);
+  let base = defaultBase;
+  if (req.query.origin && typeof req.query.origin === 'string') {
+    try {
+      const parsedOrigin = new URL(req.query.origin);
+      const parsedHost = new URL(defaultBase);
+      if (
+        parsedOrigin.hostname === parsedHost.hostname || 
+        parsedOrigin.hostname === 'localhost' || 
+        parsedOrigin.hostname === '127.0.0.1' ||
+        parsedOrigin.hostname.endsWith('.run.app')
+      ) {
+        base = parsedOrigin.origin;
+      }
+    } catch (e) {
+      base = defaultBase;
+    }
+  }
+  return `${base}/api/auth/${provider}/callback`;
+};
+
+const getValidatedCallbackRedirect = (req: any, provider: string, state: any): string => {
+  const defaultRedirect = `${getAppUrl(req)}/api/auth/${provider}/callback`;
+  if (state && typeof state === 'string') {
+    try {
+      const parsed = new URL(state);
+      const host = new URL(defaultRedirect);
+      if (
+        (parsed.hostname === host.hostname || parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname.endsWith('.run.app')) &&
+        (parsed.pathname === `/api/auth/${provider}/callback` || parsed.pathname === `/api/auth/${provider}/callback/`)
+      ) {
+        return state;
+      }
+    } catch (e) {
+      // fallback
+    }
+  }
+  return defaultRedirect;
+};
+
 app.get("/api/auth/gitlab/url", (req, res) => {
-  // Use client's origin if provided via query, otherwise fallback to server host
-  const redirectUri = req.query.origin 
-    ? `${req.query.origin}/api/auth/gitlab/callback` 
-    : `${getAppUrl(req)}/api/auth/gitlab/callback`;
+  const redirectUri = getSafeOAuthRedirectUri(req, "gitlab");
 
   const params = new URLSearchParams({
     client_id: process.env.GITLAB_CLIENT_ID || '',
@@ -828,8 +896,7 @@ app.get("/api/auth/gitlab/url", (req, res) => {
 
 app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
   const { code, state } = req.query;
-  // Use the exact redirect_uri that was passed in the authorize request (from state)
-  const redirectUri = state || `${getAppUrl(req)}/api/auth/gitlab/callback`;
+  const redirectUri = getValidatedCallbackRedirect(req, "gitlab", state);
 
   const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
   const clientId = process.env.GITLAB_CLIENT_ID || '';
@@ -913,9 +980,7 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
 
 // Google OAuth Integration
 app.get("/api/auth/google/url", (req, res) => {
-  const redirectUri = req.query.origin 
-    ? `${req.query.origin}/api/auth/google/callback` 
-    : `${getAppUrl(req)}/api/auth/google/callback`;
+  const redirectUri = getSafeOAuthRedirectUri(req, "google");
 
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID || '',
@@ -930,7 +995,7 @@ app.get("/api/auth/google/url", (req, res) => {
 
 app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req: any, res: any) => {
   const { code, state } = req.query;
-  const redirectUri = state || `${getAppUrl(req)}/api/auth/google/callback`;
+  const redirectUri = getValidatedCallbackRedirect(req, "google", state);
 
   const clientId = process.env.GOOGLE_CLIENT_ID || '';
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
@@ -1012,9 +1077,7 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
 
 // GitHub OAuth Integration
 app.get("/api/auth/github/url", (req, res) => {
-  const redirectUri = req.query.origin 
-    ? `${req.query.origin}/api/auth/github/callback` 
-    : `${getAppUrl(req)}/api/auth/github/callback`;
+  const redirectUri = getSafeOAuthRedirectUri(req, "github");
 
   const params = new URLSearchParams({
     client_id: process.env.GITHUB_CLIENT_ID || '',
@@ -1028,7 +1091,7 @@ app.get("/api/auth/github/url", (req, res) => {
 
 app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req: any, res: any) => {
   const { code, state } = req.query;
-  const redirectUri = state || `${getAppUrl(req)}/api/auth/github/callback`;
+  const redirectUri = getValidatedCallbackRedirect(req, "github", state);
 
   const clientId = process.env.GITHUB_CLIENT_ID || '';
   const clientSecret = process.env.GITHUB_CLIENT_SECRET || '';
@@ -1666,6 +1729,11 @@ async function logActivity(db: any, taskId: string, userId: string, action: stri
 app.get("/api/tasks/:id/details", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
   const taskId = req.params.id;
+  const access = await checkTaskAccess(db, taskId, req.user);
+  if (!access.allowed) {
+    return res.status(403).json({ error: "Access denied to task details." });
+  }
+
   const comments = await db.all("SELECT * FROM task_comments WHERE taskId = ? ORDER BY createdAt ASC", taskId);
   const activities = await db.all("SELECT * FROM task_activities WHERE taskId = ? ORDER BY createdAt DESC", taskId);
   res.json({ comments, activities });
@@ -1675,6 +1743,15 @@ app.get("/api/tasks/:id/details", authenticateToken, async (req: any, res: any) 
 app.post("/api/tasks/:id/comments", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
   const taskId = req.params.id;
+  const access = await checkTaskAccess(db, taskId, req.user);
+  if (!access.allowed) {
+    return res.status(403).json({ error: "Access denied to comment on this task." });
+  }
+
+  if (!req.body.content || typeof req.body.content !== 'string' || req.body.content.trim() === '') {
+    return res.status(400).json({ error: "Comment content is required." });
+  }
+
   const commentId = uuidv4();
   await db.run(
     "INSERT INTO task_comments (id, taskId, userId, content, createdAt) VALUES (?, ?, ?, ?, ?)",
@@ -1745,8 +1822,9 @@ app.post("/api/tasks", authenticateToken, async (req: any, res: any) => {
   let branchName = req.body.branchName;
   if (!branchName) {
     if (project && project.projectKey) {
-        const nextCount = (project.taskCounter || 0) + 1;
-        await db.run("UPDATE projects SET taskCounter = ? WHERE id = ?", [nextCount, req.body.projectId]);
+        await db.run("UPDATE projects SET taskCounter = COALESCE(taskCounter, 0) + 1 WHERE id = ?", [req.body.projectId]);
+        const updatedProj = await db.get("SELECT taskCounter FROM projects WHERE id = ?", req.body.projectId);
+        const nextCount = updatedProj ? updatedProj.taskCounter : 1;
         branchName = `${project.projectKey}-${nextCount}`;
     }
   } else {
@@ -1780,7 +1858,11 @@ app.post("/api/tasks", authenticateToken, async (req: any, res: any) => {
   
   if (req.body.dependencies && Array.isArray(req.body.dependencies)) {
     for (const depId of req.body.dependencies) {
-      await db.run("INSERT INTO task_dependencies (taskId, blockedByTaskId) VALUES (?, ?)", [newTask.id, depId]);
+      if (!depId || depId === newTask.id) continue;
+      const depTask = await db.get("SELECT id, projectId FROM tasks WHERE id = ?", depId);
+      if (depTask && depTask.projectId === newTask.projectId) {
+        await db.run("INSERT INTO task_dependencies (taskId, blockedByTaskId) VALUES (?, ?)", [newTask.id, depId]);
+      }
     }
   }
 
@@ -1913,7 +1995,11 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
   if (req.body.dependencies !== undefined && Array.isArray(req.body.dependencies)) {
     await db.run("DELETE FROM task_dependencies WHERE taskId = ?", updated.id);
     for (const depId of req.body.dependencies) {
-      await db.run("INSERT INTO task_dependencies (taskId, blockedByTaskId) VALUES (?, ?)", [updated.id, depId]);
+      if (!depId || depId === updated.id) continue;
+      const depTask = await db.get("SELECT id, projectId FROM tasks WHERE id = ?", depId);
+      if (depTask && depTask.projectId === updated.projectId) {
+        await db.run("INSERT INTO task_dependencies (taskId, blockedByTaskId) VALUES (?, ?)", [updated.id, depId]);
+      }
     }
   }
 
@@ -2009,11 +2095,13 @@ app.post("/api/tasks/branch", authenticateToken, async (req: any, res: any) => {
     
     if (projectId) {
       const db = await dbPromise;
+      if (!(await checkProjectAccess(db, projectId, req.user))) {
+        return res.status(403).json({ error: "Access denied to this project." });
+      }
+      await db.run("UPDATE projects SET taskCounter = COALESCE(taskCounter, 0) + 1 WHERE id = ?", projectId);
       const project = await db.get("SELECT projectKey, taskCounter FROM projects WHERE id = ?", projectId);
       if (project && project.projectKey) {
-        const nextCount = (project.taskCounter || 0) + 1;
-        await db.run("UPDATE projects SET taskCounter = ? WHERE id = ?", [nextCount, projectId]);
-        projectKey = `${project.projectKey}-${nextCount}`;
+        projectKey = `${project.projectKey}-${project.taskCounter}`;
       }
     }
     
@@ -2037,6 +2125,9 @@ app.post("/api/tasks/branch", authenticateToken, async (req: any, res: any) => {
 // Projects APIs
 app.get("/api/projects/:id/workload", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkProjectAccess(db, req.params.id, req.user))) {
+    return res.status(403).json({ error: "Access denied to project workload." });
+  }
   const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
   if (!project) return res.sendStatus(404);
 
@@ -2162,6 +2253,9 @@ app.post("/api/projects", authenticateToken, async (req: any, res: any) => {
 // Get Project Activity
 app.get("/api/projects/:id/activity", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkProjectAccess(db, req.params.id, req.user))) {
+    return res.status(403).json({ error: "Access denied to project activity." });
+  }
   
   const activities = await db.all(`
     SELECT a.*, t.title as taskTitle
@@ -2254,6 +2348,9 @@ app.put("/api/projects/:id/repo", authenticateToken, async (req: any, res: any) 
 // Get Live Branches from GitHub or GitLab for a Project
 app.get("/api/projects/:id/git/branches", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkProjectAccess(db, req.params.id, req.user))) {
+    return res.status(403).json({ error: "Access denied to project git branches." });
+  }
   const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
 
@@ -2305,7 +2402,7 @@ app.get("/api/projects/:id/git/branches", authenticateToken, async (req: any, re
       };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const ghRes = await fetch(`https://api.github.com/repos/${owner}/${name}/branches`, { headers });
+      const ghRes = await fetch(`https://api.github.com/repos/${owner}/${name}/branches`, { headers, signal: AbortSignal.timeout(8000) });
       if (!ghRes.ok) {
         const errText = await ghRes.text();
         throw new Error(`GitHub API Error (${ghRes.status}): ${errText}`);
@@ -2334,7 +2431,7 @@ app.get("/api/projects/:id/git/branches", authenticateToken, async (req: any, re
       const headers: Record<string, string> = {};
       if (token) headers['PRIVATE-TOKEN'] = token;
 
-      const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/repository/branches`, { headers });
+      const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/repository/branches`, { headers, signal: AbortSignal.timeout(8000) });
       if (!glRes.ok) {
         const errText = await glRes.text();
         throw new Error(`GitLab API Error (${glRes.status}): ${errText}`);
@@ -2385,11 +2482,24 @@ app.get("/api/projects/:id/git/branches", authenticateToken, async (req: any, re
 // Create Branch on Remote GitHub or GitLab Repository
 app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkProjectAccess(db, req.params.id, req.user))) {
+    return res.status(403).json({ error: "Access denied to project git branches." });
+  }
   const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
 
   const { branchName, taskId, baseBranch } = req.body;
   if (!branchName) return res.status(400).json({ error: "Branch name is required" });
+
+  if (taskId) {
+    const task = await db.get("SELECT projectId FROM tasks WHERE id = ?", taskId);
+    if (!task || task.projectId !== req.params.id) {
+      return res.status(400).json({ error: "Specified task does not belong to this project." });
+    }
+    if (!(await checkTaskAccess(db, taskId, req.user))) {
+      return res.status(403).json({ error: "Access denied to specified task." });
+    }
+  }
 
   const targetBaseBranch = baseBranch || project.defaultBranch || 'main';
   const provider = project.repoProvider || 'github';
@@ -2411,7 +2521,7 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
         };
 
         // 1. Get SHA of base branch
-        const baseRefRes = await fetch(`https://api.github.com/repos/${owner}/${name}/git/ref/heads/${targetBaseBranch}`, { headers });
+        const baseRefRes = await fetch(`https://api.github.com/repos/${owner}/${name}/git/ref/heads/${targetBaseBranch}`, { headers, signal: AbortSignal.timeout(8000) });
         if (!baseRefRes.ok) {
           let errMsg = `Failed to find base branch '${targetBaseBranch}' on GitHub`;
           try {
@@ -2429,6 +2539,7 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
         const createRefRes = await fetch(`https://api.github.com/repos/${owner}/${name}/git/refs`, {
           method: 'POST',
           headers,
+          signal: AbortSignal.timeout(8000),
           body: JSON.stringify({
             ref: `refs/heads/${branchName}`,
             sha
@@ -2464,6 +2575,7 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
             'Content-Type': 'application/json',
             'PRIVATE-TOKEN': token
           },
+          signal: AbortSignal.timeout(8000),
           body: JSON.stringify({
             branch: branchName,
             ref: targetBaseBranch
@@ -2538,11 +2650,24 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
 // Create Pull Request / Merge Request for a Task
 app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkProjectAccess(db, req.params.id, req.user))) {
+    return res.status(403).json({ error: "Access denied to project git pull requests." });
+  }
   const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
 
   const { taskId, sourceBranch, targetBranch, title, description } = req.body;
   if (!sourceBranch) return res.status(400).json({ error: "Source branch is required" });
+
+  if (taskId) {
+    const task = await db.get("SELECT projectId FROM tasks WHERE id = ?", taskId);
+    if (!task || task.projectId !== req.params.id) {
+      return res.status(400).json({ error: "Specified task does not belong to this project." });
+    }
+    if (!(await checkTaskAccess(db, taskId, req.user))) {
+      return res.status(403).json({ error: "Access denied to specified task." });
+    }
+  }
 
   const baseBranch = targetBranch || project.defaultBranch || 'main';
   const provider = project.repoProvider || 'github';
@@ -2574,6 +2699,7 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           },
+          signal: AbortSignal.timeout(8000),
           body: JSON.stringify({
             title: title || `[Task] ${sourceBranch}`,
             head: sourceBranch,
@@ -2599,6 +2725,7 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
             'Content-Type': 'application/json',
             'PRIVATE-TOKEN': token
           },
+          signal: AbortSignal.timeout(8000),
           body: JSON.stringify({
             title: title || `[Task] ${sourceBranch}`,
             source_branch: sourceBranch,
@@ -2645,6 +2772,9 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
 // Sync and Update Statuses of Pull/Merge Requests of a Project
 app.post("/api/projects/:id/git/pull-requests/sync", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkProjectAccess(db, req.params.id, req.user))) {
+    return res.status(403).json({ error: "Access denied to project git pull requests." });
+  }
   const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
 
@@ -2687,7 +2817,7 @@ app.post("/api/projects/:id/git/pull-requests/sync", authenticateToken, async (r
           'Accept': 'application/vnd.github.v3+json',
           'Authorization': `Bearer ${token}`
         };
-        const ghRes = await fetch(`https://api.github.com/repos/${owner}/${name}/pulls/${prNumber}`, { headers });
+        const ghRes = await fetch(`https://api.github.com/repos/${owner}/${name}/pulls/${prNumber}`, { headers, signal: AbortSignal.timeout(8000) });
         if (ghRes.ok) {
           const ghData = await ghRes.json();
           remoteMerged = ghData.merged || false;
@@ -2702,7 +2832,7 @@ app.post("/api/projects/:id/git/pull-requests/sync", authenticateToken, async (r
         const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
         const projectPath = `${owner}/${name}`;
         const headers = { 'PRIVATE-TOKEN': token };
-        const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests/${prNumber}`, { headers });
+        const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests/${prNumber}`, { headers, signal: AbortSignal.timeout(8000) });
         if (glRes.ok) {
           const glData = await glRes.json();
           const glState = glData.state; // 'opened', 'closed', 'merged', 'locked'
@@ -3437,6 +3567,10 @@ app.post("/api/backup/restore-sqlite", authenticateToken, requireSuperAdmin, exp
       return res.status(400).json({ error: "No database binary content received." });
     }
 
+    if (buffer.length < 16 || buffer.subarray(0, 16).toString("utf8") !== "SQLite format 3\0") {
+      return res.status(400).json({ error: "Invalid SQLite database file: magic header mismatch." });
+    }
+
     await swapSqliteDatabase(buffer);
     res.json({ success: true, message: "SQLite database restored successfully!" });
   } catch (error: any) {
@@ -3458,12 +3592,19 @@ app.get("/api/backup/export-json", authenticateToken, requireAdmin, async (req: 
     const tables = [
       "users", "tasks", "teams", "projects", "project_members",
       "documents", "milestones", "team_members", "team_projects",
-      "task_dependencies", "task_comments", "task_activities", "settings"
+      "task_dependencies", "task_comments", "task_activities", "settings", "roles"
     ];
 
     for (const table of tables) {
       try {
-        backupData[table] = await db.all(`SELECT * FROM ${table}`);
+        let rows = await db.all(`SELECT * FROM ${table}`);
+        if (table === 'projects') {
+          rows = rows.map((p: any) => ({
+            ...p,
+            repoToken: p.repoToken ? '••••••••' : null
+          }));
+        }
+        backupData[table] = rows;
       } catch (e) {
         backupData[table] = [];
       }
@@ -3493,39 +3634,65 @@ app.post("/api/backup/restore-json", authenticateToken, requireSuperAdmin, async
       return res.status(400).json({ error: "Invalid backup data format." });
     }
 
-    const tables = [
-      "users", "tasks", "teams", "projects", "project_members",
-      "documents", "milestones", "team_members", "team_projects",
-      "task_dependencies", "task_comments", "task_activities", "settings"
-    ];
-
     if (!backupData.users || !Array.isArray(backupData.users)) {
       return res.status(400).json({ error: "Invalid backup: 'users' table data is missing." });
     }
 
-    // Perform restore by dropping existing table records
-    for (const table of tables) {
+    const ALLOWED_TABLE_COLUMNS: Record<string, string[]> = {
+      users: ["id", "name", "email", "passwordHash", "role", "skills", "rolePrefix", "status"],
+      tasks: ["id", "title", "description", "status", "priority", "deadline", "assigneeId", "creatorId", "branchName", "parentId", "projectId", "milestoneId", "createdAt", "orderIndex", "prUrl", "prStatus"],
+      teams: ["id", "name", "description", "ownerId", "createdAt", "projectId"],
+      projects: ["id", "name", "description", "ownerId", "projectKey", "taskCounter", "createdAt", "repoProvider", "repoOwner", "repoName", "repoUrl", "repoToken", "defaultBranch"],
+      project_members: ["projectId", "userId", "role", "joinedAt"],
+      documents: ["id", "projectId", "title", "content", "authorId", "createdAt", "updatedAt"],
+      milestones: ["id", "projectId", "name", "description", "startDate", "endDate", "status", "createdAt"],
+      team_members: ["id", "teamId", "userId", "joinedAt"],
+      team_projects: ["teamId", "projectId"],
+      task_dependencies: ["taskId", "blockedByTaskId"],
+      task_comments: ["id", "taskId", "userId", "content", "createdAt"],
+      task_activities: ["id", "taskId", "userId", "action", "createdAt"],
+      settings: ["key", "value"],
+      roles: ["id", "name", "description", "is_custom", "permissions"]
+    };
+
+    // Execute wipe and sequential restore inside a transactional block
+    await db.exec("BEGIN TRANSACTION;");
+    try {
+      for (const table of Object.keys(ALLOWED_TABLE_COLUMNS)) {
+        try {
+          await db.exec(`DELETE FROM ${table}`);
+        } catch (delErr) {
+          console.warn(`Failed to clear table ${table}:`, delErr);
+        }
+      }
+
+      for (const table of Object.keys(ALLOWED_TABLE_COLUMNS)) {
+        const rows = backupData[table];
+        if (!Array.isArray(rows) || rows.length === 0) continue;
+
+        const allowedCols = ALLOWED_TABLE_COLUMNS[table];
+        for (const row of rows) {
+          if (!row || typeof row !== "object") continue;
+          const presentCols = Object.keys(row).filter(c => allowedCols.includes(c));
+          if (presentCols.length === 0) continue;
+
+          const placeholders = presentCols.map(() => "?").join(", ");
+          const insertSql = `INSERT INTO ${table} (${presentCols.join(", ")}) VALUES (${placeholders})`;
+          const params = presentCols.map(col => {
+            if (table === "projects" && col === "repoToken" && row[col] === "••••••••") {
+              return null;
+            }
+            return row[col];
+          });
+          await db.run(insertSql, params);
+        }
+      }
+      await db.exec("COMMIT;");
+    } catch (restoreErr) {
       try {
-        await db.exec(`DELETE FROM ${table}`);
-      } catch (e) {
-        console.warn(`Failed to clear table ${table}:`, e);
-      }
-    }
-
-    // Sequentially insert backup rows for each table
-    for (const table of tables) {
-      const rows = backupData[table];
-      if (!Array.isArray(rows) || rows.length === 0) continue;
-
-      const firstRow = rows[0];
-      const columns = Object.keys(firstRow);
-      const placeholders = columns.map(() => "?").join(", ");
-      const insertSql = `INSERT INTO ${table} (${columns.join(", ")}) VALUES (${placeholders})`;
-
-      for (const row of rows) {
-        const params = columns.map(col => row[col]);
-        await db.run(insertSql, params);
-      }
+        await db.exec("ROLLBACK;");
+      } catch (rbErr) {}
+      throw restoreErr;
     }
 
     res.json({ success: true, message: "Workspace restored successfully from JSON backup!" });
@@ -3583,7 +3750,10 @@ async function runBackgroundPrSync() {
               'Accept': 'application/vnd.github.v3+json',
               'Authorization': `Bearer ${token}`
             };
-            const ghRes = await fetch(`https://api.github.com/repos/${owner}/${name}/pulls/${prNumber}`, { headers });
+            const ghRes = await fetch(`https://api.github.com/repos/${owner}/${name}/pulls/${prNumber}`, { 
+              headers,
+              signal: AbortSignal.timeout(8000)
+            });
             if (ghRes.ok) {
               const ghData = await ghRes.json();
               remoteMerged = ghData.merged || false;
@@ -3596,7 +3766,10 @@ async function runBackgroundPrSync() {
             const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
             const projectPath = `${owner}/${name}`;
             const headers = { 'PRIVATE-TOKEN': token };
-            const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests/${prNumber}`, { headers });
+            const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests/${prNumber}`, { 
+              headers,
+              signal: AbortSignal.timeout(8000)
+            });
             if (glRes.ok) {
               const glData = await glRes.json();
               const glState = glData.state; // 'opened', 'closed', 'merged', 'locked'
