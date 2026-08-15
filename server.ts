@@ -1476,6 +1476,10 @@ app.delete("/api/users/:id", authenticateToken, async (req: any, res: any) => {
   }
 
   await db.run("DELETE FROM users WHERE id = ?", req.params.id);
+  await db.run("DELETE FROM project_members WHERE userId = ?", req.params.id);
+  await db.run("DELETE FROM team_members WHERE userId = ?", req.params.id);
+  await db.run("DELETE FROM password_resets WHERE userId = ?", req.params.id);
+  await db.run("UPDATE tasks SET assigneeId = NULL WHERE assigneeId = ?", req.params.id);
   res.json({ success: true });
 });
 
@@ -2902,14 +2906,45 @@ app.delete("/api/projects/:id", authenticateToken, async (req: any, res: any) =>
     return res.status(403).json({ error: "Only project owners, admins, or authorized roles can delete projects." });
   }
 
-  await db.run("DELETE FROM projects WHERE id = ?", req.params.id);
+  const projectId = req.params.id;
+  const projectTasks = await db.all("SELECT id FROM tasks WHERE projectId = ?", projectId);
+  if (projectTasks.length > 0) {
+    const taskIds = projectTasks.map((t: any) => t.id);
+    const placeholders = taskIds.map(() => "?").join(",");
+    await db.run(`DELETE FROM task_dependencies WHERE taskId IN (${placeholders}) OR blockedByTaskId IN (${placeholders})`, [...taskIds, ...taskIds]);
+    await db.run(`DELETE FROM task_comments WHERE taskId IN (${placeholders})`, taskIds);
+    await db.run(`DELETE FROM task_activities WHERE taskId IN (${placeholders})`, taskIds);
+    await db.run(`DELETE FROM tasks WHERE id IN (${placeholders})`, taskIds);
+  }
+
+  await db.run("DELETE FROM documents WHERE projectId = ?", projectId);
+  await db.run("DELETE FROM milestones WHERE projectId = ?", projectId);
+  await db.run("DELETE FROM project_members WHERE projectId = ?", projectId);
+  await db.run("DELETE FROM team_projects WHERE projectId = ?", projectId);
+  await db.run("DELETE FROM projects WHERE id = ?", projectId);
   res.json({ success: true });
 });
 
 // Integration Connectivity Status API for GitHub & GitLab
 app.get("/api/integrations/status", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
-  const projects = await db.all("SELECT id, name, repoProvider, repoOwner, repoName, repoToken FROM projects");
+  let projects;
+  if (isAdminOrSuperAdmin(req.user)) {
+    projects = await db.all("SELECT id, name, repoProvider, repoOwner, repoName, repoToken FROM projects");
+  } else {
+    projects = await db.all(`
+      SELECT DISTINCT p.id, p.name, p.repoProvider, p.repoOwner, p.repoName, p.repoToken 
+      FROM projects p 
+      LEFT JOIN project_members pm ON p.id = pm.projectId 
+      LEFT JOIN team_projects tp ON p.id = tp.projectId 
+      LEFT JOIN team_members tm ON tp.teamId = tm.teamId 
+      LEFT JOIN tasks t ON p.id = t.projectId 
+      WHERE p.ownerId = ? 
+         OR pm.userId = ? 
+         OR tm.userId = ? 
+         OR t.assigneeId = ?
+    `, [req.user.id, req.user.id, req.user.id, req.user.id]);
+  }
 
   const githubProjects = projects.filter(p => p.repoProvider === 'github' && p.repoOwner && p.repoName);
   const gitlabProjects = projects.filter(p => p.repoProvider === 'gitlab' && p.repoOwner && p.repoName);
@@ -2995,6 +3030,9 @@ app.get("/api/integrations/status", authenticateToken, async (req: any, res: any
 // Project Members APIs
 app.get("/api/projects/:id/members", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkProjectAccess(db, req.params.id, req.user))) {
+    return res.status(403).json({ error: "Access denied to project members." });
+  }
   const members = await db.all(`
     SELECT u.id, u.name, u.email, u.role as globalRole, pm.role, pm.joinedAt, pm.projectId
     FROM project_members pm
@@ -3110,8 +3148,24 @@ app.post("/api/teams", authenticateToken, async (req: any, res: any) => {
   res.json(newTeam);
 });
 
+const checkTeamAccess = async (db: any, teamId: string, user: any): Promise<boolean> => {
+  if (isAdminOrSuperAdmin(user)) return true;
+  const team = await db.get("SELECT * FROM teams WHERE id = ?", teamId);
+  if (!team) return false;
+  if (team.ownerId === user.id) return true;
+  const tm = await db.get("SELECT 1 FROM team_members WHERE teamId = ? AND userId = ?", [teamId, user.id]);
+  if (tm) return true;
+  if (team.projectId) {
+    return await checkProjectAccess(db, team.projectId, user);
+  }
+  return false;
+};
+
 app.get("/api/teams/:id/members", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkTeamAccess(db, req.params.id, req.user))) {
+    return res.status(403).json({ error: "Access denied to team members." });
+  }
   const members = await db.all(`
     SELECT u.id, u.name, u.email, u.role, tm.joinedAt, tm.teamId
     FROM team_members tm
@@ -3165,6 +3219,9 @@ app.delete("/api/teams/:id/members/:userId", authenticateToken, async (req: any,
 
 app.get("/api/teams/:id/projects", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkTeamAccess(db, req.params.id, req.user))) {
+    return res.status(403).json({ error: "Access denied to team projects." });
+  }
   const projects = await db.all(`
     SELECT p.* 
     FROM projects p
@@ -3261,6 +3318,7 @@ app.delete("/api/teams/:id", authenticateToken, async (req: any, res: any) => {
 
   await db.run("DELETE FROM teams WHERE id = ?", req.params.id);
   await db.run("DELETE FROM team_members WHERE teamId = ?", req.params.id);
+  await db.run("DELETE FROM team_projects WHERE teamId = ?", req.params.id);
   res.json({ success: true });
 });
 
