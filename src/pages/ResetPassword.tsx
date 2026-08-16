@@ -85,7 +85,7 @@ export default function ResetPassword() {
                     className="w-full rounded-lg bg-surface-dim border border-border-strong px-4 py-3 text-sm text-strong focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder-muted pr-10"
                     placeholder="••••••••"
                     required
-                    minLength={6}
+                    minLength={8}
                   />
                   <button
                     type="button"
@@ -107,7 +107,7 @@ export default function ResetPassword() {
                     className="w-full rounded-lg bg-surface-dim border border-border-strong px-4 py-3 text-sm text-strong focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder-muted pr-10"
                     placeholder="••••••••"
                     required
-                    minLength={6}
+                    minLength={8}
                   />
                 </div>
               </div>

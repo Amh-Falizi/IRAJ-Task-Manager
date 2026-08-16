@@ -168,6 +168,7 @@ export default function Register() {
               <input
                 type={showPassword ? "text" : "password"}
                 required
+                minLength={8}
                 className="w-full rounded bg-surface-dim border border-border-subtle px-3 py-2 pr-10 text-xs text-strong placeholder-slate-600 focus:border-blue-500 focus:outline-none"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

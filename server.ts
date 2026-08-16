@@ -476,6 +476,10 @@ async function initDb(): Promise<DatabaseWrapper> {
       userId TEXT NOT NULL,
       expiresAt INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS oauth_nonces (
+      nonce TEXT PRIMARY KEY,
+      timestamp INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS task_activities (
       id TEXT PRIMARY KEY,
       taskId TEXT NOT NULL,
@@ -899,40 +903,53 @@ app.post("/api/auth/register", async (req, res) => {
     email = email.toLowerCase().trim();
     const db = await dbPromise;
 
-    const existing = await db.get("SELECT * FROM users WHERE email = ?", email);
-    if (existing) {
-      if (existing.authProvider === 'local' && (existing.emailVerified === 0 || existing.emailVerified === false)) {
-        // Clear previous unverified reservation so the legitimate user can register
-        await db.run("DELETE FROM users WHERE id = ?", existing.id);
-      } else {
-        return res.status(400).json({ error: "Email already exists" });
+    await db.run("BEGIN IMMEDIATE");
+    try {
+      const existing = await db.get("SELECT * FROM users WHERE email = ?", email);
+      if (existing) {
+        if (existing.authProvider === 'local' && (existing.emailVerified === 0 || existing.emailVerified === false)) {
+          const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+          if (existing.createdAt && existing.createdAt > oneDayAgo) {
+            await db.run("ROLLBACK");
+            return res.status(400).json({ error: "Email is already registered and pending verification. Please wait 24 hours before re-registering." });
+          }
+          // Clear previous unverified reservation so the legitimate user can register
+          await db.run("DELETE FROM users WHERE id = ?", existing.id);
+        } else {
+          await db.run("ROLLBACK");
+          return res.status(400).json({ error: "Email already exists" });
+        }
       }
-    }
 
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
-    const id = uuidv4();
-    const createdAt = new Date().toISOString();
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(password, salt);
+      const id = uuidv4();
+      const createdAt = new Date().toISOString();
 
-    const userCount = await db.get("SELECT COUNT(*) as count FROM users");
-    const isFirstUser = userCount.count === 0;
-    const assignedRole = isFirstUser ? "super_admin" : "developer";
-    const emailVerified = isFirstUser ? 1 : 0;
+      const userCount = await db.get("SELECT COUNT(*) as count FROM users");
+      const isFirstUser = userCount.count === 0;
+      const assignedRole = isFirstUser ? "super_admin" : "developer";
+      const emailVerified = isFirstUser ? 1 : 0;
 
-    await db.run(
-      "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status, createdAt) VALUES (?, ?, ?, ?, ?, 1, 'local', ?, 'Available', ?)",
-      [id, name, email, passwordHash, assignedRole, emailVerified, createdAt]
-    );
+      await db.run(
+        "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status, createdAt) VALUES (?, ?, ?, ?, ?, 1, 'local', ?, 'Available', ?)",
+        [id, name, email, passwordHash, assignedRole, emailVerified, createdAt]
+      );
+      await db.run("COMMIT");
 
-    if (emailVerified === 1) {
-      const token = jwt.sign({ id, role: assignedRole, tokenVersion: 1 }, SECRET_KEY, { expiresIn: "7d" });
-      setAuthCookie(res, token);
-      return res.json({ user: { id, name, email, role: assignedRole, rolePrefix: "" } });
-    } else {
-      return res.json({
-        message: "Registration successful. Please contact an administrator or use 'Forgot Password' to verify your email address before logging in.",
-        requiresVerification: true
-      });
+      if (emailVerified === 1) {
+        const token = jwt.sign({ id, role: assignedRole, tokenVersion: 1 }, SECRET_KEY, { expiresIn: "7d" });
+        setAuthCookie(res, token);
+        return res.json({ user: { id, name, email, role: assignedRole, rolePrefix: "" } });
+      } else {
+        return res.json({
+          message: "Registration successful. Please contact an administrator or use 'Forgot Password' to verify your email address before logging in.",
+          requiresVerification: true
+        });
+      }
+    } catch (e: any) {
+      await db.run("ROLLBACK");
+      throw e;
     }
   } catch (e: any) {
     console.error("REGISTER ERROR:", e);
@@ -1101,17 +1118,7 @@ app.post("/api/auth/reset-password", async (req, res) => {
 });
 
 // OAuth State Management & Security
-const usedOAuthNonces = new Map<string, number>();
-
-// Clean up expired nonces every 10 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [nonce, timestamp] of usedOAuthNonces.entries()) {
-    if (now - timestamp > 20 * 60 * 1000) {
-      usedOAuthNonces.delete(nonce);
-    }
-  }
-}, 10 * 60 * 1000);
+// Nonce expiry handled via periodic cleanup or implicit expiry via state timestamp (15 mins)
 
 const createSignedOAuthState = (provider: string, redirectUri: string): string => {
   const nonce = crypto.randomBytes(16).toString('hex');
@@ -1121,7 +1128,7 @@ const createSignedOAuthState = (provider: string, redirectUri: string): string =
   return Buffer.from(JSON.stringify({ provider, redirectUri, nonce, timestamp, sig })).toString('base64url');
 };
 
-const verifyOAuthState = (req: any, provider: string, state: any): string => {
+const verifyOAuthState = async (db: any, req: any, provider: string, state: any): Promise<string> => {
   if (!state || typeof state !== 'string') {
     throw new Error('Missing or invalid OAuth state parameter (CSRF verification failed).');
   }
@@ -1135,14 +1142,15 @@ const verifyOAuthState = (req: any, provider: string, state: any): string => {
     if (Date.now() - parseInt(parsed.timestamp, 10) > 15 * 60 * 1000) {
       throw new Error('OAuth state parameter has expired. Please try signing in again.');
     }
-    // Prevent replay attacks by ensuring nonce is used only once
-    if (usedOAuthNonces.has(parsed.nonce)) {
+    // Prevent replay attacks by ensuring nonce is used only once (cross-process safe via SQLite)
+    const existingNonce = await db.get("SELECT nonce FROM oauth_nonces WHERE nonce = ?", parsed.nonce);
+    if (existingNonce) {
       throw new Error('OAuth state parameter has already been used. Please try signing in again.');
     }
     const payload = `${parsed.provider}:${parsed.redirectUri}:${parsed.nonce}:${parsed.timestamp}`;
     const expectedSig = crypto.createHmac('sha256', SECRET_KEY).update(payload).digest('hex');
     if (crypto.timingSafeEqual(Buffer.from(parsed.sig), Buffer.from(expectedSig))) {
-      usedOAuthNonces.set(parsed.nonce, Date.now());
+      await db.run("INSERT INTO oauth_nonces (nonce, timestamp) VALUES (?, ?)", [parsed.nonce, Date.now()]);
       return getValidatedCallbackRedirect(req, provider, parsed.redirectUri);
     } else {
       throw new Error('OAuth state signature verification failed.');
@@ -1216,7 +1224,8 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
   const clientSecret = process.env.GITLAB_CLIENT_SECRET || '';
 
   try {
-    const redirectUri = verifyOAuthState(req, "gitlab", state);
+    const db = await dbPromise;
+    const redirectUri = await verifyOAuthState(db, req, "gitlab", state);
     if (!code) throw new Error('No authorization code provided');
     if (!clientId) throw new Error('GITLAB_CLIENT_ID not configured');
 
@@ -1268,7 +1277,6 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
     }
 
     const email = userData.email.toLowerCase().trim();
-    const db = await dbPromise;
     let user = await db.get("SELECT * FROM users WHERE email = ? ", email);
 
     if (!user) {
@@ -1367,7 +1375,8 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
 
   try {
-    const redirectUri = verifyOAuthState(req, "google", state);
+    const db = await dbPromise;
+    const redirectUri = await verifyOAuthState(db, req, "google", state);
     if (!code) throw new Error('No authorization code provided');
     if (!clientId) throw new Error('GOOGLE_CLIENT_ID not configured');
 
@@ -1394,7 +1403,6 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
     if (userData.email_verified !== true && userData.email_verified !== 'true') throw new Error('Google account email is not verified.');
 
     const email = userData.email.toLowerCase().trim();
-    const db = await dbPromise;
     let user = await db.get("SELECT * FROM users WHERE email = ? ", email);
 
     if (!user) {
@@ -1490,7 +1498,8 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
   const clientSecret = process.env.GITHUB_CLIENT_SECRET || '';
 
   try {
-    const redirectUri = verifyOAuthState(req, "github", state);
+    const db = await dbPromise;
+    const redirectUri = await verifyOAuthState(db, req, "github", state);
     if (!code) throw new Error('No authorization code provided');
     if (!clientId) throw new Error('GITHUB_CLIENT_ID not configured');
 
@@ -1540,7 +1549,6 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
     if (!email) throw new Error('GitHub account has no verified email address. Please make sure your primary email is verified on GitHub.');
     email = email.toLowerCase().trim();
 
-    const db = await dbPromise;
     let user = await db.get("SELECT * FROM users WHERE email = ? ", email);
 
     if (!user) {
@@ -1668,8 +1676,8 @@ app.put("/api/users/me/password", authenticateToken, async (req: any, res: any) 
     return res.status(400).json({ error: "Current and new passwords are required." });
   }
 
-  if (typeof newPassword !== 'string' || newPassword.length < 6) {
-    return res.status(400).json({ error: "New password must be at least 6 characters long." });
+  if (typeof newPassword !== 'string' || newPassword.length < 8) {
+    return res.status(400).json({ error: "New password must be at least 8 characters long." });
   }
 
   const user = await db.get("SELECT passwordHash, tokenVersion, role FROM users WHERE id = ?", req.user.id);
@@ -1817,6 +1825,9 @@ app.post("/api/users", authenticateToken, async (req: any, res: any) => {
   }
   let { name, email, password, role, rolePrefix } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: "Missing required fields." });
+  if (typeof password !== 'string' || password.length < 8) {
+    return res.status(400).json({ error: "Password must be at least 8 characters long." });
+  }
   if (email) email = email.toLowerCase().trim();
 
   if (role === "super_admin" && req.user.role !== "super_admin") {
@@ -1911,6 +1922,9 @@ app.put("/api/users/:id", authenticateToken, async (req: any, res: any) => {
   const statusVal = status || "Available";
 
   if (password) {
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters long." });
+    }
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
     await db.run(
@@ -2399,10 +2413,15 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
     }
   }
 
-  const canEditAllTasks = await hasPermission(req.user, "edit_all_tasks");
+  let canEditAllTasks = await hasPermission(req.user, "edit_all_tasks");
+  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [task.projectId, req.user.id]);
+  if (pm && pm.role === 'viewer') {
+    canEditAllTasks = false;
+  }
+
   if (!canEditAllTasks) {
-    if (task.assigneeId !== req.user.id) {
-      return res.status(403).json({ error: "Only admins, managers, or the assigned contributor can update this task." });
+    if (task.assigneeId !== req.user.id && task.creatorId !== req.user.id) {
+      return res.status(403).json({ error: "Only admins, managers, the assigned contributor, or the task creator can update this task." });
     }
 
     // Check if projectId is changed
@@ -2562,7 +2581,12 @@ app.delete("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
     }
   }
 
-  const canDeleteTasks = await hasPermission(req.user, "delete_tasks");
+  let canDeleteTasks = await hasPermission(req.user, "delete_tasks");
+  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [task.projectId, req.user.id]);
+  if (pm && pm.role === 'viewer') {
+    canDeleteTasks = false;
+  }
+
   if (!canDeleteTasks && task.creatorId !== req.user.id) {
     return res.status(403).json({ error: "You do not have permission to delete this task." });
   }
@@ -4559,11 +4583,20 @@ async function startServer() {
     } catch (e) {}
   }, 60 * 60 * 1000);
 
+  // Periodic cleanup of expired OAuth nonces (every 10 mins)
+  const noncePurgeInterval = setInterval(async () => {
+    try {
+      const db = await dbPromise;
+      await db.run("DELETE FROM oauth_nonces WHERE timestamp < ?", Date.now() - 20 * 60 * 1000);
+    } catch (e) {}
+  }, 10 * 60 * 1000);
+
   // Graceful shutdown
   const shutdown = () => {
     console.log("Shutting down gracefully...");
     clearInterval(syncInterval);
     clearInterval(purgeInterval);
+    clearInterval(noncePurgeInterval);
     server.close(() => {
       console.log("Closed out remaining connections.");
       process.exit(0);
