@@ -68,7 +68,7 @@ app.use(helmet({
   contentSecurityPolicy: process.env.NODE_ENV === "production" ? {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
       imgSrc: ["'self'", "data:", "https:", "http:", "blob:"],
@@ -702,12 +702,15 @@ const authenticateToken = (req: any, res: any, next: any) => {
   (async () => {
     try {
       const db = await dbPromise;
-      const user = await db.get("SELECT id, name, email, role, rolePrefix, status, tokenVersion FROM users WHERE id = ?", decodedUser.id);
+      const user = await db.get("SELECT id, name, email, role, rolePrefix, status, tokenVersion, emailVerified FROM users WHERE id = ?", decodedUser.id);
       if (!user) {
         return res.sendStatus(403); // User was deleted
       }
       if (user.status && (user.status.toLowerCase() === 'inactive' || user.status.toLowerCase() === 'disabled' || user.status.toLowerCase() === 'suspended')) {
         return res.status(403).json({ error: "Account is inactive or disabled." });
+      }
+      if (user.emailVerified === 0 || user.emailVerified === false) {
+        return res.status(403).json({ error: "Email address is not verified." });
       }
       const userTokenVersion = user.tokenVersion ?? 1;
       const decodedTokenVersion = decodedUser.tokenVersion;
@@ -1173,6 +1176,10 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
       // ignore
     }
 
+    if (!isEmailConfirmed) {
+      throw new Error("GitLab account email is not confirmed. Please confirm your email on GitLab before signing in.");
+    }
+
     const email = userData.email.toLowerCase().trim();
     const db = await dbPromise;
     let user = await db.get("SELECT * FROM users WHERE email = ? ", email);
@@ -1184,8 +1191,8 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(randomPassword, salt);
       await db.run(
-        "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status) VALUES (?, ?, ?, ?, ?, 1, 'gitlab', ?, 'Available')",
-        [id, userData.name || userData.username || 'GitLab User', email, hash, role, isEmailConfirmed ? 1 : 0]
+        "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status) VALUES (?, ?, ?, ?, ?, 1, 'gitlab', 1, 'Available')",
+        [id, userData.name || userData.username || 'GitLab User', email, hash, role]
       );
       user = await db.get("SELECT id, name, email, role, status, tokenVersion FROM users WHERE id = ?", id);
     } else {
@@ -4189,6 +4196,12 @@ app.get("/api/backup/export-json", authenticateToken, requireSuperAdmin, async (
             repoToken: p.repoToken ? '••••••••' : null
           }));
         }
+        if (table === 'users') {
+          rows = rows.map((u: any) => ({
+            ...u,
+            passwordHash: '••••••••'
+          }));
+        }
         backupData[table] = rows;
       } catch (e) {
         backupData[table] = [];
@@ -4270,6 +4283,9 @@ app.post("/api/backup/restore-json", authenticateToken, requireSuperAdmin, async
           const params = presentCols.map(col => {
             if (table === "projects" && col === "repoToken" && row[col] === "••••••••") {
               return null;
+            }
+            if (table === "users" && col === "passwordHash" && row[col] === "••••••••") {
+              return "$2b$10$UnusablePlaceholderPasswordHash00000000000000000000000";
             }
             return row[col];
           });
