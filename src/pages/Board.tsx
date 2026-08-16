@@ -91,20 +91,61 @@ export default function Board() {
 
   const currentProjectIdRef = useRef(projectId);
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(`board-columns-${projectId || 'all'}`);
-      setColumns(saved ? JSON.parse(saved) : DEFAULT_COLUMNS);
-    } catch (e) {
-      setColumns(DEFAULT_COLUMNS);
-    }
-    currentProjectIdRef.current = projectId;
-  }, [projectId]);
+    let isMounted = true;
+    const loadColumns = async () => {
+      if (projectId && token) {
+        try {
+          const res = await fetch(`/api/projects/${projectId}/columns`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.columns && Array.isArray(data.columns) && data.columns.length > 0) {
+              if (isMounted) {
+                setColumns(data.columns);
+                localStorage.setItem(`board-columns-${projectId}`, JSON.stringify(data.columns));
+                currentProjectIdRef.current = projectId;
+                return;
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Failed to load server columns:", e);
+        }
+      }
+      try {
+        const saved = localStorage.getItem(`board-columns-${projectId || 'all'}`);
+        if (isMounted) {
+          setColumns(saved ? JSON.parse(saved) : DEFAULT_COLUMNS);
+        }
+      } catch (e) {
+        if (isMounted) setColumns(DEFAULT_COLUMNS);
+      }
+      currentProjectIdRef.current = projectId;
+    };
+    loadColumns();
+    return () => { isMounted = false; };
+  }, [projectId, token]);
 
   useEffect(() => {
     if (currentProjectIdRef.current === projectId) {
       localStorage.setItem(`board-columns-${projectId || 'all'}`, JSON.stringify(columns));
+      if (projectId && token) {
+        // Debounced sync to server
+        const timer = setTimeout(() => {
+          fetch(`/api/projects/${projectId}/columns`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ columns })
+          }).catch(err => console.error("Failed to save project columns:", err));
+        }, 500);
+        return () => clearTimeout(timer);
+      }
     }
-  }, [columns, projectId]);
+  }, [columns, projectId, token]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isWorkloadModalOpen, setIsWorkloadModalOpen] = useState(false);

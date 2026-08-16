@@ -31,10 +31,13 @@ const safeJsonForScriptTag = (obj: any) => {
 };
 
 const getAppUrl = (req: any) => {
-  if (process.env.APP_URL) return process.env.APP_URL;
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
-  return `${protocol}://${host}`;
+  if (process.env.APP_URL && /^https?:\/\//i.test(process.env.APP_URL)) {
+    return process.env.APP_URL.replace(/\/$/, '');
+  }
+  const protocol = ((req.headers['x-forwarded-proto'] || req.protocol || 'http') as string).split(',')[0].trim();
+  const rawHost = ((req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000') as string).split(',')[0].trim();
+  const cleanHost = rawHost.replace(/[^a-zA-Z0-9.:-]/g, '');
+  return `${protocol}://${cleanHost}`;
 };
 
 const app = express();
@@ -55,8 +58,18 @@ app.use(morgan("dev"));
 
 // Basic security headers
 app.use(helmet({
-  contentSecurityPolicy: false, // Disabled for local dev/vite HMR
-  crossOriginEmbedderPolicy: false // Disabled to allow images/assets from other origins if needed
+  contentSecurityPolicy: process.env.NODE_ENV === "production" ? {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+      imgSrc: ["'self'", "data:", "https:", "http:", "blob:"],
+      connectSrc: ["'self'", "https:", "http:", "ws:", "wss:"],
+      frameSrc: ["'self'"],
+    }
+  } : false,
+  crossOriginEmbedderPolicy: false
 }));
 
 // Compress responses
@@ -185,7 +198,7 @@ let activeSqlitePath: string = path.join(process.cwd(), "database.sqlite");
 
 async function initDb(): Promise<DatabaseWrapper> {
   let db: DatabaseWrapper;
-  const isDefaultPg = DATABASE_URL === "postgres://user:password@localhost:5432/dbname" || DATABASE_URL.includes("localhost");
+  const isDefaultPg = !process.env.DATABASE_URL || process.env.DATABASE_URL === "postgres://user:password@localhost:5432/dbname";
   
   let usePg = false;
   if (!isDefaultPg) {
@@ -199,7 +212,7 @@ async function initDb(): Promise<DatabaseWrapper> {
       console.warn("PostgreSQL connection failed, falling back to SQLite:", e.message);
     }
   } else {
-    console.log("Using default/invalid DATABASE_URL, falling back to SQLite");
+    console.log("Using SQLite database engine");
   }
 
   if (!usePg) {
@@ -223,7 +236,7 @@ async function initDb(): Promise<DatabaseWrapper> {
         if (fs.existsSync(DB_FILE) && !fs.existsSync(TMP_DB_FILE)) {
           try { fs.copyFileSync(DB_FILE, TMP_DB_FILE); } catch (e) {}
         }
-        try { fs.chmodSync(TMP_DB_FILE, 0o666); } catch (e) {}
+        try { fs.chmodSync(TMP_DB_FILE, 0o600); } catch (e) {}
         DB_FILE = TMP_DB_FILE;
         activeSqlitePath = TMP_DB_FILE;
         sqliteDb = await open({
@@ -411,6 +424,27 @@ async function initDb(): Promise<DatabaseWrapper> {
 
   try {
     await db.exec("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'Available';");
+  } catch (e) {}
+
+  try {
+    await db.exec("ALTER TABLE users ADD COLUMN tokenVersion INTEGER DEFAULT 1;");
+  } catch (e) {}
+  try {
+    await db.exec("ALTER TABLE users ADD COLUMN authProvider TEXT DEFAULT 'local';");
+  } catch (e) {}
+  try {
+    await db.exec("ALTER TABLE users ADD COLUMN emailVerified INTEGER DEFAULT 0;");
+  } catch (e) {}
+
+  try {
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS project_columns (
+        id TEXT PRIMARY KEY,
+        projectId TEXT UNIQUE NOT NULL,
+        columnsJson TEXT NOT NULL,
+        updatedAt TEXT NOT NULL
+      );
+    `);
   } catch (e) {}
 
   try {
@@ -611,12 +645,15 @@ const authenticateToken = (req: any, res: any, next: any) => {
     if (err) return res.sendStatus(403);
     try {
       const db = await dbPromise;
-      const user = await db.get("SELECT id, name, email, role, rolePrefix, status FROM users WHERE id = ?", decodedUser.id);
+      const user = await db.get("SELECT id, name, email, role, rolePrefix, status, tokenVersion FROM users WHERE id = ?", decodedUser.id);
       if (!user) {
         return res.sendStatus(403); // User was deleted
       }
       if (user.status && (user.status.toLowerCase() === 'inactive' || user.status.toLowerCase() === 'disabled' || user.status.toLowerCase() === 'suspended')) {
         return res.status(403).json({ error: "Account is inactive or disabled." });
+      }
+      if (decodedUser.tokenVersion !== undefined && user.tokenVersion !== undefined && decodedUser.tokenVersion !== user.tokenVersion) {
+        return res.status(401).json({ error: "Session expired or revoked. Please sign in again." });
       }
       req.user = user;
       next();
@@ -629,6 +666,16 @@ const authenticateToken = (req: any, res: any, next: any) => {
 
 const isSuperAdmin = (user: any): boolean => user?.role === 'super_admin';
 const isAdminOrSuperAdmin = (user: any): boolean => user?.role === 'super_admin' || user?.role === 'admin';
+
+const isProjectAdminOrOwner = async (db: any, projectId: string, user: any): Promise<boolean> => {
+  if (isAdminOrSuperAdmin(user)) return true;
+  const project = await db.get("SELECT ownerId FROM projects WHERE id = ?", projectId);
+  if (!project) return false;
+  if (project.ownerId === user.id) return true;
+  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [projectId, user.id]);
+  if (pm && (pm.role === 'admin' || pm.role === 'lead')) return true;
+  return false;
+};
 
 const checkProjectAccess = async (db: any, projectId: string, user: any): Promise<boolean> => {
   if (isAdminOrSuperAdmin(user)) return true;
@@ -723,12 +770,12 @@ app.post("/api/auth/register", async (req, res) => {
     const assignedRole = isFirstUser ? "super_admin" : "developer";
 
     await db.run(
-      "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status) VALUES (?, ?, ?, ?, ?, 1, 'local', 0, 'Available')",
       [id, name, email, passwordHash, assignedRole]
     );
 
-    const token = jwt.sign({ id, role: assignedRole }, SECRET_KEY, { expiresIn: "7d" });
-    res.json({ token, user: { id, name, email, role: assignedRole } });
+    const token = jwt.sign({ id, role: assignedRole, tokenVersion: 1 }, SECRET_KEY, { expiresIn: "7d" });
+    res.json({ token, user: { id, name, email, role: assignedRole, rolePrefix: "" } });
   } catch (e: any) {
     console.error("REGISTER ERROR:", e);
     res.status(500).json({ error: "An unexpected error occurred during registration." });
@@ -755,13 +802,18 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    if (user.status && (user.status.toLowerCase() === 'inactive' || user.status.toLowerCase() === 'disabled' || user.status.toLowerCase() === 'suspended')) {
+      return res.status(403).json({ error: "Account is inactive or disabled. Contact administrator." });
+    }
+
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     
     if (!isMatch) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    const token = jwt.sign({ id: user.id, role: user.role }, SECRET_KEY, { expiresIn: "7d" });
+    const tokenVersion = user.tokenVersion || 1;
+    const token = jwt.sign({ id: user.id, role: user.role, tokenVersion }, SECRET_KEY, { expiresIn: "7d" });
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, rolePrefix: user.rolePrefix || "" } });
   } catch (e: any) {
     console.error("LOGIN ERROR:", e);
@@ -847,7 +899,8 @@ app.post("/api/auth/reset-password", async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hash = await bcrypt.hash(newPassword, salt);
 
-    await db.run("UPDATE users SET passwordHash = ? WHERE id = ?", [hash, resetRecord.userId]);
+    // Invalidate existing sessions by incrementing tokenVersion
+    await db.run("UPDATE users SET passwordHash = ?, tokenVersion = COALESCE(tokenVersion, 1) + 1, emailVerified = 1 WHERE id = ?", [hash, resetRecord.userId]);
     await db.run("DELETE FROM password_resets WHERE userId = ?", resetRecord.userId);
 
     res.json({ message: "Password has been successfully reset" });
@@ -856,6 +909,41 @@ app.post("/api/auth/reset-password", async (req, res) => {
     return res.status(500).json({ error: "Failed to reset password." });
   }
 });
+
+// OAuth State Management & Security
+const createSignedOAuthState = (provider: string, redirectUri: string): string => {
+  const nonce = crypto.randomBytes(16).toString('hex');
+  const timestamp = Date.now().toString();
+  const payload = `${provider}:${redirectUri}:${nonce}:${timestamp}`;
+  const sig = crypto.createHmac('sha256', SECRET_KEY).update(payload).digest('hex');
+  return Buffer.from(JSON.stringify({ provider, redirectUri, nonce, timestamp, sig })).toString('base64url');
+};
+
+const verifyOAuthState = (req: any, provider: string, state: any): string => {
+  const defaultRedirect = `${getAppUrl(req)}/api/auth/${provider}/callback`;
+  if (!state || typeof state !== 'string') {
+    return defaultRedirect;
+  }
+  try {
+    const raw = Buffer.from(state, 'base64url').toString('utf8');
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.provider !== provider || !parsed.sig || !parsed.timestamp || !parsed.redirectUri) {
+      return defaultRedirect;
+    }
+    // Check state expiry (15 minutes)
+    if (Date.now() - parseInt(parsed.timestamp, 10) > 15 * 60 * 1000) {
+      return defaultRedirect;
+    }
+    const payload = `${parsed.provider}:${parsed.redirectUri}:${parsed.nonce}:${parsed.timestamp}`;
+    const expectedSig = crypto.createHmac('sha256', SECRET_KEY).update(payload).digest('hex');
+    if (crypto.timingSafeEqual(Buffer.from(parsed.sig), Buffer.from(expectedSig))) {
+      return getValidatedCallbackRedirect(req, provider, parsed.redirectUri);
+    }
+  } catch (e) {
+    // fallback
+  }
+  return defaultRedirect;
+};
 
 // GitLab OAuth
 const getSafeOAuthRedirectUri = (req: any, provider: string) => {
@@ -899,13 +987,14 @@ const getValidatedCallbackRedirect = (req: any, provider: string, state: any): s
 
 app.get("/api/auth/gitlab/url", (req, res) => {
   const redirectUri = getSafeOAuthRedirectUri(req, "gitlab");
+  const state = createSignedOAuthState("gitlab", redirectUri);
 
   const params = new URLSearchParams({
     client_id: process.env.GITLAB_CLIENT_ID || '',
     redirect_uri: redirectUri,
     response_type: 'code',
     scope: 'read_user', // Requires 'read_user' scope for user profile info
-    state: redirectUri // pass redirectUri in state so callback has it
+    state
   });
 
   const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
@@ -914,7 +1003,7 @@ app.get("/api/auth/gitlab/url", (req, res) => {
 
 app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
   const { code, state } = req.query;
-  const redirectUri = getValidatedCallbackRedirect(req, "gitlab", state);
+  const redirectUri = verifyOAuthState(req, "gitlab", state);
 
   const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
   const clientId = process.env.GITLAB_CLIENT_ID || '';
@@ -943,26 +1032,64 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
     });
     const userData = await userRes.json();
     if (!userRes.ok) throw new Error('Failed to get user data');
-    if (!userData.email) throw new Error('GitLab account has no email address. Please make sure your email is public/verified.');
+    if (userData.state && userData.state !== 'active') {
+      throw new Error('GitLab account is inactive or blocked.');
+    }
+    if (!userData.email) throw new Error('GitLab account has no email address. Please make sure your email is verified and public on GitLab.');
 
+    // Fetch user emails from GitLab to ensure email is confirmed
+    let isEmailConfirmed = !!userData.confirmed_at;
+    try {
+      const glEmailsRes = await fetch(`${gitlabUrl}/api/v4/user/emails`, {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` }
+      });
+      if (glEmailsRes.ok) {
+        const glEmails = await glEmailsRes.json();
+        if (Array.isArray(glEmails)) {
+          const match = glEmails.find((e: any) => e.email && e.email.toLowerCase() === userData.email.toLowerCase());
+          if (match && match.confirmed_at) {
+            isEmailConfirmed = true;
+          }
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    const email = userData.email.toLowerCase().trim();
     const db = await dbPromise;
-    let user = await db.get("SELECT * FROM users WHERE email = ? ", userData.email.toLowerCase().trim());
+    let user = await db.get("SELECT * FROM users WHERE email = ? ", email);
 
     if (!user) {
       const id = uuidv4();
       const role = "developer";
-      // generate dummy password hash for oauth
-      const randomPassword = crypto.randomBytes(16).toString('hex');
+      const randomPassword = crypto.randomBytes(32).toString('hex');
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(randomPassword, salt);
       await db.run(
-        "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
-        [id, userData.name || userData.username || 'GitLab User', userData.email.toLowerCase().trim(), hash, role]
+        "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status) VALUES (?, ?, ?, ?, ?, 1, 'gitlab', ?, 'Available')",
+        [id, userData.name || userData.username || 'GitLab User', email, hash, role, isEmailConfirmed ? 1 : 0]
       );
-      user = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", id);
+      user = await db.get("SELECT id, name, email, role, status, tokenVersion FROM users WHERE id = ?", id);
+    } else {
+      if (user.status && (user.status.toLowerCase() === 'inactive' || user.status.toLowerCase() === 'disabled' || user.status.toLowerCase() === 'suspended')) {
+        throw new Error("Account is inactive or disabled. Contact administrator.");
+      }
+      // If the account was registered locally and unverified, link it securely and revoke existing sessions
+      if (user.authProvider === 'local' && (!user.emailVerified || isEmailConfirmed)) {
+        const randomPassword = crypto.randomBytes(32).toString('hex');
+        const salt = await bcrypt.genSalt(10);
+        const hash = await bcrypt.hash(randomPassword, salt);
+        await db.run(
+          "UPDATE users SET passwordHash = ?, authProvider = 'gitlab', emailVerified = 1, tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?",
+          [hash, user.id]
+        );
+        user = await db.get("SELECT id, name, email, role, status, tokenVersion FROM users WHERE id = ?", user.id);
+      }
     }
 
-    const token = jwt.sign({ id: user.id, role: user.role }, SECRET_KEY, { expiresIn: "7d" });
+    const tokenVersion = user.tokenVersion || 1;
+    const token = jwt.sign({ id: user.id, role: user.role, tokenVersion }, SECRET_KEY, { expiresIn: "7d" });
     const userPayload = safeJsonForScriptTag({ id: user.id, name: user.name, email: user.email, role: user.role });
 
     res.send(`
@@ -1002,13 +1129,14 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
 // Google OAuth Integration
 app.get("/api/auth/google/url", (req, res) => {
   const redirectUri = getSafeOAuthRedirectUri(req, "google");
+  const state = createSignedOAuthState("google", redirectUri);
 
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID || '',
     redirect_uri: redirectUri,
     response_type: 'code',
     scope: 'openid email profile',
-    state: redirectUri
+    state
   });
 
   res.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
@@ -1016,7 +1144,7 @@ app.get("/api/auth/google/url", (req, res) => {
 
 app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req: any, res: any) => {
   const { code, state } = req.query;
-  const redirectUri = getValidatedCallbackRedirect(req, "google", state);
+  const redirectUri = verifyOAuthState(req, "google", state);
 
   const clientId = process.env.GOOGLE_CLIENT_ID || '';
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
@@ -1047,23 +1175,40 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
     if (!userData.email) throw new Error('Google account has no email address.');
     if (userData.email_verified === false) throw new Error('Google account email is not verified.');
 
+    const email = userData.email.toLowerCase().trim();
     const db = await dbPromise;
-    let user = await db.get("SELECT * FROM users WHERE email = ? ", userData.email.toLowerCase().trim());
+    let user = await db.get("SELECT * FROM users WHERE email = ? ", email);
 
     if (!user) {
       const id = uuidv4();
       const role = "developer";
-      const randomPassword = crypto.randomBytes(16).toString('hex');
+      const randomPassword = crypto.randomBytes(32).toString('hex');
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(randomPassword, salt);
       await db.run(
-        "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
-        [id, userData.name || userData.given_name || 'Google User', userData.email.toLowerCase().trim(), hash, role]
+        "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status) VALUES (?, ?, ?, ?, ?, 1, 'google', 1, 'Available')",
+        [id, userData.name || userData.given_name || 'Google User', email, hash, role]
       );
-      user = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", id);
+      user = await db.get("SELECT id, name, email, role, status, tokenVersion FROM users WHERE id = ?", id);
+    } else {
+      if (user.status && (user.status.toLowerCase() === 'inactive' || user.status.toLowerCase() === 'disabled' || user.status.toLowerCase() === 'suspended')) {
+        throw new Error("Account is inactive or disabled. Contact administrator.");
+      }
+      // If the account was registered locally and unverified, link it securely and revoke existing sessions
+      if (user.authProvider === 'local' && !user.emailVerified) {
+        const randomPassword = crypto.randomBytes(32).toString('hex');
+        const salt = await bcrypt.genSalt(10);
+        const hash = await bcrypt.hash(randomPassword, salt);
+        await db.run(
+          "UPDATE users SET passwordHash = ?, authProvider = 'google', emailVerified = 1, tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?",
+          [hash, user.id]
+        );
+        user = await db.get("SELECT id, name, email, role, status, tokenVersion FROM users WHERE id = ?", user.id);
+      }
     }
 
-    const token = jwt.sign({ id: user.id, role: user.role }, SECRET_KEY, { expiresIn: "7d" });
+    const tokenVersion = user.tokenVersion || 1;
+    const token = jwt.sign({ id: user.id, role: user.role, tokenVersion }, SECRET_KEY, { expiresIn: "7d" });
     const userPayload = safeJsonForScriptTag({ id: user.id, name: user.name, email: user.email, role: user.role });
 
     res.send(`
@@ -1103,12 +1248,13 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
 // GitHub OAuth Integration
 app.get("/api/auth/github/url", (req, res) => {
   const redirectUri = getSafeOAuthRedirectUri(req, "github");
+  const state = createSignedOAuthState("github", redirectUri);
 
   const params = new URLSearchParams({
     client_id: process.env.GITHUB_CLIENT_ID || '',
     redirect_uri: redirectUri,
     scope: 'user:email',
-    state: redirectUri
+    state
   });
 
   res.json({ url: `https://github.com/login/oauth/authorize?${params.toString()}` });
@@ -1116,7 +1262,7 @@ app.get("/api/auth/github/url", (req, res) => {
 
 app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req: any, res: any) => {
   const { code, state } = req.query;
-  const redirectUri = getValidatedCallbackRedirect(req, "github", state);
+  const redirectUri = verifyOAuthState(req, "github", state);
 
   const clientId = process.env.GITHUB_CLIENT_ID || '';
   const clientSecret = process.env.GITHUB_CLIENT_SECRET || '';
@@ -1179,17 +1325,33 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
     if (!user) {
       const id = uuidv4();
       const role = "developer";
-      const randomPassword = crypto.randomBytes(16).toString('hex');
+      const randomPassword = crypto.randomBytes(32).toString('hex');
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(randomPassword, salt);
       await db.run(
-        "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status) VALUES (?, ?, ?, ?, ?, 1, 'github', 1, 'Available')",
         [id, userData.name || userData.login || 'GitHub User', email, hash, role]
       );
-      user = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", id);
+      user = await db.get("SELECT id, name, email, role, status, tokenVersion FROM users WHERE id = ?", id);
+    } else {
+      if (user.status && (user.status.toLowerCase() === 'inactive' || user.status.toLowerCase() === 'disabled' || user.status.toLowerCase() === 'suspended')) {
+        throw new Error("Account is inactive or disabled. Contact administrator.");
+      }
+      // If the account was registered locally and unverified, link it securely and revoke existing sessions
+      if (user.authProvider === 'local' && !user.emailVerified) {
+        const randomPassword = crypto.randomBytes(32).toString('hex');
+        const salt = await bcrypt.genSalt(10);
+        const hash = await bcrypt.hash(randomPassword, salt);
+        await db.run(
+          "UPDATE users SET passwordHash = ?, authProvider = 'github', emailVerified = 1, tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?",
+          [hash, user.id]
+        );
+        user = await db.get("SELECT id, name, email, role, status, tokenVersion FROM users WHERE id = ?", user.id);
+      }
     }
 
-    const token = jwt.sign({ id: user.id, role: user.role }, SECRET_KEY, { expiresIn: "7d" });
+    const tokenVersion = user.tokenVersion || 1;
+    const token = jwt.sign({ id: user.id, role: user.role, tokenVersion }, SECRET_KEY, { expiresIn: "7d" });
     const userPayload = safeJsonForScriptTag({ id: user.id, name: user.name, email: user.email, role: user.role });
 
     res.send(`
@@ -1242,7 +1404,12 @@ app.put("/api/users/me", authenticateToken, async (req: any, res: any) => {
     return res.status(400).json({ error: "Name is required." });
   }
 
-  const statusVal = status || "Available";
+  // Prevent users from setting admin lockout statuses on themselves
+  const disallowedStatuses = ['inactive', 'disabled', 'suspended'];
+  let statusVal = status || "Available";
+  if (disallowedStatuses.includes(statusVal.toLowerCase())) {
+    statusVal = "Available";
+  }
 
   if (skills !== undefined) {
     await db.run(
@@ -1278,16 +1445,18 @@ app.put("/api/users/me/password", authenticateToken, async (req: any, res: any) 
     return res.status(400).json({ error: "New password must be at least 6 characters long." });
   }
 
-  const user = await db.get("SELECT passwordHash FROM users WHERE id = ?", req.user.id);
+  const user = await db.get("SELECT passwordHash, tokenVersion, role FROM users WHERE id = ?", req.user.id);
   if (!user || !(await bcrypt.compare(currentPassword, user.passwordHash))) {
     return res.status(400).json({ error: "Incorrect current password." });
   }
 
   const salt = await bcrypt.genSalt(10);
   const passwordHash = await bcrypt.hash(newPassword, salt);
-  await db.run("UPDATE users SET passwordHash = ? WHERE id = ?", [passwordHash, req.user.id]);
+  const nextTokenVersion = (user.tokenVersion || 1) + 1;
+  await db.run("UPDATE users SET passwordHash = ?, tokenVersion = ? WHERE id = ?", [passwordHash, nextTokenVersion, req.user.id]);
   
-  res.json({ success: true });
+  const newToken = jwt.sign({ id: req.user.id, role: user.role, tokenVersion: nextTokenVersion }, SECRET_KEY, { expiresIn: "7d" });
+  res.json({ success: true, token: newToken });
 });
 
 // User Stats
@@ -1355,7 +1524,7 @@ app.get("/api/search", authenticateToken, async (req: any, res: any) => {
     `, [userId, userId, userId, searchTerm, searchTerm]);
 
     let users: any[] = [];
-    if (userRole === 'admin') {
+    if (userRole === 'admin' || userRole === 'super_admin') {
       users = await db.all(`
         SELECT id, name as title, email as description, 'user' as type
         FROM users
@@ -1369,10 +1538,32 @@ app.get("/api/search", authenticateToken, async (req: any, res: any) => {
   }
 });
 
-// Get Users (for assigning tasks)
+// Get Users (for assigning tasks and team directories)
 app.get("/api/users", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
-  const users = await db.all("SELECT id, name, email, role, skills, rolePrefix, status FROM users");
+  const canSeeAll = isAdminOrSuperAdmin(req.user) || await canManageUsers(req.user);
+  
+  if (canSeeAll) {
+    const users = await db.all("SELECT id, name, email, role, skills, rolePrefix, status FROM users");
+    return res.json(users.map((u: any) => ({ ...u, skills: u.skills ? JSON.parse(u.skills) : [], rolePrefix: u.rolePrefix || "", status: u.status || "Available" })));
+  }
+
+  // Non-admins only get active directory users, preserving privacy while allowing project assignment
+  const users = await db.all(`
+    SELECT DISTINCT u.id, u.name, u.role, u.skills, u.rolePrefix, u.status,
+      CASE 
+        WHEN u.id = ? THEN u.email
+        WHEN pm_peer.userId IS NOT NULL OR tm_peer.userId IS NOT NULL THEN u.email
+        ELSE ''
+      END as email
+    FROM users u
+    LEFT JOIN project_members pm_my ON pm_my.userId = ?
+    LEFT JOIN project_members pm_peer ON pm_peer.projectId = pm_my.projectId AND pm_peer.userId = u.id
+    LEFT JOIN team_members tm_my ON tm_my.userId = ?
+    LEFT JOIN team_members tm_peer ON tm_peer.teamId = tm_my.teamId AND tm_peer.userId = u.id
+    WHERE u.status IS NULL OR (LOWER(u.status) != 'disabled' AND LOWER(u.status) != 'inactive' AND LOWER(u.status) != 'suspended')
+  `, [req.user.id, req.user.id, req.user.id]);
+  
   res.json(users.map((u: any) => ({ ...u, skills: u.skills ? JSON.parse(u.skills) : [], rolePrefix: u.rolePrefix || "", status: u.status || "Available" })));
 });
 
@@ -1402,8 +1593,8 @@ app.post("/api/users", authenticateToken, async (req: any, res: any) => {
   const id = uuidv4();
 
   await db.run(
-    "INSERT INTO users (id, name, email, passwordHash, role, rolePrefix, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    [id, name, email, passwordHash, finalRole, rolePrefix || null, "Available"]
+    "INSERT INTO users (id, name, email, passwordHash, role, rolePrefix, status, tokenVersion, authProvider, emailVerified) VALUES (?, ?, ?, ?, ?, ?, 'Available', 1, 'local', 1)",
+    [id, name, email, passwordHash, finalRole, rolePrefix || null]
   );
   const newUser = await db.get("SELECT id, name, email, role, rolePrefix, status FROM users WHERE id = ?", id);
   res.json({ ...newUser, rolePrefix: newUser.rolePrefix || "", status: newUser.status || "Available" });
@@ -1442,7 +1633,7 @@ app.put("/api/users/bulk/role", authenticateToken, async (req: any, res: any) =>
     return res.status(400).json({ error: "Invalid role. Role does not exist in definitions." });
   }
 
-  await db.run(`UPDATE users SET role = ? WHERE id IN (${placeholders})`, [role, ...userIds]);
+  await db.run(`UPDATE users SET role = ?, tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id IN (${placeholders})`, [role, ...userIds]);
 
   res.json({ success: true, message: `Successfully updated roles for ${userIds.length} users.` });
 });
@@ -1480,9 +1671,23 @@ app.put("/api/users/:id", authenticateToken, async (req: any, res: any) => {
   if (password) {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
-    await db.run("UPDATE users SET name = ?, email = ?, role = ?, passwordHash = ?, rolePrefix = ?, status = ? WHERE id = ?", [name, email, role, passwordHash, rolePrefix || null, statusVal, req.params.id]);
+    await db.run(
+      "UPDATE users SET name = ?, email = ?, role = ?, passwordHash = ?, rolePrefix = ?, status = ?, tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?",
+      [name, email, role, passwordHash, rolePrefix || null, statusVal, req.params.id]
+    );
   } else {
-    await db.run("UPDATE users SET name = ?, email = ?, role = ?, rolePrefix = ?, status = ? WHERE id = ?", [name, email, role, rolePrefix || null, statusVal, req.params.id]);
+    const shouldInvalidate = (statusVal.toLowerCase() === 'disabled' || statusVal.toLowerCase() === 'suspended' || role !== targetUser.role);
+    if (shouldInvalidate) {
+      await db.run(
+        "UPDATE users SET name = ?, email = ?, role = ?, rolePrefix = ?, status = ?, tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?",
+        [name, email, role, rolePrefix || null, statusVal, req.params.id]
+      );
+    } else {
+      await db.run(
+        "UPDATE users SET name = ?, email = ?, role = ?, rolePrefix = ?, status = ? WHERE id = ?",
+        [name, email, role, rolePrefix || null, statusVal, req.params.id]
+      );
+    }
   }
   const updatedUser = await db.get("SELECT id, name, email, role, rolePrefix, status FROM users WHERE id = ?", req.params.id);
   res.json({ ...updatedUser, rolePrefix: updatedUser.rolePrefix || "", status: updatedUser.status || "Available" });
@@ -2281,6 +2486,11 @@ app.get("/api/projects/:id", authenticateToken, async (req: any, res: any) => {
 });
 
 app.post("/api/projects", authenticateToken, async (req: any, res: any) => {
+  const canCreate = await hasPermission(req.user, "manage_projects") || isAdminOrSuperAdmin(req.user);
+  if (!canCreate) {
+    return res.status(403).json({ error: "You do not have permission to create projects." });
+  }
+
   const db = await dbPromise;
 
   const { name, description, projectKey: customProjectKey } = req.body;
@@ -2589,6 +2799,14 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
   const name = project.repoName;
   const token = project.repoToken;
 
+  // Protect against Confused Deputy: only project admins/owners/managers can execute remote Git operations with configured PAT
+  if (owner && name && token) {
+    const canUsePat = await isProjectAdminOrOwner(db, req.params.id, req.user) || await hasPermission(req.user, "manage_projects");
+    if (!canUsePat) {
+      return res.status(403).json({ error: "Only project administrators or project managers can execute remote repository operations using the configured repository token." });
+    }
+  }
+
   let remoteCreated = false;
   let remoteUrl = '';
   let remoteError = null;
@@ -2758,6 +2976,14 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
   const name = project.repoName;
   const token = project.repoToken;
 
+  // Protect against Confused Deputy: only project admins/owners/managers can execute remote Git operations with configured PAT
+  if (owner && name && token) {
+    const canUsePat = await isProjectAdminOrOwner(db, req.params.id, req.user) || await hasPermission(req.user, "manage_projects");
+    if (!canUsePat) {
+      return res.status(403).json({ error: "Only project administrators or project managers can execute remote repository operations using the configured repository token." });
+    }
+  }
+
   let prUrl = '';
   let prStatus = 'open';
   let isFallback = false;
@@ -2850,6 +3076,64 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
   }
 
   res.json({ success: true, prUrl, prStatus, isFallback });
+});
+
+// Project Custom Columns Management
+app.get("/api/projects/:id/columns", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  if (!(await checkProjectAccess(db, req.params.id, req.user))) {
+    return res.status(403).json({ error: "Access denied to project." });
+  }
+  const row = await db.get("SELECT columnsJson FROM project_columns WHERE projectId = ?", req.params.id);
+  if (!row) {
+    return res.json({ columns: null });
+  }
+  try {
+    const columns = JSON.parse(row.columnsJson);
+    return res.json({ columns });
+  } catch (e) {
+    return res.json({ columns: null });
+  }
+});
+
+app.put("/api/projects/:id/columns", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+  const isProjectAdmin = pm && (pm.role === 'admin' || pm.role === 'lead');
+  const canManageProjects = await hasPermission(req.user, "manage_projects");
+
+  if (!canManageProjects && project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+    return res.status(403).json({ error: "Permission denied. Only project admins can modify board column structure." });
+  }
+
+  const { columns } = req.body;
+  if (!columns || !Array.isArray(columns)) {
+    return res.status(400).json({ error: "Columns must be an array." });
+  }
+
+  const columnsJson = JSON.stringify(columns);
+  const id = uuidv4();
+  const now = new Date().toISOString();
+
+  if (db.isPg) {
+    await db.run(`
+      INSERT INTO project_columns (id, projectId, columnsJson, updatedAt)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT (projectId) DO UPDATE SET columnsJson = EXCLUDED.columnsJson, updatedAt = EXCLUDED.updatedAt
+    `, [id, req.params.id, columnsJson, now]);
+  } else {
+    const existing = await db.get("SELECT id FROM project_columns WHERE projectId = ?", req.params.id);
+    if (existing) {
+      await db.run("UPDATE project_columns SET columnsJson = ?, updatedAt = ? WHERE projectId = ?", [columnsJson, now, req.params.id]);
+    } else {
+      await db.run("INSERT INTO project_columns (id, projectId, columnsJson, updatedAt) VALUES (?, ?, ?, ?)", [id, req.params.id, columnsJson, now]);
+    }
+  }
+
+  res.json({ success: true, columns });
 });
 
 // Sync and Update Statuses of Pull/Merge Requests of a Project
