@@ -56,15 +56,22 @@ const HOST = process.env.HOST || "0.0.0.0";
 const FALLBACK_SECRET = crypto.randomBytes(64).toString('hex');
 const SECRET_KEY = process.env.SECRET_KEY || FALLBACK_SECRET;
 
-if (process.env.NODE_ENV === "production" && (!process.env.SECRET_KEY || process.env.SECRET_KEY === 'your-super-secret-key-change-this')) {
-  console.error("FATAL ERROR: SECRET_KEY environment variable MUST be explicitly set to a secure secret in production mode.");
-  process.exit(1);
+if (process.env.NODE_ENV === "production") {
+  if (!process.env.SECRET_KEY || process.env.SECRET_KEY === 'your-super-secret-key-change-this') {
+    console.error("FATAL ERROR: SECRET_KEY environment variable MUST be explicitly set to a secure secret in production mode.");
+    process.exit(1);
+  }
+  if (!process.env.APP_URL || process.env.APP_URL.trim() === '') {
+    console.error("FATAL ERROR: APP_URL environment variable MUST be explicitly set to the application's base URL in production mode.");
+    process.exit(1);
+  }
 } else if (!process.env.SECRET_KEY) {
   console.warn("WARNING: SECRET_KEY is not set in the environment. Using a dynamically generated secret. Existing sessions will be invalidated if the server restarts.");
 }
 
 // Secret Encryption Helper for PATs / Repository Tokens
-const ENCRYPTION_KEY = crypto.createHash('sha256').update(SECRET_KEY).digest(); // 32 bytes key
+const RAW_ENCRYPTION_SECRET = process.env.TOKEN_ENCRYPTION_KEY || SECRET_KEY;
+const ENCRYPTION_KEY = crypto.createHash('sha256').update(RAW_ENCRYPTION_SECRET).digest(); // 32 bytes key
 
 function encryptSecret(text: string): string {
   if (!text) return text;
@@ -272,6 +279,18 @@ function extractTaskNumber(branchName: string | null | undefined): number | null
 
 let dbPromise: Promise<DatabaseWrapper>;
 let activeSqlitePath: string = path.join(process.cwd(), "database.sqlite");
+
+async function purgeStaleUnverifiedUsers(db: any) {
+  try {
+    const cutoffDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    await db.run(
+      "DELETE FROM users WHERE authProvider = 'local' AND (emailVerified = 0 OR emailVerified IS NULL) AND createdAt IS NOT NULL AND createdAt < ?",
+      [cutoffDate]
+    );
+  } catch (e) {
+    console.error("Failed to purge stale unverified users:", e);
+  }
+}
 
 async function initDb(): Promise<DatabaseWrapper> {
   let db: DatabaseWrapper;
@@ -521,9 +540,9 @@ async function initDb(): Promise<DatabaseWrapper> {
     await db.exec("UPDATE users SET tokenVersion = 1 WHERE tokenVersion IS NULL;");
     await db.exec("UPDATE users SET authProvider = 'local' WHERE authProvider IS NULL;");
     await db.exec("UPDATE users SET emailVerified = 1 WHERE emailVerified IS NULL;");
-    // Automatically purge stale unverified local reservations older than 24 hours
-    await db.exec("DELETE FROM users WHERE authProvider = 'local' AND (emailVerified = 0 OR emailVerified IS NULL) AND createdAt IS NOT NULL AND strftime('%s', 'now') - strftime('%s', createdAt) > 86400;");
   } catch (e) {}
+
+  await purgeStaleUnverifiedUsers(db);
 
   try {
     await db.exec(`
@@ -3365,7 +3384,7 @@ app.post("/api/projects/:id/git/pull-requests/sync", authenticateToken, async (r
   const provider = project.repoProvider || 'github';
   const owner = project.repoOwner;
   const name = project.repoName;
-  const token = project.repoToken;
+  const token = decryptSecret(project.repoToken);
 
   const tasks = await db.all("SELECT id, title, prUrl, prStatus, status FROM tasks WHERE projectId = ? AND prUrl IS NOT NULL AND prUrl != ''", req.params.id);
   if (tasks.length === 0) {
@@ -4507,10 +4526,19 @@ async function startServer() {
   // Also run once on startup
   setTimeout(runBackgroundPrSync, 5000);
 
+  // Periodic hourly cleanup of unverified local registrations
+  const purgeInterval = setInterval(async () => {
+    try {
+      const db = await dbPromise;
+      await purgeStaleUnverifiedUsers(db);
+    } catch (e) {}
+  }, 60 * 60 * 1000);
+
   // Graceful shutdown
   const shutdown = () => {
     console.log("Shutting down gracefully...");
     clearInterval(syncInterval);
+    clearInterval(purgeInterval);
     server.close(() => {
       console.log("Closed out remaining connections.");
       process.exit(0);
