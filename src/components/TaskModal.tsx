@@ -414,7 +414,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                         <h3 className="text-[10px] font-bold text-subtle uppercase tracking-widest mb-3 border-b border-border-subtle pb-1">Description</h3>
                         <div className="prose dark:prose-invert prose-sm max-w-none text-primary">
                           {task.description ? (
-                            <Markdown>{task.description}</Markdown>
+                            <Markdown skipHtml={true}>{task.description}</Markdown>
                           ) : (
                             <span className="italic text-subtle">No description provided.</span>
                           )}
@@ -566,7 +566,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                                         {editCommentPreviewMode && (
                                           <div className="w-1/2 overflow-y-auto prose dark:prose-invert prose-sm max-w-none p-2 rounded border border-border-subtle bg-surface-dim text-primary font-sans h-full">
                                             {editCommentContent ? (
-                                              <Markdown>{editCommentContent}</Markdown>
+                                              <Markdown skipHtml={true}>{editCommentContent}</Markdown>
                                             ) : (
                                               <span className="text-subtle italic">Preview...</span>
                                             )}
@@ -591,7 +591,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                                     </div>
                                   ) : (
                                     <div className="prose dark:prose-invert prose-sm max-w-none text-primary">
-                                      <Markdown>{c.content}</Markdown>
+                                      <Markdown skipHtml={true}>{c.content}</Markdown>
                                     </div>
                                   )}
                                 </div>
@@ -977,7 +977,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
               {previewMode && (
                 <div className="w-1/2 h-full overflow-y-auto prose dark:prose-invert prose-sm max-w-none p-4 rounded border border-border-subtle bg-surface-dim text-primary font-sans text-sm">
                   {formData.description ? (
-                    <Markdown>{formData.description}</Markdown>
+                    <Markdown skipHtml={true}>{formData.description}</Markdown>
                   ) : (
                     <span className="text-subtle italic">No description provided.</span>
                   )}

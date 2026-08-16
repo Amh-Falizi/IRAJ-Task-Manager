@@ -121,8 +121,8 @@ app.use(helmet({
       scriptSrc: ["'self'", (req: any, res: any) => `'nonce-${res.locals.cspNonce}'`],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
-      imgSrc: ["'self'", "data:", "https:", "http:", "blob:"],
-      connectSrc: ["'self'", "https:", "http:", "ws:", "wss:"],
+      imgSrc: ["'self'", "data:", "blob:", "https://*.githubusercontent.com", "https://*.googleusercontent.com", "https://gitlab.com", "https://*.gitlab.com", "https://secure.gravatar.com"],
+      connectSrc: ["'self'", "https://github.com", "https://api.github.com", "https://gitlab.com", "https://*.gitlab.com", "https://www.googleapis.com", "https://*.googleapis.com", "ws:", "wss:"],
       frameSrc: ["'self'"],
     }
   } : false,
@@ -1377,7 +1377,7 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
     const userData = await userRes.json();
     if (!userRes.ok) throw new Error('Failed to get user data');
     if (!userData.email) throw new Error('Google account has no email address.');
-    if (userData.email_verified === false) throw new Error('Google account email is not verified.');
+    if (userData.email_verified !== true && userData.email_verified !== 'true') throw new Error('Google account email is not verified.');
 
     const email = userData.email.toLowerCase().trim();
     const db = await dbPromise;
@@ -2790,6 +2790,10 @@ app.get("/api/projects/:id/activity", authenticateToken, async (req: any, res: a
 
 app.put("/api/projects/:id", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkProjectAccess(db, req.params.id, req.user))) {
+    return res.status(403).json({ error: "Access denied: user is not a member of this project." });
+  }
+
   const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
   if (!project) return res.sendStatus(404);
 
@@ -2797,7 +2801,7 @@ app.put("/api/projects/:id", authenticateToken, async (req: any, res: any) => {
   const isProjectAdmin = pm && pm.role === 'admin';
 
   const canManageProjects = await hasPermission(req.user, "manage_projects");
-  if (!canManageProjects && project.ownerId !== req.user.id && !isProjectAdmin) {
+  if (!canManageProjects && project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
     return res.status(403).json({ error: "Only project owners, admins, or authorized roles can edit projects." });
   }
 
@@ -2814,6 +2818,10 @@ app.put("/api/projects/:id", authenticateToken, async (req: any, res: any) => {
 // Update Project Repository Settings
 app.put("/api/projects/:id/repo", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkProjectAccess(db, req.params.id, req.user))) {
+    return res.status(403).json({ error: "Access denied: user is not a member of this project." });
+  }
+
   const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
 
@@ -2821,7 +2829,7 @@ app.put("/api/projects/:id/repo", authenticateToken, async (req: any, res: any) 
   const isProjectAdmin = pm && pm.role === 'admin';
   const canManageProjects = await hasPermission(req.user, "manage_projects");
 
-  if (!canManageProjects && project.ownerId !== req.user.id && !isProjectAdmin) {
+  if (!canManageProjects && project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
     return res.status(403).json({ error: "Permission denied" });
   }
 
@@ -3331,6 +3339,10 @@ app.get("/api/projects/:id/columns", authenticateToken, async (req: any, res: an
 
 app.put("/api/projects/:id/columns", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkProjectAccess(db, req.params.id, req.user))) {
+    return res.status(403).json({ error: "Access denied: user is not a member of this project." });
+  }
+
   const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
   if (!project) return res.status(404).json({ error: "Project not found" });
 
@@ -3496,6 +3508,10 @@ app.post("/api/projects/:id/git/pull-requests/sync", authenticateToken, async (r
 
 app.delete("/api/projects/:id", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
+  if (!(await checkProjectAccess(db, req.params.id, req.user))) {
+    return res.status(403).json({ error: "Access denied: user is not a member of this project." });
+  }
+
   const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
   if (!project) return res.sendStatus(404);
 
@@ -4191,7 +4207,9 @@ app.get("/api/backup/info", authenticateToken, requireAdmin, async (req: any, re
  * GET /api/backup/download-sqlite
  * @description Initiates a binary download stream of the current active SQLite database.
  * Only valid if SQLite is the current active engine.
- * Requires authorization token.
+ * Requires super-admin authorization token.
+ * SECURITY NOTE: The SQLite database export contains bcrypt password hashes and AES-256-GCM
+ * encrypted PATs. Treat this backup export file as sensitive credential storage equivalent to a key backup.
  */
 app.get("/api/backup/download-sqlite", authenticateToken, requireSuperAdmin, async (req: any, res: any) => {
   try {
