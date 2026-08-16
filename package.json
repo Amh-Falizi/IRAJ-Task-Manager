@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start": "NODE_ENV=production node dist/server.cjs",
+    "start": "cross-env NODE_ENV=production node dist/server.cjs",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "db-cli": "tsx scripts/db-cli.ts"
@@ -28,6 +28,7 @@
     "clsx": "^2.1.1",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
+    "cross-env": "^10.1.0",
     "d3": "^7.9.0",
     "dagre": "^0.8.5",
     "date-fns": "^4.1.0",

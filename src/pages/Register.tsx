@@ -10,6 +10,7 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState('developer');
   const [error, setError] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -76,6 +77,8 @@ export default function Register() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+    setInfoMessage('');
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
@@ -85,8 +88,12 @@ export default function Register() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Registration failed');
       
-      login(undefined, data.user);
-      navigate('/');
+      if (data.requiresVerification) {
+        setInfoMessage(data.message || 'Registration successful. Please verify your email before logging in.');
+      } else if (data.user) {
+        login(undefined, data.user);
+        navigate('/');
+      }
     } catch (err: any) {
       setError(err.message);
     }
@@ -131,6 +138,7 @@ export default function Register() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && <div className="rounded border border-red-500/20 bg-red-500/10 p-2 text-xs font-bold text-red-500 uppercase">{error}</div>}
+          {infoMessage && <div className="rounded border border-emerald-500/20 bg-emerald-500/10 p-2 text-xs font-bold text-emerald-400">{infoMessage}</div>}
           
           <div className="space-y-1">
             <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block">Full Name</label>

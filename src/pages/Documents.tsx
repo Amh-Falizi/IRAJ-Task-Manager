@@ -285,6 +285,9 @@ export default function Documents() {
                 onChange={(val) => setEditContent(val || '')}
                 height="100%"
                 className="flex-1 w-full overflow-hidden"
+                previewOptions={{
+                  skipHtml: true
+                }}
               />
             </div>
           </div>

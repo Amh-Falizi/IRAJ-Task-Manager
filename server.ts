@@ -114,7 +114,7 @@ const getCookieOptions = () => {
   return {
     httpOnly: true,
     secure: isProd,
-    sameSite: "strict" as const,
+    sameSite: "lax" as const,
     path: "/",
     maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
   };
@@ -129,7 +129,7 @@ const clearAuthCookie = (res: any) => {
   res.clearCookie(AUTH_COOKIE_NAME, {
     httpOnly: true,
     secure: isProd,
-    sameSite: "strict" as const,
+    sameSite: "lax" as const,
     path: "/"
   });
 };
@@ -475,7 +475,7 @@ async function initDb(): Promise<DatabaseWrapper> {
   try {
     await db.exec("UPDATE users SET tokenVersion = 1 WHERE tokenVersion IS NULL;");
     await db.exec("UPDATE users SET authProvider = 'local' WHERE authProvider IS NULL;");
-    await db.exec("UPDATE users SET emailVerified = 1 WHERE emailVerified IS NULL OR (authProvider = 'local' AND passwordHash IS NOT NULL AND passwordHash != '');");
+    await db.exec("UPDATE users SET emailVerified = 1 WHERE emailVerified IS NULL;");
   } catch (e) {}
 
   try {
@@ -827,15 +827,23 @@ app.post("/api/auth/register", async (req, res) => {
     const userCount = await db.get("SELECT COUNT(*) as count FROM users");
     const isFirstUser = userCount.count === 0;
     const assignedRole = isFirstUser ? "super_admin" : "developer";
+    const emailVerified = isFirstUser ? 1 : 0;
 
     await db.run(
-      "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status) VALUES (?, ?, ?, ?, ?, 1, 'local', 0, 'Available')",
-      [id, name, email, passwordHash, assignedRole]
+      "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status) VALUES (?, ?, ?, ?, ?, 1, 'local', ?, 'Available')",
+      [id, name, email, passwordHash, assignedRole, emailVerified]
     );
 
-    const token = jwt.sign({ id, role: assignedRole, tokenVersion: 1 }, SECRET_KEY, { expiresIn: "7d" });
-    setAuthCookie(res, token);
-    res.json({ user: { id, name, email, role: assignedRole, rolePrefix: "" } });
+    if (emailVerified === 1) {
+      const token = jwt.sign({ id, role: assignedRole, tokenVersion: 1 }, SECRET_KEY, { expiresIn: "7d" });
+      setAuthCookie(res, token);
+      return res.json({ user: { id, name, email, role: assignedRole, rolePrefix: "" } });
+    } else {
+      return res.json({
+        message: "Registration successful. Please contact an administrator or use 'Forgot Password' to verify your email address before logging in.",
+        requiresVerification: true
+      });
+    }
   } catch (e: any) {
     console.error("REGISTER ERROR:", e);
     res.status(500).json({ error: "An unexpected error occurred during registration." });
@@ -864,6 +872,10 @@ app.post("/api/auth/login", async (req, res) => {
 
     if (user.status && (user.status.toLowerCase() === 'inactive' || user.status.toLowerCase() === 'disabled' || user.status.toLowerCase() === 'suspended')) {
       return res.status(403).json({ error: "Account is inactive or disabled. Contact administrator." });
+    }
+
+    if (user.emailVerified === 0 || user.emailVerified === false) {
+      return res.status(403).json({ error: "Email address is not verified. Please verify your account or contact an administrator before logging in." });
     }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
@@ -1196,6 +1208,8 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
         } else {
           throw new Error("GitLab email is not confirmed. Please confirm your email on GitLab before linking.");
         }
+      } else if (user.authProvider !== 'gitlab') {
+        throw new Error(`An account with this email already exists registered via ${user.authProvider}. Please sign in using ${user.authProvider}.`);
       }
     }
 
@@ -1319,6 +1333,8 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
         } else {
           throw new Error("An account with this email already exists locally with verified status. Please sign in with your email and password.");
         }
+      } else if (user.authProvider !== 'google') {
+        throw new Error(`An account with this email already exists registered via ${user.authProvider}. Please sign in using ${user.authProvider}.`);
       }
     }
 
@@ -1466,6 +1482,8 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
         } else {
           throw new Error("An account with this email already exists locally with verified status. Please sign in with your email and password.");
         }
+      } else if (user.authProvider !== 'github') {
+        throw new Error(`An account with this email already exists registered via ${user.authProvider}. Please sign in using ${user.authProvider}.`);
       }
     }
 
