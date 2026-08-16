@@ -31,10 +31,11 @@ const safeJsonForScriptTag = (obj: any) => {
 };
 
 const getAppUrl = (req: any) => {
-  if (process.env.APP_URL && /^https?:\/\//i.test(process.env.APP_URL)) {
+  if (process.env.APP_URL && /^https?:\/\/[a-zA-Z0-9.-]+/i.test(process.env.APP_URL)) {
     return process.env.APP_URL.replace(/\/$/, '');
   }
-  const protocol = ((req.headers['x-forwarded-proto'] || req.protocol || 'http') as string).split(',')[0].trim();
+  const isProd = process.env.NODE_ENV === 'production';
+  const protocol = isProd ? 'https' : (((req.headers['x-forwarded-proto'] || req.protocol || 'http') as string).split(',')[0].trim());
   const rawHost = ((req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000') as string).split(',')[0].trim();
   const cleanHost = rawHost.replace(/[^a-zA-Z0-9.:-]/g, '');
   return `${protocol}://${cleanHost}`;
@@ -436,6 +437,13 @@ async function initDb(): Promise<DatabaseWrapper> {
     await db.exec("ALTER TABLE users ADD COLUMN emailVerified INTEGER DEFAULT 0;");
   } catch (e) {}
 
+  // Backfill existing users: ensure tokenVersion is set, and verified local/oauth users cannot be hijacked
+  try {
+    await db.exec("UPDATE users SET tokenVersion = 1 WHERE tokenVersion IS NULL;");
+    await db.exec("UPDATE users SET authProvider = 'local' WHERE authProvider IS NULL;");
+    await db.exec("UPDATE users SET emailVerified = 1 WHERE emailVerified IS NULL OR (authProvider = 'local' AND passwordHash IS NOT NULL AND passwordHash != '');");
+  } catch (e) {}
+
   try {
     await db.exec(`
       CREATE TABLE IF NOT EXISTS project_columns (
@@ -652,7 +660,9 @@ const authenticateToken = (req: any, res: any, next: any) => {
       if (user.status && (user.status.toLowerCase() === 'inactive' || user.status.toLowerCase() === 'disabled' || user.status.toLowerCase() === 'suspended')) {
         return res.status(403).json({ error: "Account is inactive or disabled." });
       }
-      if (decodedUser.tokenVersion !== undefined && user.tokenVersion !== undefined && decodedUser.tokenVersion !== user.tokenVersion) {
+      const userTokenVersion = user.tokenVersion ?? 1;
+      const decodedTokenVersion = decodedUser.tokenVersion;
+      if (decodedTokenVersion === undefined || decodedTokenVersion !== userTokenVersion) {
         return res.status(401).json({ error: "Session expired or revoked. Please sign in again." });
       }
       req.user = user;
@@ -770,7 +780,7 @@ app.post("/api/auth/register", async (req, res) => {
     const assignedRole = isFirstUser ? "super_admin" : "developer";
 
     await db.run(
-      "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status) VALUES (?, ?, ?, ?, ?, 1, 'local', 0, 'Available')",
+      "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status) VALUES (?, ?, ?, ?, ?, 1, 'local', 1, 'Available')",
       [id, name, email, passwordHash, assignedRole]
     );
 
@@ -911,6 +921,18 @@ app.post("/api/auth/reset-password", async (req, res) => {
 });
 
 // OAuth State Management & Security
+const usedOAuthNonces = new Map<string, number>();
+
+// Clean up expired nonces every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [nonce, timestamp] of usedOAuthNonces.entries()) {
+    if (now - timestamp > 20 * 60 * 1000) {
+      usedOAuthNonces.delete(nonce);
+    }
+  }
+}, 10 * 60 * 1000);
+
 const createSignedOAuthState = (provider: string, redirectUri: string): string => {
   const nonce = crypto.randomBytes(16).toString('hex');
   const timestamp = Date.now().toString();
@@ -927,16 +949,21 @@ const verifyOAuthState = (req: any, provider: string, state: any): string => {
   try {
     const raw = Buffer.from(state, 'base64url').toString('utf8');
     const parsed = JSON.parse(raw);
-    if (!parsed || parsed.provider !== provider || !parsed.sig || !parsed.timestamp || !parsed.redirectUri) {
+    if (!parsed || parsed.provider !== provider || !parsed.sig || !parsed.timestamp || !parsed.redirectUri || !parsed.nonce) {
       return defaultRedirect;
     }
     // Check state expiry (15 minutes)
     if (Date.now() - parseInt(parsed.timestamp, 10) > 15 * 60 * 1000) {
       return defaultRedirect;
     }
+    // Prevent replay attacks by ensuring nonce is used only once
+    if (usedOAuthNonces.has(parsed.nonce)) {
+      return defaultRedirect;
+    }
     const payload = `${parsed.provider}:${parsed.redirectUri}:${parsed.nonce}:${parsed.timestamp}`;
     const expectedSig = crypto.createHmac('sha256', SECRET_KEY).update(payload).digest('hex');
     if (crypto.timingSafeEqual(Buffer.from(parsed.sig), Buffer.from(expectedSig))) {
+      usedOAuthNonces.set(parsed.nonce, Date.now());
       return getValidatedCallbackRedirect(req, provider, parsed.redirectUri);
     }
   } catch (e) {
@@ -1076,15 +1103,21 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
         throw new Error("Account is inactive or disabled. Contact administrator.");
       }
       // If the account was registered locally and unverified, link it securely and revoke existing sessions
-      if (user.authProvider === 'local' && (!user.emailVerified || isEmailConfirmed)) {
-        const randomPassword = crypto.randomBytes(32).toString('hex');
-        const salt = await bcrypt.genSalt(10);
-        const hash = await bcrypt.hash(randomPassword, salt);
-        await db.run(
-          "UPDATE users SET passwordHash = ?, authProvider = 'gitlab', emailVerified = 1, tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?",
-          [hash, user.id]
-        );
-        user = await db.get("SELECT id, name, email, role, status, tokenVersion FROM users WHERE id = ?", user.id);
+      if (user.authProvider === 'local') {
+        if (!user.emailVerified && isEmailConfirmed) {
+          const randomPassword = crypto.randomBytes(32).toString('hex');
+          const salt = await bcrypt.genSalt(10);
+          const hash = await bcrypt.hash(randomPassword, salt);
+          await db.run(
+            "UPDATE users SET passwordHash = ?, authProvider = 'gitlab', emailVerified = 1, tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?",
+            [hash, user.id]
+          );
+          user = await db.get("SELECT id, name, email, role, status, tokenVersion FROM users WHERE id = ?", user.id);
+        } else if (user.emailVerified) {
+          throw new Error("An account with this email already exists locally with verified status. Please sign in with your email and password.");
+        } else {
+          throw new Error("GitLab email is not confirmed. Please confirm your email on GitLab before linking.");
+        }
       }
     }
 
@@ -1195,15 +1228,19 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
         throw new Error("Account is inactive or disabled. Contact administrator.");
       }
       // If the account was registered locally and unverified, link it securely and revoke existing sessions
-      if (user.authProvider === 'local' && !user.emailVerified) {
-        const randomPassword = crypto.randomBytes(32).toString('hex');
-        const salt = await bcrypt.genSalt(10);
-        const hash = await bcrypt.hash(randomPassword, salt);
-        await db.run(
-          "UPDATE users SET passwordHash = ?, authProvider = 'google', emailVerified = 1, tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?",
-          [hash, user.id]
-        );
-        user = await db.get("SELECT id, name, email, role, status, tokenVersion FROM users WHERE id = ?", user.id);
+      if (user.authProvider === 'local') {
+        if (!user.emailVerified) {
+          const randomPassword = crypto.randomBytes(32).toString('hex');
+          const salt = await bcrypt.genSalt(10);
+          const hash = await bcrypt.hash(randomPassword, salt);
+          await db.run(
+            "UPDATE users SET passwordHash = ?, authProvider = 'google', emailVerified = 1, tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?",
+            [hash, user.id]
+          );
+          user = await db.get("SELECT id, name, email, role, status, tokenVersion FROM users WHERE id = ?", user.id);
+        } else {
+          throw new Error("An account with this email already exists locally with verified status. Please sign in with your email and password.");
+        }
       }
     }
 
@@ -1338,15 +1375,19 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
         throw new Error("Account is inactive or disabled. Contact administrator.");
       }
       // If the account was registered locally and unverified, link it securely and revoke existing sessions
-      if (user.authProvider === 'local' && !user.emailVerified) {
-        const randomPassword = crypto.randomBytes(32).toString('hex');
-        const salt = await bcrypt.genSalt(10);
-        const hash = await bcrypt.hash(randomPassword, salt);
-        await db.run(
-          "UPDATE users SET passwordHash = ?, authProvider = 'github', emailVerified = 1, tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?",
-          [hash, user.id]
-        );
-        user = await db.get("SELECT id, name, email, role, status, tokenVersion FROM users WHERE id = ?", user.id);
+      if (user.authProvider === 'local') {
+        if (!user.emailVerified) {
+          const randomPassword = crypto.randomBytes(32).toString('hex');
+          const salt = await bcrypt.genSalt(10);
+          const hash = await bcrypt.hash(randomPassword, salt);
+          await db.run(
+            "UPDATE users SET passwordHash = ?, authProvider = 'github', emailVerified = 1, tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?",
+            [hash, user.id]
+          );
+          user = await db.get("SELECT id, name, email, role, status, tokenVersion FROM users WHERE id = ?", user.id);
+        } else {
+          throw new Error("An account with this email already exists locally with verified status. Please sign in with your email and password.");
+        }
       }
     }
 
@@ -1548,21 +1589,35 @@ app.get("/api/users", authenticateToken, async (req: any, res: any) => {
     return res.json(users.map((u: any) => ({ ...u, skills: u.skills ? JSON.parse(u.skills) : [], rolePrefix: u.rolePrefix || "", status: u.status || "Available" })));
   }
 
-  // Non-admins only get active directory users, preserving privacy while allowing project assignment
+  // Non-admins only get peers who share projects/teams with them (and self), preventing stranger enumeration
   const users = await db.all(`
-    SELECT DISTINCT u.id, u.name, u.role, u.skills, u.rolePrefix, u.status,
-      CASE 
-        WHEN u.id = ? THEN u.email
-        WHEN pm_peer.userId IS NOT NULL OR tm_peer.userId IS NOT NULL THEN u.email
-        ELSE ''
-      END as email
+    SELECT DISTINCT u.id, u.name, u.role, u.skills, u.rolePrefix, u.status, u.email
     FROM users u
-    LEFT JOIN project_members pm_my ON pm_my.userId = ?
-    LEFT JOIN project_members pm_peer ON pm_peer.projectId = pm_my.projectId AND pm_peer.userId = u.id
-    LEFT JOIN team_members tm_my ON tm_my.userId = ?
-    LEFT JOIN team_members tm_peer ON tm_peer.teamId = tm_my.teamId AND tm_peer.userId = u.id
+    JOIN (
+      SELECT ? as peerId
+      UNION
+      SELECT pm_peer.userId as peerId
+      FROM project_members pm_my
+      JOIN project_members pm_peer ON pm_peer.projectId = pm_my.projectId
+      WHERE pm_my.userId = ?
+      UNION
+      SELECT p.ownerId as peerId
+      FROM project_members pm_my
+      JOIN projects p ON p.id = pm_my.projectId
+      WHERE pm_my.userId = ?
+      UNION
+      SELECT pm.userId as peerId
+      FROM projects p
+      JOIN project_members pm ON pm.projectId = p.id
+      WHERE p.ownerId = ?
+      UNION
+      SELECT tm_peer.userId as peerId
+      FROM team_members tm_my
+      JOIN team_members tm_peer ON tm_peer.teamId = tm_my.teamId
+      WHERE tm_my.userId = ?
+    ) peers ON peers.peerId = u.id
     WHERE u.status IS NULL OR (LOWER(u.status) != 'disabled' AND LOWER(u.status) != 'inactive' AND LOWER(u.status) != 'suspended')
-  `, [req.user.id, req.user.id, req.user.id]);
+  `, [req.user.id, req.user.id, req.user.id, req.user.id, req.user.id]);
   
   res.json(users.map((u: any) => ({ ...u, skills: u.skills ? JSON.parse(u.skills) : [], rolePrefix: u.rolePrefix || "", status: u.status || "Available" })));
 });
@@ -3157,6 +3212,11 @@ app.post("/api/projects/:id/git/pull-requests/sync", authenticateToken, async (r
 
   if (!owner || !name || !token) {
     return res.status(400).json({ error: "Repository or authentication credentials are not configured for this project." });
+  }
+
+  const canUsePat = await isProjectAdminOrOwner(db, req.params.id, req.user) || await hasPermission(req.user, "manage_projects");
+  if (!canUsePat) {
+    return res.status(403).json({ error: "Only project administrators or project managers can execute remote repository sync using the configured token." });
   }
 
   let updatedCount = 0;

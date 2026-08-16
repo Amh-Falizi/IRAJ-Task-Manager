@@ -54,7 +54,7 @@ export const STATUS_OPTIONS = [
 ];
 
 export default function Profile() {
-  const { user, token, updateUser } = useAuth();
+  const { user, token, updateUser, login } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { success, error } = useToast();
   const { gitEnabled } = useGitFeature();
@@ -422,6 +422,10 @@ export default function Profile() {
       });
 
       if (res.ok) {
+        const data = await res.json();
+        if (data.token && user && login) {
+          login(data.token, user);
+        }
         success("Password changed successfully.");
         setIsChangingPassword(false);
         setPasswordData({ currentPassword: '', newPassword: '' });
