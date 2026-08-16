@@ -100,10 +100,11 @@ export default function Board() {
           });
           if (res.ok) {
             const data = await res.json();
-            if (data.columns && Array.isArray(data.columns) && data.columns.length > 0) {
+            const serverCols = Array.isArray(data) ? data : (data && data.columns && Array.isArray(data.columns) ? data.columns : null);
+            if (serverCols && serverCols.length > 0) {
               if (isMounted) {
-                setColumns(data.columns);
-                localStorage.setItem(`board-columns-${projectId}`, JSON.stringify(data.columns));
+                setColumns(serverCols);
+                localStorage.setItem(`board-columns-${projectId}`, JSON.stringify(serverCols));
                 currentProjectIdRef.current = projectId;
                 return;
               }

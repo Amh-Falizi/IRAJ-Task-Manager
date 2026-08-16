@@ -61,8 +61,9 @@ if (process.env.NODE_ENV === "production") {
     console.error("FATAL ERROR: SECRET_KEY environment variable MUST be explicitly set to a secure secret in production mode.");
     process.exit(1);
   }
-  if (!process.env.APP_URL || process.env.APP_URL.trim() === '') {
-    console.error("FATAL ERROR: APP_URL environment variable MUST be explicitly set to the application's base URL in production mode.");
+  const appUrl = process.env.APP_URL ? process.env.APP_URL.trim() : '';
+  if (!appUrl || appUrl === 'MY_APP_URL' || !/^https?:\/\/[a-zA-Z0-9.-]+/i.test(appUrl)) {
+    console.error("FATAL ERROR: APP_URL environment variable MUST be explicitly set to a valid URL starting with http:// or https:// (e.g. https://your-domain.com) in production mode.");
     process.exit(1);
   }
 } else if (!process.env.SECRET_KEY) {
@@ -1107,34 +1108,35 @@ const createSignedOAuthState = (provider: string, redirectUri: string): string =
 };
 
 const verifyOAuthState = (req: any, provider: string, state: any): string => {
-  const defaultRedirect = `${getAppUrl(req)}/api/auth/${provider}/callback`;
   if (!state || typeof state !== 'string') {
-    return defaultRedirect;
+    throw new Error('Missing or invalid OAuth state parameter (CSRF verification failed).');
   }
   try {
     const raw = Buffer.from(state, 'base64url').toString('utf8');
     const parsed = JSON.parse(raw);
     if (!parsed || parsed.provider !== provider || !parsed.sig || !parsed.timestamp || !parsed.redirectUri || !parsed.nonce) {
-      return defaultRedirect;
+      throw new Error('Malformed OAuth state parameter.');
     }
     // Check state expiry (15 minutes)
     if (Date.now() - parseInt(parsed.timestamp, 10) > 15 * 60 * 1000) {
-      return defaultRedirect;
+      throw new Error('OAuth state parameter has expired. Please try signing in again.');
     }
     // Prevent replay attacks by ensuring nonce is used only once
     if (usedOAuthNonces.has(parsed.nonce)) {
-      return defaultRedirect;
+      throw new Error('OAuth state parameter has already been used. Please try signing in again.');
     }
     const payload = `${parsed.provider}:${parsed.redirectUri}:${parsed.nonce}:${parsed.timestamp}`;
     const expectedSig = crypto.createHmac('sha256', SECRET_KEY).update(payload).digest('hex');
     if (crypto.timingSafeEqual(Buffer.from(parsed.sig), Buffer.from(expectedSig))) {
       usedOAuthNonces.set(parsed.nonce, Date.now());
       return getValidatedCallbackRedirect(req, provider, parsed.redirectUri);
+    } else {
+      throw new Error('OAuth state signature verification failed.');
     }
-  } catch (e) {
-    // fallback
+  } catch (e: any) {
+    if (e.message && e.message.includes('OAuth')) throw e;
+    throw new Error('OAuth state verification failed. Authentication aborted for security.');
   }
-  return defaultRedirect;
 };
 
 // GitLab OAuth
@@ -1195,13 +1197,12 @@ app.get("/api/auth/gitlab/url", (req, res) => {
 
 app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
   const { code, state } = req.query;
-  const redirectUri = verifyOAuthState(req, "gitlab", state);
-
   const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
   const clientId = process.env.GITLAB_CLIENT_ID || '';
   const clientSecret = process.env.GITLAB_CLIENT_SECRET || '';
 
   try {
+    const redirectUri = verifyOAuthState(req, "gitlab", state);
     if (!code) throw new Error('No authorization code provided');
     if (!clientId) throw new Error('GITLAB_CLIENT_ID not configured');
 
@@ -1348,12 +1349,11 @@ app.get("/api/auth/google/url", (req, res) => {
 
 app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req: any, res: any) => {
   const { code, state } = req.query;
-  const redirectUri = verifyOAuthState(req, "google", state);
-
   const clientId = process.env.GOOGLE_CLIENT_ID || '';
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
 
   try {
+    const redirectUri = verifyOAuthState(req, "google", state);
     if (!code) throw new Error('No authorization code provided');
     if (!clientId) throw new Error('GOOGLE_CLIENT_ID not configured');
 
@@ -1472,12 +1472,11 @@ app.get("/api/auth/github/url", (req, res) => {
 
 app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req: any, res: any) => {
   const { code, state } = req.query;
-  const redirectUri = verifyOAuthState(req, "github", state);
-
   const clientId = process.env.GITHUB_CLIENT_ID || '';
   const clientSecret = process.env.GITHUB_CLIENT_SECRET || '';
 
   try {
+    const redirectUri = verifyOAuthState(req, "github", state);
     if (!code) throw new Error('No authorization code provided');
     if (!clientId) throw new Error('GITHUB_CLIENT_ID not configured');
 
@@ -1522,8 +1521,6 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
       } else if (verifiedAny) {
         email = verifiedAny.email;
       }
-    } else if (userData.email) {
-      email = userData.email;
     }
 
     if (!email) throw new Error('GitHub account has no verified email address. Please make sure your primary email is verified on GitHub.');
