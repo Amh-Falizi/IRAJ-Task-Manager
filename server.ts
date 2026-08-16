@@ -162,7 +162,7 @@ app.use("/api/", apiLimiter);
 // Protect auth routes more strictly
 const authLimiter = rateLimit({
   windowMs: 60 * 1000 * 60, // 1 hour window
-  max: 200, // start blocking after 200 requests
+  max: 50, // limit to 50 auth requests per hour
   validate: { xForwardedForHeader: false },
   message: { error: "Too many auth attempts from this IP, please try again after an hour" }
 });
@@ -892,8 +892,8 @@ app.post("/api/auth/register", async (req, res) => {
     if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ error: "A valid email address is required." });
     }
-    if (!password || typeof password !== 'string' || password.length < 6) {
-      return res.status(400).json({ error: "Password must be at least 6 characters long." });
+    if (!password || typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters long." });
     }
 
     email = email.toLowerCase().trim();
@@ -1073,8 +1073,8 @@ app.post("/api/auth/reset-password", async (req, res) => {
   try {
     const { token, newPassword } = req.body;
     if (!token || typeof token !== 'string') return res.status(400).json({ error: "Invalid token." });
-    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
-      return res.status(400).json({ error: "New password must be at least 6 characters long." });
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+      return res.status(400).json({ error: "New password must be at least 8 characters long." });
     }
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
@@ -2907,7 +2907,7 @@ app.get("/api/projects/:id/git/branches", authenticateToken, async (req: any, re
   const name = project.repoName;
   const token = decryptSecret(project.repoToken);
 
-  const canUsePat = await isProjectAdminOrOwner(db, req.params.id, req.user) || await hasPermission(req.user, "manage_projects");
+  const canUsePat = await isProjectAdminOrOwner(db, req.params.id, req.user);
 
   if (!owner || !name || !canUsePat) {
     // Fallback: return local task-linked branches
@@ -3052,11 +3052,11 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
   const name = project.repoName;
   const token = decryptSecret(project.repoToken);
 
-  // Protect against Confused Deputy: only project admins/owners/managers can execute remote Git operations with configured PAT
+  // Protect against Confused Deputy: only project admins/owners can execute remote Git operations with configured PAT
   if (owner && name && token) {
-    const canUsePat = await isProjectAdminOrOwner(db, req.params.id, req.user) || await hasPermission(req.user, "manage_projects");
+    const canUsePat = await isProjectAdminOrOwner(db, req.params.id, req.user);
     if (!canUsePat) {
-      return res.status(403).json({ error: "Only project administrators or project managers can execute remote repository operations using the configured repository token." });
+      return res.status(403).json({ error: "Only project administrators or owners can execute remote repository operations using the configured repository token." });
     }
   }
 
@@ -3229,11 +3229,11 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
   const name = project.repoName;
   const token = decryptSecret(project.repoToken);
 
-  // Protect against Confused Deputy: only project admins/owners/managers can execute remote Git operations with configured PAT
+  // Protect against Confused Deputy: only project admins/owners can execute remote Git operations with configured PAT
   if (owner && name && token) {
-    const canUsePat = await isProjectAdminOrOwner(db, req.params.id, req.user) || await hasPermission(req.user, "manage_projects");
+    const canUsePat = await isProjectAdminOrOwner(db, req.params.id, req.user);
     if (!canUsePat) {
-      return res.status(403).json({ error: "Only project administrators or project managers can execute remote repository operations using the configured repository token." });
+      return res.status(403).json({ error: "Only project administrators or owners can execute remote repository operations using the configured repository token." });
     }
   }
 
@@ -3415,9 +3415,9 @@ app.post("/api/projects/:id/git/pull-requests/sync", authenticateToken, async (r
     return res.status(400).json({ error: "Repository or authentication credentials are not configured for this project." });
   }
 
-  const canUsePat = await isProjectAdminOrOwner(db, req.params.id, req.user) || await hasPermission(req.user, "manage_projects");
+  const canUsePat = await isProjectAdminOrOwner(db, req.params.id, req.user);
   if (!canUsePat) {
-    return res.status(403).json({ error: "Only project administrators or project managers can execute remote repository sync using the configured token." });
+    return res.status(403).json({ error: "Only project administrators or owners can execute remote repository sync using the configured token." });
   }
 
   let updatedCount = 0;
