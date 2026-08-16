@@ -207,6 +207,7 @@ interface DatabaseWrapper {
   run(sql: string, params?: any | any[]): Promise<void>;
   get(sql: string, params?: any | any[]): Promise<any>;
   all(sql: string, params?: any | any[]): Promise<any[]>;
+  transaction<T>(callback: (tx: DatabaseWrapper) => Promise<T>): Promise<T>;
   close?(): Promise<void>;
 }
 
@@ -247,6 +248,40 @@ class PgWrapper implements DatabaseWrapper {
     const result = await this.pool.query(converted, this.mapParams(params));
     return result.rows;
   }
+  async transaction<T>(callback: (tx: DatabaseWrapper) => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    const txWrapper: DatabaseWrapper = {
+      isPg: true,
+      exec: async (sql: string) => { await client.query(sql); },
+      run: async (sql: string, params: any[] = []) => { 
+        if (!Array.isArray(params)) params = [params];
+        await client.query(this.convertSql(sql), this.mapParams(params)); 
+      },
+      get: async (sql: string, params: any[] = []) => { 
+        if (!Array.isArray(params)) params = [params];
+        const res = await client.query(this.convertSql(sql), this.mapParams(params)); 
+        return res.rows[0]; 
+      },
+      all: async (sql: string, params: any[] = []) => { 
+        if (!Array.isArray(params)) params = [params];
+        const res = await client.query(this.convertSql(sql), this.mapParams(params)); 
+        return res.rows; 
+      },
+      transaction: async <U>(cb: (tx: DatabaseWrapper) => Promise<U>) => cb(txWrapper)
+    };
+
+    try {
+      await client.query("BEGIN");
+      const result = await callback(txWrapper);
+      await client.query("COMMIT");
+      return result;
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
   async close() {
     await this.pool.end();
   }
@@ -272,6 +307,17 @@ class SqliteWrapper implements DatabaseWrapper {
   async all(sql: string, params: any[] = []) {
     if (!Array.isArray(params)) params = [params];
     return await this.db.all(sql, ...params);
+  }
+  async transaction<T>(callback: (tx: DatabaseWrapper) => Promise<T>): Promise<T> {
+    await this.run("BEGIN IMMEDIATE");
+    try {
+      const result = await callback(this);
+      await this.run("COMMIT");
+      return result;
+    } catch (e) {
+      await this.run("ROLLBACK");
+      throw e;
+    }
   }
   async close() {
     if (this.db) {
@@ -903,21 +949,18 @@ app.post("/api/auth/register", async (req, res) => {
     email = email.toLowerCase().trim();
     const db = await dbPromise;
 
-    await db.run("BEGIN IMMEDIATE");
-    try {
-      const existing = await db.get("SELECT * FROM users WHERE email = ?", email);
+    const result = await db.transaction(async (tx) => {
+      const existing = await tx.get("SELECT * FROM users WHERE email = ?", email);
       if (existing) {
         if (existing.authProvider === 'local' && (existing.emailVerified === 0 || existing.emailVerified === false)) {
           const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
           if (existing.createdAt && existing.createdAt > oneDayAgo) {
-            await db.run("ROLLBACK");
-            return res.status(400).json({ error: "Email is already registered and pending verification. Please wait 24 hours before re-registering." });
+            throw new Error("Email is already registered and pending verification. Please wait 24 hours before re-registering.");
           }
           // Clear previous unverified reservation so the legitimate user can register
-          await db.run("DELETE FROM users WHERE id = ?", existing.id);
+          await tx.run("DELETE FROM users WHERE id = ?", existing.id);
         } else {
-          await db.run("ROLLBACK");
-          return res.status(400).json({ error: "Email already exists" });
+          throw new Error("Email already exists");
         }
       }
 
@@ -926,32 +969,33 @@ app.post("/api/auth/register", async (req, res) => {
       const id = uuidv4();
       const createdAt = new Date().toISOString();
 
-      const userCount = await db.get("SELECT COUNT(*) as count FROM users");
-      const isFirstUser = userCount.count === 0;
+      const userCount = await tx.get("SELECT COUNT(*) as count FROM users");
+      const isFirstUser = parseInt(userCount.count, 10) === 0;
       const assignedRole = isFirstUser ? "super_admin" : "developer";
       const emailVerified = isFirstUser ? 1 : 0;
 
-      await db.run(
+      await tx.run(
         "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status, createdAt) VALUES (?, ?, ?, ?, ?, 1, 'local', ?, 'Available', ?)",
         [id, name, email, passwordHash, assignedRole, emailVerified, createdAt]
       );
-      await db.run("COMMIT");
+      
+      return { id, name, email, role: assignedRole, emailVerified };
+    });
 
-      if (emailVerified === 1) {
-        const token = jwt.sign({ id, role: assignedRole, tokenVersion: 1 }, SECRET_KEY, { expiresIn: "7d" });
-        setAuthCookie(res, token);
-        return res.json({ user: { id, name, email, role: assignedRole, rolePrefix: "" } });
-      } else {
-        return res.json({
-          message: "Registration successful. Please contact an administrator or use 'Forgot Password' to verify your email address before logging in.",
-          requiresVerification: true
-        });
-      }
-    } catch (e: any) {
-      await db.run("ROLLBACK");
-      throw e;
+    if (result.emailVerified === 1) {
+      const token = jwt.sign({ id: result.id, role: result.role, tokenVersion: 1 }, SECRET_KEY, { expiresIn: "7d" });
+      setAuthCookie(res, token);
+      return res.json({ user: { id: result.id, name: result.name, email: result.email, role: result.role, rolePrefix: "" } });
+    } else {
+      return res.json({
+        message: "Registration successful. Please contact an administrator or use 'Forgot Password' to verify your email address before logging in.",
+        requiresVerification: true
+      });
     }
   } catch (e: any) {
+    if (e.message && (e.message.includes("Email already") || e.message.includes("pending verification"))) {
+      return res.status(400).json({ error: e.message });
+    }
     console.error("REGISTER ERROR:", e);
     res.status(500).json({ error: "An unexpected error occurred during registration." });
   }
@@ -2413,13 +2457,14 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
     }
   }
 
-  let canEditAllTasks = await hasPermission(req.user, "edit_all_tasks");
-  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [task.projectId, req.user.id]);
-  if (pm && pm.role === 'viewer') {
-    canEditAllTasks = false;
+  let canManageTask = false;
+  if (task.projectId) {
+    canManageTask = await isProjectAdminOrOwner(db, task.projectId, req.user);
+  } else {
+    canManageTask = isAdminOrSuperAdmin(req.user);
   }
 
-  if (!canEditAllTasks) {
+  if (!canManageTask) {
     if (task.assigneeId !== req.user.id && task.creatorId !== req.user.id) {
       return res.status(403).json({ error: "Only admins, managers, the assigned contributor, or the task creator can update this task." });
     }
@@ -2470,7 +2515,7 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
     }
   }
 
-  if (!canEditAllTasks && task.creatorId !== req.user.id && task.assigneeId !== req.user.id) {
+  if (!canManageTask && task.creatorId !== req.user.id && task.assigneeId !== req.user.id) {
     return res.status(403).json({ error: "Only authorized roles, task creators, or assignees can edit tasks." });
   }
 
@@ -2581,14 +2626,15 @@ app.delete("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
     }
   }
 
-  let canDeleteTasks = await hasPermission(req.user, "delete_tasks");
-  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [task.projectId, req.user.id]);
-  if (pm && pm.role === 'viewer') {
-    canDeleteTasks = false;
+  let canManageTask = false;
+  if (task.projectId) {
+    canManageTask = await isProjectAdminOrOwner(db, task.projectId, req.user);
+  } else {
+    canManageTask = isAdminOrSuperAdmin(req.user);
   }
 
-  if (!canDeleteTasks && task.creatorId !== req.user.id) {
-    return res.status(403).json({ error: "You do not have permission to delete this task." });
+  if (!canManageTask && task.creatorId !== req.user.id) {
+    return res.status(403).json({ error: "Only project admins, owners, or the task creator can delete this task." });
   }
 
   await db.run("DELETE FROM tasks WHERE id = ?", req.params.id);
@@ -4145,58 +4191,6 @@ const requireSuperAdmin = (req: any, res: any, next: any) => {
 };
 
 /**
- * Helper function to swap the active SQLite database in-memory and on-disk.
- * Closures the existing wrapper connection, makes a `.bak` copy of the active file,
- * writes the new buffer over the old path, and rebuilds the SQLite connection with performance optimizations.
- * 
- * @param {Buffer} newBuffer - The binary buffer content representing the new SQLite database.
- * @throws {Error} If database re-initialization fails.
- */
-async function swapSqliteDatabase(newBuffer: Buffer) {
-  try {
-    const dbWrapper = await dbPromise;
-    if (dbWrapper && typeof dbWrapper.close === 'function') {
-      await dbWrapper.close();
-    }
-  } catch (e) {
-    console.warn("Failed to close active DB during swap:", e);
-  }
-
-  // Backup current file to prevent loss in case of subsequent load issues
-  const backupPath = activeSqlitePath + ".bak";
-  if (fs.existsSync(activeSqlitePath)) {
-    try {
-      fs.copyFileSync(activeSqlitePath, backupPath);
-    } catch (e) {
-      console.error("Failed to make a .bak backup:", e);
-    }
-  }
-
-  // Write new database file onto disk
-  fs.writeFileSync(activeSqlitePath, newBuffer);
-
-  // Re-initialize sqlite connection with WAL journal mode, NORMAL synchrony, and foreign key support
-  dbPromise = (async () => {
-    const { open } = await import("sqlite");
-    const sqlite3 = (await import("sqlite3")).default;
-
-    let sqliteDb = await open({
-      filename: activeSqlitePath,
-      driver: sqlite3.Database
-    });
-
-    const db = new SqliteWrapper(sqliteDb);
-    await db.exec("PRAGMA journal_mode = WAL;");
-    await db.exec("PRAGMA synchronous = NORMAL;");
-    await db.exec("PRAGMA foreign_keys = ON;");
-    return db;
-  })();
-
-  // Test connection to verify everything is operational
-  await dbPromise;
-}
-
-/**
  * GET /api/backup/info
  * @description Retrieves current database metadata, active engine (SQLite vs PostgreSQL), 
  * and row count statistics across core workspace tables (Users, Tasks, Projects, Teams, Documents).
@@ -4234,64 +4228,6 @@ app.get("/api/backup/info", authenticateToken, requireAdmin, async (req: any, re
   } catch (error: any) {
     console.error("Backup info error:", error);
     res.status(500).json({ error: "Failed to get database details." });
-  }
-});
-
-/**
- * GET /api/backup/download-sqlite
- * @description Initiates a binary download stream of the current active SQLite database.
- * Only valid if SQLite is the current active engine.
- * Requires super-admin authorization token.
- * SECURITY NOTE: The SQLite database export contains bcrypt password hashes and AES-256-GCM
- * encrypted PATs. Treat this backup export file as sensitive credential storage equivalent to a key backup.
- */
-app.get("/api/backup/download-sqlite", authenticateToken, requireSuperAdmin, async (req: any, res: any) => {
-  try {
-    const db = await dbPromise;
-    const isSqlite = !(db instanceof PgWrapper);
-    if (!isSqlite) {
-      return res.status(400).json({ error: "SQLite backup is not available when running on PostgreSQL." });
-    }
-
-    if (!fs.existsSync(activeSqlitePath)) {
-      return res.status(404).json({ error: "SQLite database file not found on server." });
-    }
-
-    res.download(activeSqlitePath, "workspace-backup.sqlite");
-  } catch (error: any) {
-    console.error("SQLite download error:", error);
-    res.status(500).json({ error: "Failed to download SQLite backup." });
-  }
-});
-
-/**
- * POST /api/backup/restore-sqlite
- * @description Overwrites the active SQLite database file with an uploaded binary backup.
- * Restarts the internal database wrapper connection upon successful upload.
- * Requires authorization token and raw application/octet-stream payload.
- */
-app.post("/api/backup/restore-sqlite", authenticateToken, requireSuperAdmin, express.raw({ type: "application/octet-stream", limit: "50mb" }), async (req: any, res: any) => {
-  try {
-    const db = await dbPromise;
-    const isSqlite = !(db instanceof PgWrapper);
-    if (!isSqlite) {
-      return res.status(400).json({ error: "SQLite restore is not available when running on PostgreSQL." });
-    }
-
-    const buffer = req.body;
-    if (!buffer || buffer.length === 0) {
-      return res.status(400).json({ error: "No database binary content received." });
-    }
-
-    if (buffer.length < 16 || buffer.subarray(0, 16).toString("utf8") !== "SQLite format 3\0") {
-      return res.status(400).json({ error: "Invalid SQLite database file: magic header mismatch." });
-    }
-
-    await swapSqliteDatabase(buffer);
-    res.json({ success: true, message: "SQLite database restored successfully!" });
-  } catch (error: any) {
-    console.error("Restore SQLite error:", error);
-    res.status(500).json({ error: `Failed to restore SQLite database: ${error.message}` });
   }
 });
 
@@ -4378,15 +4314,14 @@ app.post("/api/backup/restore-json", authenticateToken, requireSuperAdmin, async
     };
 
     // Execute wipe and sequential restore inside a transactional block
-    await db.exec("BEGIN TRANSACTION;");
-    try {
+    await db.transaction(async (tx) => {
       try {
-        await db.exec("DELETE FROM password_resets;");
+        await tx.exec("DELETE FROM password_resets;");
       } catch (delPrErr) {}
 
       for (const table of Object.keys(ALLOWED_TABLE_COLUMNS)) {
         try {
-          await db.exec(`DELETE FROM ${table}`);
+          await tx.exec(`DELETE FROM ${table}`);
         } catch (delErr) {
           console.warn(`Failed to clear table ${table}:`, delErr);
         }
@@ -4413,16 +4348,10 @@ app.post("/api/backup/restore-json", authenticateToken, requireSuperAdmin, async
             }
             return row[col];
           });
-          await db.run(insertSql, params);
+          await tx.run(insertSql, params);
         }
       }
-      await db.exec("COMMIT;");
-    } catch (restoreErr) {
-      try {
-        await db.exec("ROLLBACK;");
-      } catch (rbErr) {}
-      throw restoreErr;
-    }
+    });
 
     res.json({ success: true, message: "Workspace restored successfully from JSON backup!" });
   } catch (error: any) {
