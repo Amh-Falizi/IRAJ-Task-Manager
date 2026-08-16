@@ -114,6 +114,20 @@ app.use((req: any, res: any, next: any) => {
 });
 
 // Basic security headers
+const gitlabOrigin = process.env.GITLAB_URL && /^https?:\/\//i.test(process.env.GITLAB_URL)
+  ? new URL(process.env.GITLAB_URL).origin
+  : null;
+
+const cspImgSrc = ["'self'", "data:", "blob:", "https://*.githubusercontent.com", "https://*.googleusercontent.com", "https://gitlab.com", "https://*.gitlab.com", "https://secure.gravatar.com"];
+if (gitlabOrigin && !cspImgSrc.includes(gitlabOrigin)) {
+  cspImgSrc.push(gitlabOrigin);
+}
+
+const cspConnectSrc = ["'self'", "https://github.com", "https://api.github.com", "https://gitlab.com", "https://*.gitlab.com", "https://www.googleapis.com", "https://*.googleapis.com"];
+if (gitlabOrigin && !cspConnectSrc.includes(gitlabOrigin)) {
+  cspConnectSrc.push(gitlabOrigin);
+}
+
 app.use(helmet({
   contentSecurityPolicy: process.env.NODE_ENV === "production" ? {
     directives: {
@@ -121,8 +135,8 @@ app.use(helmet({
       scriptSrc: ["'self'", (req: any, res: any) => `'nonce-${res.locals.cspNonce}'`],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
-      imgSrc: ["'self'", "data:", "blob:", "https://*.githubusercontent.com", "https://*.googleusercontent.com", "https://gitlab.com", "https://*.gitlab.com", "https://secure.gravatar.com"],
-      connectSrc: ["'self'", "https://github.com", "https://api.github.com", "https://gitlab.com", "https://*.gitlab.com", "https://www.googleapis.com", "https://*.googleapis.com", "ws:", "wss:"],
+      imgSrc: cspImgSrc,
+      connectSrc: cspConnectSrc,
       frameSrc: ["'self'"],
     }
   } : false,
@@ -2800,9 +2814,8 @@ app.put("/api/projects/:id", authenticateToken, async (req: any, res: any) => {
   const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
   const isProjectAdmin = pm && pm.role === 'admin';
 
-  const canManageProjects = await hasPermission(req.user, "manage_projects");
-  if (!canManageProjects && project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
-    return res.status(403).json({ error: "Only project owners, admins, or authorized roles can edit projects." });
+  if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+    return res.status(403).json({ error: "Only project owners, project admins, or system administrators can edit project details." });
   }
 
   const { name, description } = req.body;
@@ -2827,10 +2840,9 @@ app.put("/api/projects/:id/repo", authenticateToken, async (req: any, res: any) 
 
   const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
   const isProjectAdmin = pm && pm.role === 'admin';
-  const canManageProjects = await hasPermission(req.user, "manage_projects");
 
-  if (!canManageProjects && project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
-    return res.status(403).json({ error: "Permission denied" });
+  if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+    return res.status(403).json({ error: "Only project owners, project admins, or system administrators can configure repository settings." });
   }
 
   const { repoProvider, repoOwner, repoName, repoUrl, repoToken, defaultBranch } = req.body;
@@ -3348,10 +3360,9 @@ app.put("/api/projects/:id/columns", authenticateToken, async (req: any, res: an
 
   const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
   const isProjectAdmin = pm && (pm.role === 'admin' || pm.role === 'lead');
-  const canManageProjects = await hasPermission(req.user, "manage_projects");
 
-  if (!canManageProjects && project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
-    return res.status(403).json({ error: "Permission denied. Only project admins can modify board column structure." });
+  if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+    return res.status(403).json({ error: "Permission denied. Only project owners, project admins, or system administrators can modify board column structure." });
   }
 
   const { columns } = req.body;
@@ -3518,9 +3529,8 @@ app.delete("/api/projects/:id", authenticateToken, async (req: any, res: any) =>
   const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
   const isProjectAdmin = pm && pm.role === 'admin';
 
-  const canManageProjects = await hasPermission(req.user, "manage_projects");
-  if (!canManageProjects && project.ownerId !== req.user.id && !isProjectAdmin) {
-    return res.status(403).json({ error: "Only project owners, admins, or authorized roles can delete projects." });
+  if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+    return res.status(403).json({ error: "Only project owners, project admins, or system administrators can delete projects." });
   }
 
   const projectId = req.params.id;
