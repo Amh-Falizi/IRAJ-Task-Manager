@@ -679,14 +679,27 @@ interface Task {
 // Authentication Middleware
 const authenticateToken = (req: any, res: any, next: any) => {
   const authHeader = req.headers["authorization"];
-  const bearerToken = authHeader && authHeader.split(" ")[1];
+  const rawBearer = authHeader && authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
   const cookieToken = req.cookies?.[AUTH_COOKIE_NAME];
-  const token = bearerToken || cookieToken;
 
-  if (!token) return res.sendStatus(401);
+  const isValidBearerString = rawBearer && rawBearer !== "cookie_authenticated" && rawBearer !== "null" && rawBearer !== "undefined" && rawBearer !== "[object Object]";
+  const candidateTokens = [isValidBearerString ? rawBearer : null, cookieToken].filter(Boolean) as string[];
 
-  jwt.verify(token, SECRET_KEY, async (err: any, decodedUser: any) => {
-    if (err) return res.sendStatus(403);
+  if (candidateTokens.length === 0) return res.sendStatus(401);
+
+  let decodedUser: any = null;
+  for (const token of candidateTokens) {
+    try {
+      decodedUser = jwt.verify(token, SECRET_KEY);
+      if (decodedUser) break;
+    } catch (err) {
+      // Try next candidate
+    }
+  }
+
+  if (!decodedUser) return res.sendStatus(403);
+
+  (async () => {
     try {
       const db = await dbPromise;
       const user = await db.get("SELECT id, name, email, role, rolePrefix, status, tokenVersion FROM users WHERE id = ?", decodedUser.id);
@@ -707,7 +720,7 @@ const authenticateToken = (req: any, res: any, next: any) => {
       console.error("Auth DB Error:", e);
       return res.sendStatus(500);
     }
-  });
+  })();
 };
 
 const isSuperAdmin = (user: any): boolean => user?.role === 'super_admin';
@@ -816,13 +829,13 @@ app.post("/api/auth/register", async (req, res) => {
     const assignedRole = isFirstUser ? "super_admin" : "developer";
 
     await db.run(
-      "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status) VALUES (?, ?, ?, ?, ?, 1, 'local', 1, 'Available')",
+      "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status) VALUES (?, ?, ?, ?, ?, 1, 'local', 0, 'Available')",
       [id, name, email, passwordHash, assignedRole]
     );
 
     const token = jwt.sign({ id, role: assignedRole, tokenVersion: 1 }, SECRET_KEY, { expiresIn: "7d" });
     setAuthCookie(res, token);
-    res.json({ token, user: { id, name, email, role: assignedRole, rolePrefix: "" } });
+    res.json({ user: { id, name, email, role: assignedRole, rolePrefix: "" } });
   } catch (e: any) {
     console.error("REGISTER ERROR:", e);
     res.status(500).json({ error: "An unexpected error occurred during registration." });
@@ -862,7 +875,7 @@ app.post("/api/auth/login", async (req, res) => {
     const tokenVersion = user.tokenVersion || 1;
     const token = jwt.sign({ id: user.id, role: user.role, tokenVersion }, SECRET_KEY, { expiresIn: "7d" });
     setAuthCookie(res, token);
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, rolePrefix: user.rolePrefix || "" } });
+    res.json({ user: { id: user.id, name: user.name, email: user.email, role: user.role, rolePrefix: user.rolePrefix || "" } });
   } catch (e: any) {
     console.error("LOGIN ERROR:", e);
     res.status(500).json({ error: "An unexpected error occurred during login." });
@@ -870,9 +883,30 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 // Logout
-app.post("/api/auth/logout", (req, res) => {
-  clearAuthCookie(res);
-  res.json({ success: true, message: "Logged out successfully" });
+app.post("/api/auth/logout", async (req: any, res: any) => {
+  try {
+    const authHeader = req.headers["authorization"];
+    const rawBearer = authHeader && authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
+    const cookieToken = req.cookies?.[AUTH_COOKIE_NAME];
+    const token = (rawBearer && rawBearer !== "cookie_authenticated" && rawBearer !== "null") ? rawBearer : cookieToken;
+
+    if (token) {
+      try {
+        const decoded: any = jwt.verify(token, SECRET_KEY);
+        if (decoded?.id) {
+          const db = await dbPromise;
+          await db.run("UPDATE users SET tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?", decoded.id);
+        }
+      } catch (e) {
+        // Ignore token verification errors during logout
+      }
+    }
+  } catch (e) {
+    console.error("LOGOUT ERROR:", e);
+  } finally {
+    clearAuthCookie(res);
+    res.json({ success: true, message: "Logged out successfully" });
+  }
 });
 
 // Forgot Password
@@ -1178,7 +1212,6 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
             if (window.opener) {
               window.opener.postMessage({ 
                 type: 'OAUTH_AUTH_SUCCESS', 
-                token: ${safeJsonForScriptTag(token)}, 
                 user: ${userPayload} 
               }, window.location.origin);
               window.close();
@@ -1302,7 +1335,6 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
             if (window.opener) {
               window.opener.postMessage({ 
                 type: 'OAUTH_AUTH_SUCCESS', 
-                token: ${safeJsonForScriptTag(token)}, 
                 user: ${userPayload} 
               }, window.location.origin);
               window.close();
@@ -1450,7 +1482,6 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
             if (window.opener) {
               window.opener.postMessage({ 
                 type: 'OAUTH_AUTH_SUCCESS', 
-                token: ${safeJsonForScriptTag(token)}, 
                 user: ${userPayload} 
               }, window.location.origin);
               window.close();
@@ -1544,7 +1575,8 @@ app.put("/api/users/me/password", authenticateToken, async (req: any, res: any) 
   await db.run("UPDATE users SET passwordHash = ?, tokenVersion = ? WHERE id = ?", [passwordHash, nextTokenVersion, req.user.id]);
   
   const newToken = jwt.sign({ id: req.user.id, role: user.role, tokenVersion: nextTokenVersion }, SECRET_KEY, { expiresIn: "7d" });
-  res.json({ success: true, token: newToken });
+  setAuthCookie(res, newToken);
+  res.json({ success: true });
 });
 
 // User Stats

@@ -50,12 +50,10 @@ export default function GlobalSearch() {
     const fetchResults = async () => {
       setIsLoading(true);
       try {
-        const token = localStorage.getItem("token");
         const res = await fetch(
           `/api/search?q=${encodeURIComponent(debouncedQuery)}`,
           {
             headers: {
-              Authorization: `Bearer ${token}`,
               "X-Silent-Fetch": "true",
             },
           },

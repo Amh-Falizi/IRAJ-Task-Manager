@@ -19,7 +19,7 @@ export default function Login() {
         return;
       }
       if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
-        login(event.data.token, event.data.user);
+        login(undefined, event.data.user);
         navigate('/');
       }
     };
@@ -83,7 +83,7 @@ export default function Login() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Login failed');
       
-      login(data.token, data.user);
+      login(undefined, data.user);
       navigate('/');
     } catch (err: any) {
       setError(err.message);

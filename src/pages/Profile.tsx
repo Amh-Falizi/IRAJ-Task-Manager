@@ -423,8 +423,8 @@ export default function Profile() {
 
       if (res.ok) {
         const data = await res.json();
-        if (data.token && user && login) {
-          login(data.token, user);
+        if (user && login) {
+          login(undefined, user);
         }
         success("Password changed successfully.");
         setIsChangingPassword(false);
