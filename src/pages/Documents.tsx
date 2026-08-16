@@ -320,6 +320,9 @@ export default function Documents() {
                     onChange={(val) => setEditContent(val || '')}
                     height="100%"
                     className="flex-1 w-full"
+                    previewOptions={{
+                      skipHtml: true
+                    }}
                   />
                 </div>
               </div>
@@ -360,7 +363,7 @@ export default function Documents() {
                 </div>
                 
                 <div className="prose dark:prose-invert prose-blue max-w-none text-sm text-subtle leading-relaxed">
-                  <Markdown>{selectedDocument.content}</Markdown>
+                  <Markdown skipHtml={true}>{selectedDocument.content}</Markdown>
                 </div>
               </div>
             )}

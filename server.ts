@@ -16,6 +16,7 @@ import compression from "compression";
 import rateLimit from "express-rate-limit";
 import morgan from "morgan";
 import nodemailer from "nodemailer";
+import cookieParser from "cookie-parser";
 
 const escapeHtml = (unsafe: string = "") => {
   return String(unsafe)
@@ -35,7 +36,12 @@ const getAppUrl = (req: any) => {
     return process.env.APP_URL.replace(/\/$/, '');
   }
   const isProd = process.env.NODE_ENV === 'production';
-  const protocol = isProd ? 'https' : (((req.headers['x-forwarded-proto'] || req.protocol || 'http') as string).split(',')[0].trim());
+  if (isProd) {
+    // In production, refuse to take host from unvalidated headers if APP_URL is missing
+    const host = process.env.HOST_NAME || 'app.internal';
+    return `https://${host}`;
+  }
+  const protocol = (((req.headers['x-forwarded-proto'] || req.protocol || 'http') as string).split(',')[0].trim());
   const rawHost = ((req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000') as string).split(',')[0].trim();
   const cleanHost = rawHost.replace(/[^a-zA-Z0-9.:-]/g, '');
   return `${protocol}://${cleanHost}`;
@@ -99,6 +105,34 @@ const authLimiter = rateLimit({
 app.use("/api/auth/", authLimiter);
 
 app.use(express.json({ limit: '10mb' })); // Limit body size to prevent payload bombing
+app.use(cookieParser());
+
+const AUTH_COOKIE_NAME = "auth_token";
+
+const getCookieOptions = () => {
+  const isProd = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: "strict" as const,
+    path: "/",
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+  };
+};
+
+const setAuthCookie = (res: any, token: string) => {
+  res.cookie(AUTH_COOKIE_NAME, token, getCookieOptions());
+};
+
+const clearAuthCookie = (res: any) => {
+  const isProd = process.env.NODE_ENV === "production";
+  res.clearCookie(AUTH_COOKIE_NAME, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: "strict" as const,
+    path: "/"
+  });
+};
 
 // Initialize Database Storage
 const DATABASE_URL = process.env.DATABASE_URL || "postgres://user:password@localhost:5432/dbname";
@@ -645,7 +679,9 @@ interface Task {
 // Authentication Middleware
 const authenticateToken = (req: any, res: any, next: any) => {
   const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
+  const bearerToken = authHeader && authHeader.split(" ")[1];
+  const cookieToken = req.cookies?.[AUTH_COOKIE_NAME];
+  const token = bearerToken || cookieToken;
 
   if (!token) return res.sendStatus(401);
 
@@ -785,6 +821,7 @@ app.post("/api/auth/register", async (req, res) => {
     );
 
     const token = jwt.sign({ id, role: assignedRole, tokenVersion: 1 }, SECRET_KEY, { expiresIn: "7d" });
+    setAuthCookie(res, token);
     res.json({ token, user: { id, name, email, role: assignedRole, rolePrefix: "" } });
   } catch (e: any) {
     console.error("REGISTER ERROR:", e);
@@ -824,11 +861,18 @@ app.post("/api/auth/login", async (req, res) => {
 
     const tokenVersion = user.tokenVersion || 1;
     const token = jwt.sign({ id: user.id, role: user.role, tokenVersion }, SECRET_KEY, { expiresIn: "7d" });
+    setAuthCookie(res, token);
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, rolePrefix: user.rolePrefix || "" } });
   } catch (e: any) {
     console.error("LOGIN ERROR:", e);
     res.status(500).json({ error: "An unexpected error occurred during login." });
   }
+});
+
+// Logout
+app.post("/api/auth/logout", (req, res) => {
+  clearAuthCookie(res);
+  res.json({ success: true, message: "Logged out successfully" });
 });
 
 // Forgot Password
@@ -1123,6 +1167,7 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
 
     const tokenVersion = user.tokenVersion || 1;
     const token = jwt.sign({ id: user.id, role: user.role, tokenVersion }, SECRET_KEY, { expiresIn: "7d" });
+    setAuthCookie(res, token);
     const userPayload = safeJsonForScriptTag({ id: user.id, name: user.name, email: user.email, role: user.role });
 
     res.send(`
@@ -1246,6 +1291,7 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
 
     const tokenVersion = user.tokenVersion || 1;
     const token = jwt.sign({ id: user.id, role: user.role, tokenVersion }, SECRET_KEY, { expiresIn: "7d" });
+    setAuthCookie(res, token);
     const userPayload = safeJsonForScriptTag({ id: user.id, name: user.name, email: user.email, role: user.role });
 
     res.send(`
@@ -1393,6 +1439,7 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
 
     const tokenVersion = user.tokenVersion || 1;
     const token = jwt.sign({ id: user.id, role: user.role, tokenVersion }, SECRET_KEY, { expiresIn: "7d" });
+    setAuthCookie(res, token);
     const userPayload = safeJsonForScriptTag({ id: user.id, name: user.name, email: user.email, role: user.role });
 
     res.send(`
@@ -2711,7 +2758,9 @@ app.get("/api/projects/:id/git/branches", authenticateToken, async (req: any, re
   const name = project.repoName;
   const token = project.repoToken;
 
-  if (!owner || !name) {
+  const canUsePat = await isProjectAdminOrOwner(db, req.params.id, req.user) || await hasPermission(req.user, "manage_projects");
+
+  if (!owner || !name || !canUsePat) {
     // Fallback: return local task-linked branches
     const localBranches = Array.from(taskBranchMap.entries()).map(([bName, task]: [string, any]) => ({
       name: bName,
