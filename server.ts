@@ -56,19 +56,61 @@ const HOST = process.env.HOST || "0.0.0.0";
 const FALLBACK_SECRET = crypto.randomBytes(64).toString('hex');
 const SECRET_KEY = process.env.SECRET_KEY || FALLBACK_SECRET;
 
-if (!process.env.SECRET_KEY) {
+if (process.env.NODE_ENV === "production" && (!process.env.SECRET_KEY || process.env.SECRET_KEY === 'your-super-secret-key-change-this')) {
+  console.error("FATAL ERROR: SECRET_KEY environment variable MUST be explicitly set to a secure secret in production mode.");
+  process.exit(1);
+} else if (!process.env.SECRET_KEY) {
   console.warn("WARNING: SECRET_KEY is not set in the environment. Using a dynamically generated secret. Existing sessions will be invalidated if the server restarts.");
+}
+
+// Secret Encryption Helper for PATs / Repository Tokens
+const ENCRYPTION_KEY = crypto.createHash('sha256').update(SECRET_KEY).digest(); // 32 bytes key
+
+function encryptSecret(text: string): string {
+  if (!text) return text;
+  if (text.startsWith("enc:")) return text;
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag().toString('hex');
+  return `enc:${iv.toString('hex')}:${authTag}:${encrypted}`;
+}
+
+function decryptSecret(text: string): string {
+  if (!text || !text.startsWith("enc:")) return text;
+  try {
+    const parts = text.split(":");
+    if (parts.length !== 4) return text;
+    const iv = Buffer.from(parts[1], 'hex');
+    const authTag = Buffer.from(parts[2], 'hex');
+    const encryptedText = parts[3];
+    const decipher = crypto.createDecipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
+    decipher.setAuthTag(authTag);
+    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (e) {
+    console.error("Failed to decrypt secret:", e);
+    return "";
+  }
 }
 
 // Request logging
 app.use(morgan("dev"));
+
+// Attach CSP nonce to res.locals for HTML script tags
+app.use((req: any, res: any, next: any) => {
+  res.locals.cspNonce = crypto.randomBytes(16).toString('base64');
+  next();
+});
 
 // Basic security headers
 app.use(helmet({
   contentSecurityPolicy: process.env.NODE_ENV === "production" ? {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", (req: any, res: any) => `'nonce-${res.locals.cspNonce}'`],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
       imgSrc: ["'self'", "data:", "https:", "http:", "blob:"],
@@ -470,12 +512,17 @@ async function initDb(): Promise<DatabaseWrapper> {
   try {
     await db.exec("ALTER TABLE users ADD COLUMN emailVerified INTEGER DEFAULT 0;");
   } catch (e) {}
+  try {
+    await db.exec("ALTER TABLE users ADD COLUMN createdAt TEXT;");
+  } catch (e) {}
 
   // Backfill existing users: ensure tokenVersion is set, and verified local/oauth users cannot be hijacked
   try {
     await db.exec("UPDATE users SET tokenVersion = 1 WHERE tokenVersion IS NULL;");
     await db.exec("UPDATE users SET authProvider = 'local' WHERE authProvider IS NULL;");
     await db.exec("UPDATE users SET emailVerified = 1 WHERE emailVerified IS NULL;");
+    // Automatically purge stale unverified local reservations older than 24 hours
+    await db.exec("DELETE FROM users WHERE authProvider = 'local' AND (emailVerified = 0 OR emailVerified IS NULL) AND createdAt IS NOT NULL AND strftime('%s', 'now') - strftime('%s', createdAt) > 86400;");
   } catch (e) {}
 
   try {
@@ -820,12 +867,18 @@ app.post("/api/auth/register", async (req, res) => {
 
     const existing = await db.get("SELECT * FROM users WHERE email = ?", email);
     if (existing) {
-      return res.status(400).json({ error: "Email already exists" });
+      if (existing.authProvider === 'local' && (existing.emailVerified === 0 || existing.emailVerified === false)) {
+        // Clear previous unverified reservation so the legitimate user can register
+        await db.run("DELETE FROM users WHERE id = ?", existing.id);
+      } else {
+        return res.status(400).json({ error: "Email already exists" });
+      }
     }
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
     const id = uuidv4();
+    const createdAt = new Date().toISOString();
 
     const userCount = await db.get("SELECT COUNT(*) as count FROM users");
     const isFirstUser = userCount.count === 0;
@@ -833,8 +886,8 @@ app.post("/api/auth/register", async (req, res) => {
     const emailVerified = isFirstUser ? 1 : 0;
 
     await db.run(
-      "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status) VALUES (?, ?, ?, ?, ?, 1, 'local', ?, 'Available')",
-      [id, name, email, passwordHash, assignedRole, emailVerified]
+      "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status, createdAt) VALUES (?, ?, ?, ?, ?, 1, 'local', ?, 'Available', ?)",
+      [id, name, email, passwordHash, assignedRole, emailVerified, createdAt]
     );
 
     if (emailVerified === 1) {
@@ -1229,7 +1282,7 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
       <!DOCTYPE html>
       <html>
         <body>
-          <script>
+          <script nonce="${res.locals.cspNonce}">
             if (window.opener) {
               window.opener.postMessage({ 
                 type: 'OAUTH_AUTH_SUCCESS', 
@@ -1252,7 +1305,7 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
       <html><body>
         <p>OAuth Error: ${escapeHtml(e.message)}</p>
         <p>Note: Ensure GITLAB_CLIENT_ID and GITLAB_CLIENT_SECRET are configured.</p>
-        <script>setTimeout(() => window.close(), 5000);</script>
+        <script nonce="${res.locals.cspNonce}">setTimeout(() => window.close(), 5000);</script>
       </body></html>
     `);
   }
@@ -1354,7 +1407,7 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
       <!DOCTYPE html>
       <html>
         <body>
-          <script>
+          <script nonce="${res.locals.cspNonce}">
             if (window.opener) {
               window.opener.postMessage({ 
                 type: 'OAUTH_AUTH_SUCCESS', 
@@ -1377,7 +1430,7 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
       <html><body>
         <p>Google OAuth Error: ${escapeHtml(e.message)}</p>
         <p>Note: Ensure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are configured in the environment variables.</p>
-        <script>setTimeout(() => window.close(), 5000);</script>
+        <script nonce="${res.locals.cspNonce}">setTimeout(() => window.close(), 5000);</script>
       </body></html>
     `);
   }
@@ -1503,7 +1556,7 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
       <!DOCTYPE html>
       <html>
         <body>
-          <script>
+          <script nonce="${res.locals.cspNonce}">
             if (window.opener) {
               window.opener.postMessage({ 
                 type: 'OAUTH_AUTH_SUCCESS', 
@@ -1526,7 +1579,7 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
       <html><body>
         <p>GitHub OAuth Error: ${escapeHtml(e.message)}</p>
         <p>Note: Ensure GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET are configured in the environment variables.</p>
-        <script>setTimeout(() => window.close(), 5000);</script>
+        <script nonce="${res.locals.cspNonce}">setTimeout(() => window.close(), 5000);</script>
       </body></html>
     `);
   }
@@ -2771,6 +2824,9 @@ app.put("/api/projects/:id/repo", authenticateToken, async (req: any, res: any) 
     } catch (e) {}
   }
 
+  const rawToken = repoToken !== undefined && repoToken !== '••••••••' ? repoToken : (project.repoToken ? decryptSecret(project.repoToken) : '');
+  const storedToken = rawToken ? encryptSecret(rawToken) : '';
+
   await db.run(
     `UPDATE projects SET 
       repoProvider = ?, 
@@ -2785,7 +2841,7 @@ app.put("/api/projects/:id/repo", authenticateToken, async (req: any, res: any) 
       owner,
       name,
       repoUrl || '',
-      repoToken !== undefined && repoToken !== '••••••••' ? repoToken : (project.repoToken || ''),
+      storedToken,
       defaultBranch || 'main',
       req.params.id
     ]
@@ -2813,7 +2869,7 @@ app.get("/api/projects/:id/git/branches", authenticateToken, async (req: any, re
   const provider = project.repoProvider || 'github';
   const owner = project.repoOwner;
   const name = project.repoName;
-  const token = project.repoToken;
+  const token = decryptSecret(project.repoToken);
 
   const canUsePat = await isProjectAdminOrOwner(db, req.params.id, req.user) || await hasPermission(req.user, "manage_projects");
 
@@ -2958,7 +3014,7 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
   const provider = project.repoProvider || 'github';
   const owner = project.repoOwner;
   const name = project.repoName;
-  const token = project.repoToken;
+  const token = decryptSecret(project.repoToken);
 
   // Protect against Confused Deputy: only project admins/owners/managers can execute remote Git operations with configured PAT
   if (owner && name && token) {
@@ -3135,7 +3191,7 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
   const provider = project.repoProvider || 'github';
   const owner = project.repoOwner;
   const name = project.repoName;
-  const token = project.repoToken;
+  const token = decryptSecret(project.repoToken);
 
   // Protect against Confused Deputy: only project admins/owners/managers can execute remote Git operations with configured PAT
   if (owner && name && token) {
@@ -4324,7 +4380,7 @@ async function runBackgroundPrSync() {
       const provider = project.repoProvider || 'github';
       const owner = project.repoOwner;
       const name = project.repoName;
-      const token = project.repoToken;
+      const token = decryptSecret(project.repoToken);
 
       const tasks = await db.all(
         "SELECT id, title, prUrl, prStatus, status FROM tasks WHERE projectId = ? AND prUrl IS NOT NULL AND prUrl != '' AND prStatus != 'merged' AND prStatus != 'closed'",
