@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import fs from "fs";
@@ -15,6 +16,26 @@ import compression from "compression";
 import rateLimit from "express-rate-limit";
 import morgan from "morgan";
 import nodemailer from "nodemailer";
+
+const escapeHtml = (unsafe: string = "") => {
+  return String(unsafe)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
+
+const safeJsonForScriptTag = (obj: any) => {
+  return JSON.stringify(obj).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+};
+
+const getAppUrl = (req: any) => {
+  if (process.env.APP_URL) return process.env.APP_URL;
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  return `${protocol}://${host}`;
+};
 
 const app = express();
 app.set("trust proxy", 1); // Trust first proxy for rate limiting (Cloud Run/Nginx)
@@ -594,6 +615,9 @@ const authenticateToken = (req: any, res: any, next: any) => {
       if (!user) {
         return res.sendStatus(403); // User was deleted
       }
+      if (user.status && (user.status.toLowerCase() === 'inactive' || user.status.toLowerCase() === 'disabled' || user.status.toLowerCase() === 'suspended')) {
+        return res.status(403).json({ error: "Account is inactive or disabled." });
+      }
       req.user = user;
       next();
     } catch (e) {
@@ -762,13 +786,15 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
     const expiresAt = Date.now() + 3600000; // 1 hour token validity
 
-    await db.run("INSERT INTO password_resets (token, userId, expiresAt) VALUES (?, ?, ?)", [resetToken, user.id, expiresAt]);
+    // Invalidate any active previous reset tokens for this user
+    await db.run("DELETE FROM password_resets WHERE userId = ?", user.id);
+    await db.run("INSERT INTO password_resets (token, userId, expiresAt) VALUES (?, ?, ?)", [tokenHash, user.id, expiresAt]);
 
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.headers['x-forwarded-host'] || req.headers.host;
-    const resetLink = `${protocol}://${host}/reset-password/${resetToken}`;
+    const baseUrl = getAppUrl(req);
+    const resetLink = `${baseUrl}/reset-password/${resetToken}`;
 
     if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
       const transporter = nodemailer.createTransport({
@@ -809,11 +835,12 @@ app.post("/api/auth/reset-password", async (req, res) => {
       return res.status(400).json({ error: "New password must be at least 6 characters long." });
     }
 
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const db = await dbPromise;
-    const resetRecord = await db.get("SELECT * FROM password_resets WHERE token = ?", token);
+    const resetRecord = await db.get("SELECT * FROM password_resets WHERE token = ?", tokenHash);
 
     if (!resetRecord || resetRecord.expiresAt < Date.now()) {
-      if (resetRecord) await db.run("DELETE FROM password_resets WHERE token = ?", token);
+      if (resetRecord) await db.run("DELETE FROM password_resets WHERE token = ?", tokenHash);
       return res.status(400).json({ error: "Invalid or expired reset token." });
     }
 
@@ -821,7 +848,7 @@ app.post("/api/auth/reset-password", async (req, res) => {
     const hash = await bcrypt.hash(newPassword, salt);
 
     await db.run("UPDATE users SET passwordHash = ? WHERE id = ?", [hash, resetRecord.userId]);
-    await db.run("DELETE FROM password_resets WHERE token = ?", token);
+    await db.run("DELETE FROM password_resets WHERE userId = ?", resetRecord.userId);
 
     res.json({ message: "Password has been successfully reset" });
   } catch (error) {
@@ -831,13 +858,6 @@ app.post("/api/auth/reset-password", async (req, res) => {
 });
 
 // GitLab OAuth
-const getAppUrl = (req: any) => {
-  if (process.env.APP_URL) return process.env.APP_URL;
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
-  return `${protocol}://${host}`;
-};
-
 const getSafeOAuthRedirectUri = (req: any, provider: string) => {
   const defaultBase = getAppUrl(req);
   let base = defaultBase;
@@ -847,9 +867,7 @@ const getSafeOAuthRedirectUri = (req: any, provider: string) => {
       const parsedHost = new URL(defaultBase);
       if (
         parsedOrigin.hostname === parsedHost.hostname || 
-        parsedOrigin.hostname === 'localhost' || 
-        parsedOrigin.hostname === '127.0.0.1' ||
-        parsedOrigin.hostname.endsWith('.run.app')
+        (process.env.NODE_ENV !== 'production' && (parsedOrigin.hostname === 'localhost' || parsedOrigin.hostname === '127.0.0.1'))
       ) {
         base = parsedOrigin.origin;
       }
@@ -867,7 +885,7 @@ const getValidatedCallbackRedirect = (req: any, provider: string, state: any): s
       const parsed = new URL(state);
       const host = new URL(defaultRedirect);
       if (
-        (parsed.hostname === host.hostname || parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname.endsWith('.run.app')) &&
+        (parsed.hostname === host.hostname || (process.env.NODE_ENV !== 'production' && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1'))) &&
         (parsed.pathname === `/api/auth/${provider}/callback` || parsed.pathname === `/api/auth/${provider}/callback/`)
       ) {
         return state;
@@ -945,16 +963,18 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
     }
 
     const token = jwt.sign({ id: user.id, role: user.role }, SECRET_KEY, { expiresIn: "7d" });
+    const userPayload = safeJsonForScriptTag({ id: user.id, name: user.name, email: user.email, role: user.role });
 
     res.send(`
+      <!DOCTYPE html>
       <html>
         <body>
           <script>
             if (window.opener) {
               window.opener.postMessage({ 
                 type: 'OAUTH_AUTH_SUCCESS', 
-                token: '${token}', 
-                user: ${JSON.stringify({id: user.id, name: user.name, email: user.email, role: user.role})} 
+                token: ${safeJsonForScriptTag(token)}, 
+                user: ${userPayload} 
               }, window.location.origin);
               window.close();
             } else {
@@ -969,8 +989,9 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
   } catch (e: any) {
     console.error("GitLab OAuth error:", e);
     res.send(`
+      <!DOCTYPE html>
       <html><body>
-        <p>OAuth Error: ${e.message}</p>
+        <p>OAuth Error: ${escapeHtml(e.message)}</p>
         <p>Note: Ensure GITLAB_CLIENT_ID and GITLAB_CLIENT_SECRET are configured.</p>
         <script>setTimeout(() => window.close(), 5000);</script>
       </body></html>
@@ -1024,6 +1045,7 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
     const userData = await userRes.json();
     if (!userRes.ok) throw new Error('Failed to get user data');
     if (!userData.email) throw new Error('Google account has no email address.');
+    if (userData.email_verified === false) throw new Error('Google account email is not verified.');
 
     const db = await dbPromise;
     let user = await db.get("SELECT * FROM users WHERE email = ? ", userData.email.toLowerCase().trim());
@@ -1042,16 +1064,18 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
     }
 
     const token = jwt.sign({ id: user.id, role: user.role }, SECRET_KEY, { expiresIn: "7d" });
+    const userPayload = safeJsonForScriptTag({ id: user.id, name: user.name, email: user.email, role: user.role });
 
     res.send(`
+      <!DOCTYPE html>
       <html>
         <body>
           <script>
             if (window.opener) {
               window.opener.postMessage({ 
                 type: 'OAUTH_AUTH_SUCCESS', 
-                token: '${token}', 
-                user: ${JSON.stringify({id: user.id, name: user.name, email: user.email, role: user.role})} 
+                token: ${safeJsonForScriptTag(token)}, 
+                user: ${userPayload} 
               }, window.location.origin);
               window.close();
             } else {
@@ -1066,8 +1090,9 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
   } catch (e: any) {
     console.error("Google OAuth error:", e);
     res.send(`
+      <!DOCTYPE html>
       <html><body>
-        <p>Google OAuth Error: ${e.message}</p>
+        <p>Google OAuth Error: ${escapeHtml(e.message)}</p>
         <p>Note: Ensure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are configured in the environment variables.</p>
         <script>setTimeout(() => window.close(), 5000);</script>
       </body></html>
@@ -1125,24 +1150,28 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
     const userData = await userRes.json();
     if (!userRes.ok) throw new Error('Failed to get user data from GitHub');
 
-    let email = userData.email;
-    if (!email) {
-      const emailsRes = await fetch("https://api.github.com/user/emails", {
-        headers: { 
-          Authorization: `Bearer ${tokenData.access_token}`,
-          "User-Agent": "devteam-taskmanager"
-        }
-      });
-      if (emailsRes.ok) {
-        const emails = await emailsRes.json();
-        const primaryEmailObj = emails.find((e: any) => e.primary) || emails[0];
-        if (primaryEmailObj) {
-          email = primaryEmailObj.email;
-        }
+    let email = null;
+    const emailsRes = await fetch("https://api.github.com/user/emails", {
+      headers: { 
+        Authorization: `Bearer ${tokenData.access_token}`,
+        "User-Agent": "devteam-taskmanager"
       }
+    });
+    if (emailsRes.ok) {
+      const emails = await emailsRes.json();
+      const verifiedPrimary = emails.find((e: any) => e.primary && e.verified);
+      const verifiedAny = emails.find((e: any) => e.verified);
+      if (verifiedPrimary) {
+        email = verifiedPrimary.email;
+      } else if (verifiedAny) {
+        email = verifiedAny.email;
+      }
+    } else if (userData.email) {
+      email = userData.email;
     }
 
-    if (!email) throw new Error('GitHub account has no primary email address. Please make sure your email is public or verified on GitHub.');
+    if (!email) throw new Error('GitHub account has no verified email address. Please make sure your primary email is verified on GitHub.');
+    email = email.toLowerCase().trim();
 
     const db = await dbPromise;
     let user = await db.get("SELECT * FROM users WHERE email = ? ", email);
@@ -1161,16 +1190,18 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
     }
 
     const token = jwt.sign({ id: user.id, role: user.role }, SECRET_KEY, { expiresIn: "7d" });
+    const userPayload = safeJsonForScriptTag({ id: user.id, name: user.name, email: user.email, role: user.role });
 
     res.send(`
+      <!DOCTYPE html>
       <html>
         <body>
           <script>
             if (window.opener) {
               window.opener.postMessage({ 
                 type: 'OAUTH_AUTH_SUCCESS', 
-                token: '${token}', 
-                user: ${JSON.stringify({id: user.id, name: user.name, email: user.email, role: user.role})} 
+                token: ${safeJsonForScriptTag(token)}, 
+                user: ${userPayload} 
               }, window.location.origin);
               window.close();
             } else {
@@ -1185,8 +1216,9 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
   } catch (e: any) {
     console.error("GitHub OAuth error:", e);
     res.send(`
+      <!DOCTYPE html>
       <html><body>
-        <p>GitHub OAuth Error: ${e.message}</p>
+        <p>GitHub OAuth Error: ${escapeHtml(e.message)}</p>
         <p>Note: Ensure GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET are configured in the environment variables.</p>
         <script>setTimeout(() => window.close(), 5000);</script>
       </body></html>
@@ -1668,8 +1700,14 @@ app.put("/api/settings", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
   const keys = Object.keys(req.body);
   for (const key of keys) {
+    if (!/^[a-zA-Z0-9_]{1,64}$/.test(key)) continue;
     const value = req.body[key];
-    await db.run("REPLACE INTO settings (key, value) VALUES (?, ?)", [key, value]);
+    if (typeof value !== 'string') continue;
+    if (db.isPg) {
+      await db.run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [key, value]);
+    } else {
+      await db.run("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [key, value]);
+    }
   }
   
   const settings = await db.all("SELECT * FROM settings");
@@ -1711,11 +1749,19 @@ app.get("/api/tasks", authenticateToken, async (req: any, res: any) => {
   }
 
   const tasks = await db.all(query, queryParams);
-  const deps = await db.all("SELECT * FROM task_dependencies");
   
-  tasks.forEach((t: any) => {
-    t.dependencies = deps.filter((d: any) => d.taskId === t.id).map((d: any) => d.blockedByTaskId);
-  });
+  if (tasks.length > 0) {
+    const taskIds = tasks.map((t: any) => t.id);
+    const placeholders = taskIds.map(() => '?').join(',');
+    const deps = await db.all(`SELECT * FROM task_dependencies WHERE taskId IN (${placeholders})`, taskIds);
+    tasks.forEach((t: any) => {
+      t.dependencies = deps.filter((d: any) => d.taskId === t.id).map((d: any) => d.blockedByTaskId);
+    });
+  } else {
+    tasks.forEach((t: any) => {
+      t.dependencies = [];
+    });
+  }
   
   res.json(tasks);
 });
@@ -1817,10 +1863,9 @@ app.post("/api/tasks", authenticateToken, async (req: any, res: any) => {
   const project = await db.get("SELECT ownerId, projectKey, taskCounter FROM projects WHERE id = ?", req.body.projectId);
   if (!project) return res.status(404).json({ error: "Project not found" });
 
-  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.body.projectId, req.user.id]);
-  
-  if (!isAdminOrSuperAdmin(req.user) && project.ownerId !== req.user.id && !pm) {
-     return res.status(403).json({ error: "You must be a project member to create tasks" });
+  const hasProjectAccess = await checkProjectAccess(db, req.body.projectId, req.user);
+  if (!hasProjectAccess) {
+     return res.status(403).json({ error: "You must have access to the project to create tasks in it." });
   }
   
   let branchName = req.body.branchName;
@@ -1899,6 +1944,13 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
   const task = await db.get("SELECT * FROM tasks WHERE id = ?", req.params.id);
   if (!task) return res.sendStatus(404);
+
+  if (task.projectId) {
+    const hasProjectAccess = await checkProjectAccess(db, task.projectId, req.user);
+    if (!hasProjectAccess) {
+      return res.status(403).json({ error: "Access denied to the project containing this task." });
+    }
+  }
 
   const canEditAllTasks = await hasPermission(req.user, "edit_all_tasks");
   if (!canEditAllTasks) {
@@ -2056,6 +2108,13 @@ app.delete("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
   const task = await db.get("SELECT * FROM tasks WHERE id = ?", req.params.id);
   if (!task) return res.sendStatus(404);
 
+  if (task.projectId) {
+    const hasProjectAccess = await checkProjectAccess(db, task.projectId, req.user);
+    if (!hasProjectAccess) {
+      return res.status(403).json({ error: "Access denied to the project containing this task." });
+    }
+  }
+
   const canDeleteTasks = await hasPermission(req.user, "delete_tasks");
   if (!canDeleteTasks && task.creatorId !== req.user.id) {
     return res.status(403).json({ error: "You do not have permission to delete this task." });
@@ -2136,7 +2195,12 @@ app.get("/api/projects/:id/workload", authenticateToken, async (req: any, res: a
   if (!project) return res.sendStatus(404);
 
   const tasks = await db.all("SELECT id, status, assigneeId FROM tasks WHERE projectId = ?", req.params.id);
-  const users = await db.all("SELECT id, name, email FROM users");
+  const assigneeIds = Array.from(new Set(tasks.map((t: any) => t.assigneeId).filter(Boolean)));
+  let users: any[] = [];
+  if (assigneeIds.length > 0) {
+    const placeholders = assigneeIds.map(() => '?').join(',');
+    users = await db.all(`SELECT id, name, email FROM users WHERE id IN (${placeholders})`, assigneeIds);
+  }
 
   const workload: Record<string, any> = {};
   
@@ -2201,6 +2265,19 @@ app.get("/api/projects", authenticateToken, async (req: any, res: any) => {
     `, [req.user.id, req.user.id, req.user.id, req.user.id]);
   }
   res.json(projects.map(sanitizeProject));
+});
+
+app.get("/api/projects/:id", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const hasAccess = await checkProjectAccess(db, req.params.id, req.user);
+  if (!hasAccess) {
+    return res.status(403).json({ error: "Access denied to project." });
+  }
+
+  res.json(sanitizeProject(project));
 });
 
 app.post("/api/projects", authenticateToken, async (req: any, res: any) => {
@@ -2500,7 +2577,8 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
     if (!task || task.projectId !== req.params.id) {
       return res.status(400).json({ error: "Specified task does not belong to this project." });
     }
-    if (!(await checkTaskAccess(db, taskId, req.user))) {
+    const taskAccess = await checkTaskAccess(db, taskId, req.user);
+    if (!taskAccess.allowed) {
       return res.status(403).json({ error: "Access denied to specified task." });
     }
   }
@@ -2668,7 +2746,8 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
     if (!task || task.projectId !== req.params.id) {
       return res.status(400).json({ error: "Specified task does not belong to this project." });
     }
-    if (!(await checkTaskAccess(db, taskId, req.user))) {
+    const taskAccess = await checkTaskAccess(db, taskId, req.user);
+    if (!taskAccess.allowed) {
       return res.status(403).json({ error: "Access denied to specified task." });
     }
   }
@@ -3057,16 +3136,23 @@ app.post("/api/projects/:id/members", authenticateToken, async (req: any, res: a
     return res.status(403).json({ error: "Only admins, project owner or project admins can manage members." });
   }
 
+  const ALLOWED_PROJECT_ROLES = ['admin', 'member', 'viewer', 'contributor', 'lead'];
+  const newRole = ALLOWED_PROJECT_ROLES.includes(role) ? role : 'member';
+
+  const targetUser = await db.get("SELECT id FROM users WHERE id = ?", userId);
+  if (!targetUser) {
+    return res.status(404).json({ error: "User not found." });
+  }
+
   try {
-    const newRole = role || 'member';
     await db.run(
       "INSERT INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, ?, ?) ON CONFLICT(projectId, userId) DO UPDATE SET role = ?",
       [projectId, userId, newRole, new Date().toISOString(), newRole]
     );
     res.json({ success: true });
-  } catch (e) {
+  } catch (e: any) {
     if (e.message?.includes("UNIQUE constraint failed") || e.code === 'SQLITE_CONSTRAINT' || e.code === '23505' || e.message?.includes("duplicate key value")) {
-      await db.run("UPDATE project_members SET role = ? WHERE projectId = ? AND userId = ?", [role || 'member', projectId, userId]);
+      await db.run("UPDATE project_members SET role = ? WHERE projectId = ? AND userId = ?", [newRole, projectId, userId]);
       res.json({ success: true });
     } else {
       res.status(500).json({ error: "Failed to add/update member" });
@@ -3107,9 +3193,7 @@ app.get("/api/teams", authenticateToken, async (req: any, res: any) => {
       LEFT JOIN team_members tm ON t.id = tm.teamId
       WHERE t.ownerId = ? 
          OR tm.userId = ? 
-         OR t.projectId IS NULL 
-         OR pm.userId = ? 
-         OR p.ownerId = ?
+         OR (t.projectId IS NOT NULL AND (pm.userId = ? OR p.ownerId = ?))
     `, [req.user.id, req.user.id, req.user.id, req.user.id]);
   }
   res.json(teams);
@@ -3587,7 +3671,7 @@ app.get("/api/backup/info", authenticateToken, requireAdmin, async (req: any, re
  * Only valid if SQLite is the current active engine.
  * Requires authorization token.
  */
-app.get("/api/backup/download-sqlite", authenticateToken, requireAdmin, async (req: any, res: any) => {
+app.get("/api/backup/download-sqlite", authenticateToken, requireSuperAdmin, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
     const isSqlite = !(db instanceof PgWrapper);
@@ -3643,7 +3727,7 @@ app.post("/api/backup/restore-sqlite", authenticateToken, requireSuperAdmin, exp
  * This provides engine-independent database persistence, allowing transfers between SQLite and Postgres.
  * Requires authorization token.
  */
-app.get("/api/backup/export-json", authenticateToken, requireAdmin, async (req: any, res: any) => {
+app.get("/api/backup/export-json", authenticateToken, requireSuperAdmin, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
     const backupData: Record<string, any[]> = {};
@@ -3716,6 +3800,10 @@ app.post("/api/backup/restore-json", authenticateToken, requireSuperAdmin, async
     // Execute wipe and sequential restore inside a transactional block
     await db.exec("BEGIN TRANSACTION;");
     try {
+      try {
+        await db.exec("DELETE FROM password_resets;");
+      } catch (delPrErr) {}
+
       for (const table of Object.keys(ALLOWED_TABLE_COLUMNS)) {
         try {
           await db.exec(`DELETE FROM ${table}`);
