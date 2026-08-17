@@ -249,38 +249,51 @@ class PgWrapper implements DatabaseWrapper {
     return result.rows;
   }
   async transaction<T>(callback: (tx: DatabaseWrapper) => Promise<T>): Promise<T> {
-    const client = await this.pool.connect();
-    const txWrapper: DatabaseWrapper = {
-      isPg: true,
-      exec: async (sql: string) => { await client.query(sql); },
-      run: async (sql: string, params: any[] = []) => { 
-        if (!Array.isArray(params)) params = [params];
-        await client.query(this.convertSql(sql), this.mapParams(params)); 
-      },
-      get: async (sql: string, params: any[] = []) => { 
-        if (!Array.isArray(params)) params = [params];
-        const res = await client.query(this.convertSql(sql), this.mapParams(params)); 
-        return res.rows[0]; 
-      },
-      all: async (sql: string, params: any[] = []) => { 
-        if (!Array.isArray(params)) params = [params];
-        const res = await client.query(this.convertSql(sql), this.mapParams(params)); 
-        return res.rows; 
-      },
-      transaction: async <U>(cb: (tx: DatabaseWrapper) => Promise<U>) => cb(txWrapper)
-    };
+    const maxRetries = 3;
+    let attempt = 0;
+    while (attempt < maxRetries) {
+      const client = await this.pool.connect();
+      const txWrapper: DatabaseWrapper = {
+        isPg: true,
+        exec: async (sql: string) => { await client.query(sql); },
+        run: async (sql: string, params: any[] = []) => { 
+          if (!Array.isArray(params)) params = [params];
+          await client.query(this.convertSql(sql), this.mapParams(params)); 
+        },
+        get: async (sql: string, params: any[] = []) => { 
+          if (!Array.isArray(params)) params = [params];
+          const res = await client.query(this.convertSql(sql), this.mapParams(params)); 
+          return res.rows[0]; 
+        },
+        all: async (sql: string, params: any[] = []) => { 
+          if (!Array.isArray(params)) params = [params];
+          const res = await client.query(this.convertSql(sql), this.mapParams(params)); 
+          return res.rows; 
+        },
+        transaction: async <U>(cb: (tx: DatabaseWrapper) => Promise<U>) => cb(txWrapper)
+      };
 
-    try {
-      await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
-      const result = await callback(txWrapper);
-      await client.query("COMMIT");
-      return result;
-    } catch (e) {
-      await client.query("ROLLBACK");
-      throw e;
-    } finally {
-      client.release();
+      try {
+        await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+        const result = await callback(txWrapper);
+        await client.query("COMMIT");
+        client.release();
+        return result;
+      } catch (e: any) {
+        await client.query("ROLLBACK");
+        client.release();
+        
+        if (e.code === '40001' && attempt < maxRetries - 1) {
+          attempt++;
+          // Add a small randomized backoff before retrying
+          await new Promise(res => setTimeout(res, Math.floor(Math.random() * 50) + 10));
+          continue;
+        }
+        
+        throw e;
+      }
     }
+    throw new Error("Transaction failed after maximum retries");
   }
   async close() {
     await this.pool.end();
