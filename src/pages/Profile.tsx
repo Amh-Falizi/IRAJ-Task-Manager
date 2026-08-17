@@ -232,33 +232,6 @@ export default function Profile() {
 
   /**
    * Initiates download of the live binary SQLite database file.
-   * Prompts stream response from /api/backup/download-sqlite.
-   */
-  const handleSqliteDownload = async () => {
-    try {
-      const res = await fetch("/api/backup/download-sqlite", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = "workspace-backup.sqlite";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        success("SQLite database backup downloaded successfully!");
-      } else {
-        const err = await res.json();
-        error(err.error || "Failed to download SQLite backup.");
-      }
-    } catch (e: any) {
-      error(`Download failed: ${e.message}`);
-    }
-  };
-
   /**
    * Exports all database tables as a single portable JSON file.
    * Downloads formatted output that can be restored into SQLite or Postgres.
@@ -285,46 +258,6 @@ export default function Profile() {
       }
     } catch (e: any) {
       error(`Download failed: ${e.message}`);
-    }
-  };
-
-  /**
-   * Handles binary `.sqlite` database restoration.
-   * Reads selected file as an ArrayBuffer and posts it as an octet-stream to the backend.
-   * Reloads the page in 2 seconds upon success to establish a fresh server context.
-   * 
-   * @param {File} file - Selected SQLite file from client disk.
-   */
-  const handleSqliteRestore = async (file: File) => {
-    if (!window.confirm("Are you absolutely sure you want to restore this SQLite database? ALL current workspace data will be replaced, and you might need to re-login.")) {
-      return;
-    }
-    
-    setRestoring(true);
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      const res = await fetch("/api/backup/restore-sqlite", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/octet-stream"
-        },
-        body: arrayBuffer
-      });
-      
-      if (res.ok) {
-        success("SQLite database restored successfully! Page will reload in 2 seconds.");
-        setTimeout(() => {
-          window.location.reload();
-        }, 2000);
-      } else {
-        const errData = await res.json();
-        error(errData.error || "Failed to restore SQLite database.");
-      }
-    } catch (e: any) {
-      error(`Error: ${e.message}`);
-    } finally {
-      setRestoring(false);
     }
   };
 
@@ -1135,27 +1068,6 @@ export default function Profile() {
                     </div>
                     <div className="p-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Option 1: SQLite File */}
-                        <div className="p-5 border border-border-subtle rounded-lg bg-surface-dim/10 flex flex-col justify-between">
-                          <div>
-                            <div className="flex items-center gap-2 text-strong font-bold text-sm mb-2">
-                              <Database size={16} className="text-blue-500" />
-                              SQLite Database File (.sqlite)
-                            </div>
-                            <p className="text-xs text-muted mb-4 leading-relaxed">
-                              Download the raw SQLite binary database file. This contains all records, structures, and schemas. Best for full, high-fidelity recovery.
-                            </p>
-                          </div>
-                          <button
-                            onClick={handleSqliteDownload}
-                            disabled={dbInfo?.dbType !== "SQLite"}
-                            className="w-full py-2.5 bg-blue-500 hover:bg-blue-600 disabled:bg-surface-accent disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold uppercase tracking-wider rounded transition-colors flex items-center justify-center gap-2 shadow-sm"
-                          >
-                            <Download size={14} />
-                            Download SQLite File
-                          </button>
-                        </div>
-
                         {/* Option 2: JSON Backup */}
                         <div className="p-5 border border-border-subtle rounded-lg bg-surface-dim/10 flex flex-col justify-between">
                           <div>
@@ -1199,33 +1111,6 @@ export default function Profile() {
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Restore SQLite */}
-                        <div className="p-5 border border-border-subtle rounded-lg bg-surface-dim/10">
-                          <div className="flex items-center gap-2 text-strong font-bold text-sm mb-2">
-                            <Database size={16} className="text-blue-500" />
-                            Restore SQLite File
-                          </div>
-                          <p className="text-xs text-muted mb-4 leading-relaxed">
-                            Upload a raw SQLite binary `.sqlite` database file to overwrite the active database.
-                          </p>
-                          <label className="block w-full">
-                            <div className="w-full py-2.5 border border-dashed border-border-subtle hover:border-blue-500 rounded text-center cursor-pointer transition-colors flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider text-strong">
-                              <Upload size={14} />
-                              {restoring ? "Uploading..." : "Select File"}
-                            </div>
-                            <input
-                              type="file"
-                              accept=".sqlite,.db"
-                              disabled={restoring || dbInfo?.dbType !== "SQLite"}
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) handleSqliteRestore(file);
-                              }}
-                              className="hidden"
-                            />
-                          </label>
-                        </div>
-
                         {/* Restore JSON */}
                         <div className="p-5 border border-border-subtle rounded-lg bg-surface-dim/10">
                           <div className="flex items-center gap-2 text-strong font-bold text-sm mb-2">

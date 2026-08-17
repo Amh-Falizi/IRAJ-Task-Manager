@@ -271,7 +271,7 @@ class PgWrapper implements DatabaseWrapper {
     };
 
     try {
-      await client.query("BEGIN");
+      await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
       const result = await callback(txWrapper);
       await client.query("COMMIT");
       return result;
@@ -4322,8 +4322,12 @@ app.post("/api/backup/restore-json", authenticateToken, requireSuperAdmin, async
       for (const table of Object.keys(ALLOWED_TABLE_COLUMNS)) {
         try {
           await tx.exec(`DELETE FROM ${table}`);
-        } catch (delErr) {
-          console.warn(`Failed to clear table ${table}:`, delErr);
+        } catch (delErr: any) {
+          const msg = delErr.message?.toLowerCase() || '';
+          if (!msg.includes('no such table') && !msg.includes('does not exist')) {
+            throw delErr;
+          }
+          console.warn(`Skipping missing table ${table} during restore`);
         }
       }
 
