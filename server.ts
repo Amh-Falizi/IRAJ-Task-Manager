@@ -2467,7 +2467,7 @@ app.post("/api/tasks", authenticateToken, async (req: any, res: any) => {
   }
 
   if (newTask.parentId) {
-    const parentTask = await db.get("SELECT * FROM tasks WHERE id = ?", newTask.parentId);
+    const parentTask = await db.get("SELECT * FROM tasks WHERE id = ? AND projectId = ?", [newTask.parentId, newTask.projectId]);
     if (parentTask) {
        const subtasks = await db.all("SELECT status FROM tasks WHERE parentId = ?", newTask.parentId);
        if (subtasks.length > 0) {
@@ -2573,6 +2573,21 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
 
   if (req.body.projectId === null || req.body.projectId === "") {
     return res.status(400).json({ error: "projectId cannot be removed from a task" });
+  }
+
+  if (req.body.projectId !== undefined && String(req.body.projectId) !== String(task.projectId)) {
+    const hasDestAccess = await checkProjectAccess(db, req.body.projectId, req.user);
+    if (!hasDestAccess) {
+      return res.status(403).json({ error: "You do not have access to the destination project." });
+    }
+  }
+  
+  if (req.body.parentId !== undefined && req.body.parentId !== null) {
+    const targetProjectId = req.body.projectId !== undefined ? req.body.projectId : task.projectId;
+    const parentTask = await db.get("SELECT projectId FROM tasks WHERE id = ?", req.body.parentId);
+    if (parentTask && String(parentTask.projectId) !== String(targetProjectId)) {
+      return res.status(400).json({ error: "Parent task must be in the same project." });
+    }
   }
 
   const updated = { ...task, ...req.body, id: task.id };
@@ -3075,7 +3090,7 @@ app.get("/api/projects/:id/git/branches", authenticateToken, async (req: any, re
       };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const ghRes = await fetch(`https://api.github.com/repos/${owner}/${name}/branches`, { headers, signal: AbortSignal.timeout(8000) });
+      const ghRes = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/branches`, { headers, signal: AbortSignal.timeout(8000) });
       if (!ghRes.ok) {
         const errText = await ghRes.text();
         throw new Error(`GitHub API Error (${ghRes.status}): ${errText}`);
@@ -3088,7 +3103,7 @@ app.get("/api/projects/:id/git/branches", authenticateToken, async (req: any, re
           name: b.name,
           commitSha: b.commit?.sha?.substring(0, 7) || '',
           protected: b.protected || false,
-          webUrl: `https://github.com/${owner}/${name}/tree/${encodeURIComponent(b.name)}`,
+          webUrl: `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tree/${encodeURIComponent(b.name)}`,
           isDefault: b.name === (project.defaultBranch || 'main'),
           linkedTaskId: linkedTask?.id,
           linkedTaskTitle: linkedTask?.title,
@@ -3100,7 +3115,7 @@ app.get("/api/projects/:id/git/branches", authenticateToken, async (req: any, re
       return res.json({ branches, provider: 'github', configured: true });
     } else if (provider === 'gitlab') {
       const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
-      const projectPath = `${owner}/${name}`;
+      const projectPath = `${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
       const headers: Record<string, string> = {};
       if (token) headers['PRIVATE-TOKEN'] = token;
 
@@ -3203,7 +3218,7 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
         };
 
         // 1. Get SHA of base branch
-        const baseRefRes = await fetch(`https://api.github.com/repos/${owner}/${name}/git/ref/heads/${targetBaseBranch}`, { headers, signal: AbortSignal.timeout(8000) });
+        const baseRefRes = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/git/ref/heads/${targetBaseBranch}`, { headers, signal: AbortSignal.timeout(8000) });
         if (!baseRefRes.ok) {
           let errMsg = `Failed to find base branch '${targetBaseBranch}' on GitHub`;
           try {
@@ -3218,7 +3233,7 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
         const sha = baseRefData.object.sha;
 
         // 2. Create ref
-        const createRefRes = await fetch(`https://api.github.com/repos/${owner}/${name}/git/refs`, {
+        const createRefRes = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/git/refs`, {
           method: 'POST',
           headers,
           signal: AbortSignal.timeout(8000),
@@ -3246,10 +3261,10 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
         }
 
         remoteCreated = true;
-        remoteUrl = `https://github.com/${owner}/${name}/tree/${encodeURIComponent(branchName)}`;
+        remoteUrl = `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tree/${encodeURIComponent(branchName)}`;
       } else if (provider === 'gitlab') {
         const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
-        const projectPath = `${owner}/${name}`;
+        const projectPath = `${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
         
         const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/repository/branches`, {
           method: 'POST',
@@ -3382,7 +3397,7 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
   } else {
     try {
       if (provider === 'github') {
-        const ghRes = await fetch(`https://api.github.com/repos/${owner}/${name}/pulls`, {
+        const ghRes = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls`, {
           method: 'POST',
           headers: {
             'User-Agent': 'devteam-taskmanager',
@@ -3408,7 +3423,7 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
         prUrl = ghData.html_url;
       } else if (provider === 'gitlab') {
         const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
-        const projectPath = `${owner}/${name}`;
+        const projectPath = `${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
 
         const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests`, {
           method: 'POST',
@@ -3438,10 +3453,10 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
       isFallback = true;
       // Fallback web URL
       if (provider === 'github') {
-        prUrl = `https://github.com/${owner}/${name}/compare/${baseBranch}...${encodeURIComponent(sourceBranch)}?expand=1`;
+        prUrl = `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/compare/${baseBranch}...${encodeURIComponent(sourceBranch)}?expand=1`;
       } else {
         const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
-        prUrl = `${gitlabUrl}/${owner}/${name}/-/merge_requests/new?merge_request%5Bsource_branch%5D=${encodeURIComponent(sourceBranch)}&merge_request%5Btarget_branch%5D=${baseBranch}`;
+        prUrl = `${gitlabUrl}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/-/merge_requests/new?merge_request%5Bsource_branch%5D=${encodeURIComponent(sourceBranch)}&merge_request%5Btarget_branch%5D=${baseBranch}`;
       }
     }
   }
@@ -3574,7 +3589,7 @@ app.post("/api/projects/:id/git/pull-requests/sync", authenticateToken, async (r
           'Accept': 'application/vnd.github.v3+json',
           'Authorization': `Bearer ${token}`
         };
-        const ghRes = await fetch(`https://api.github.com/repos/${owner}/${name}/pulls/${prNumber}`, { headers, signal: AbortSignal.timeout(8000) });
+        const ghRes = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${prNumber}`, { headers, signal: AbortSignal.timeout(8000) });
         if (ghRes.ok) {
           const ghData = await ghRes.json();
           remoteMerged = ghData.merged || false;
@@ -3587,7 +3602,7 @@ app.post("/api/projects/:id/git/pull-requests/sync", authenticateToken, async (r
         }
       } else if (provider === 'gitlab') {
         const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
-        const projectPath = `${owner}/${name}`;
+        const projectPath = `${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
         const headers = { 'PRIVATE-TOKEN': token };
         const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests/${prNumber}`, { headers, signal: AbortSignal.timeout(8000) });
         if (glRes.ok) {
@@ -4476,7 +4491,7 @@ async function runBackgroundPrSync() {
               'Accept': 'application/vnd.github.v3+json',
               'Authorization': `Bearer ${token}`
             };
-            const ghRes = await fetch(`https://api.github.com/repos/${owner}/${name}/pulls/${prNumber}`, { 
+            const ghRes = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${prNumber}`, { 
               headers,
               signal: AbortSignal.timeout(8000)
             });
@@ -4490,7 +4505,7 @@ async function runBackgroundPrSync() {
             }
           } else if (provider === 'gitlab') {
             const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
-            const projectPath = `${owner}/${name}`;
+            const projectPath = `${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
             const headers = { 'PRIVATE-TOKEN': token };
             const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests/${prNumber}`, { 
               headers,
