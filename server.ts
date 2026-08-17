@@ -3133,11 +3133,11 @@ app.get("/api/projects/:id/git/branches", authenticateToken, async (req: any, re
       return res.json({ branches, provider: 'github', configured: true });
     } else if (provider === 'gitlab') {
       const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
-      const projectPath = `${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+      const encodedProjectPath = encodeURIComponent(`${owner}/${name}`);
       const headers: Record<string, string> = {};
       if (token) headers['PRIVATE-TOKEN'] = token;
 
-      const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/repository/branches`, { headers, signal: AbortSignal.timeout(8000) });
+      const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodedProjectPath}/repository/branches`, { headers, signal: AbortSignal.timeout(8000) });
       if (!glRes.ok) {
         const errText = await glRes.text();
         throw new Error(`GitLab API Error (${glRes.status}): ${errText}`);
@@ -3151,7 +3151,7 @@ app.get("/api/projects/:id/git/branches", authenticateToken, async (req: any, re
           commitSha: b.commit?.short_id || b.commit?.id?.substring(0, 7) || '',
           commitMessage: b.commit?.title || '',
           protected: b.protected || false,
-          webUrl: b.web_url || `${gitlabUrl}/${projectPath}/-/tree/${encodeURIComponent(b.name)}`,
+          webUrl: b.web_url || `${gitlabUrl}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/-/tree/${encodeURIComponent(b.name)}`,
           isDefault: b.default || b.name === (project.defaultBranch || 'main'),
           linkedTaskId: linkedTask?.id,
           linkedTaskTitle: linkedTask?.title,
@@ -3282,9 +3282,9 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
         remoteUrl = `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tree/${encodeURIComponent(branchName)}`;
       } else if (provider === 'gitlab') {
         const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
-        const projectPath = `${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+        const encodedProjectPath = encodeURIComponent(`${owner}/${name}`);
         
-        const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/repository/branches`, {
+        const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodedProjectPath}/repository/branches`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -3312,7 +3312,7 @@ app.post("/api/projects/:id/git/branches", authenticateToken, async (req: any, r
 
         const glData = await glRes.json();
         remoteCreated = true;
-        remoteUrl = glData.web_url || `${gitlabUrl}/${projectPath}/-/tree/${encodeURIComponent(branchName)}`;
+        remoteUrl = glData.web_url || `${gitlabUrl}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/-/tree/${encodeURIComponent(branchName)}`;
       }
     } catch (err: any) {
       console.error("Error creating remote branch:", err.message);
@@ -3441,9 +3441,9 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
         prUrl = ghData.html_url;
       } else if (provider === 'gitlab') {
         const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
-        const projectPath = `${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+        const encodedProjectPath = encodeURIComponent(`${owner}/${name}`);
 
-        const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests`, {
+        const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodedProjectPath}/merge_requests`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -3620,9 +3620,9 @@ app.post("/api/projects/:id/git/pull-requests/sync", authenticateToken, async (r
         }
       } else if (provider === 'gitlab') {
         const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
-        const projectPath = `${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+        const encodedProjectPath = encodeURIComponent(`${owner}/${name}`);
         const headers = { 'PRIVATE-TOKEN': token };
-        const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests/${prNumber}`, { headers, signal: AbortSignal.timeout(8000) });
+        const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodedProjectPath}/merge_requests/${prNumber}`, { headers, signal: AbortSignal.timeout(8000) });
         if (glRes.ok) {
           const glData = await glRes.json();
           const glState = glData.state; // 'opened', 'closed', 'merged', 'locked'
@@ -4525,9 +4525,9 @@ async function runBackgroundPrSync() {
             }
           } else if (provider === 'gitlab') {
             const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
-            const projectPath = `${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+            const encodedProjectPath = encodeURIComponent(`${owner}/${name}`);
             const headers = { 'PRIVATE-TOKEN': token };
-            const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodeURIComponent(projectPath)}/merge_requests/${prNumber}`, { 
+            const glRes = await fetch(`${gitlabUrl}/api/v4/projects/${encodedProjectPath}/merge_requests/${prNumber}`, { 
               headers,
               signal: AbortSignal.timeout(8000)
             });
