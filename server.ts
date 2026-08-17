@@ -277,11 +277,13 @@ class PgWrapper implements DatabaseWrapper {
         await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
         const result = await callback(txWrapper);
         await client.query("COMMIT");
-        client.release();
         return result;
       } catch (e: any) {
-        await client.query("ROLLBACK");
-        client.release();
+        try {
+          await client.query("ROLLBACK");
+        } catch (rbErr) {
+          console.warn("Rollback failed:", rbErr);
+        }
         
         if (e.code === '40001' && attempt < maxRetries - 1) {
           attempt++;
@@ -291,6 +293,8 @@ class PgWrapper implements DatabaseWrapper {
         }
         
         throw e;
+      } finally {
+        client.release();
       }
     }
     throw new Error("Transaction failed after maximum retries");
@@ -2473,6 +2477,12 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
   let canManageTask = false;
   if (task.projectId) {
     canManageTask = await isProjectAdminOrOwner(db, task.projectId, req.user);
+    if (!canManageTask) {
+      const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [task.projectId, req.user.id]);
+      if (pm && pm.role !== 'viewer') {
+        canManageTask = await hasPermission(req.user, "edit_all_tasks");
+      }
+    }
   } else {
     canManageTask = isAdminOrSuperAdmin(req.user);
   }
@@ -2642,6 +2652,12 @@ app.delete("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
   let canManageTask = false;
   if (task.projectId) {
     canManageTask = await isProjectAdminOrOwner(db, task.projectId, req.user);
+    if (!canManageTask) {
+      const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [task.projectId, req.user.id]);
+      if (pm && pm.role !== 'viewer') {
+        canManageTask = await hasPermission(req.user, "delete_tasks");
+      }
+    }
   } else {
     canManageTask = isAdminOrSuperAdmin(req.user);
   }
@@ -4330,7 +4346,12 @@ app.post("/api/backup/restore-json", authenticateToken, requireSuperAdmin, async
     await db.transaction(async (tx) => {
       try {
         await tx.exec("DELETE FROM password_resets;");
-      } catch (delPrErr) {}
+      } catch (delPrErr: any) {
+        const msg = delPrErr.message?.toLowerCase() || '';
+        if (!msg.includes('no such table') && !msg.includes('does not exist')) {
+          throw delPrErr;
+        }
+      }
 
       for (const table of Object.keys(ALLOWED_TABLE_COLUMNS)) {
         try {
