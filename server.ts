@@ -828,23 +828,15 @@ interface Task {
 
 // Authentication Middleware
 const authenticateToken = (req: any, res: any, next: any) => {
-  const authHeader = req.headers["authorization"];
-  const rawBearer = authHeader && authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
-  const cookieToken = req.cookies?.[AUTH_COOKIE_NAME];
+  const token = req.cookies?.[AUTH_COOKIE_NAME];
 
-  const isValidBearerString = rawBearer && rawBearer !== "cookie_authenticated" && rawBearer !== "null" && rawBearer !== "undefined" && rawBearer !== "[object Object]";
-  const candidateTokens = [isValidBearerString ? rawBearer : null, cookieToken].filter(Boolean) as string[];
-
-  if (candidateTokens.length === 0) return res.sendStatus(401);
+  if (!token) return res.sendStatus(401);
 
   let decodedUser: any = null;
-  for (const token of candidateTokens) {
-    try {
-      decodedUser = jwt.verify(token, SECRET_KEY);
-      if (decodedUser) break;
-    } catch (err) {
-      // Try next candidate
-    }
+  try {
+    decodedUser = jwt.verify(token, SECRET_KEY);
+  } catch (err) {
+    return res.sendStatus(403);
   }
 
   if (!decodedUser) return res.sendStatus(403);
@@ -902,6 +894,9 @@ const checkProjectAccess = async (db: any, projectId: string, user: any): Promis
   const tm = await db.get("SELECT 1 FROM team_projects tp JOIN team_members tm ON tp.teamId = tm.teamId WHERE tp.projectId = ? AND tm.userId = ?", [projectId, user.id]);
   if (tm) return true;
   
+  const t = await db.get("SELECT 1 FROM tasks WHERE projectId = ? AND (assigneeId = ? OR creatorId = ?)", [projectId, user.id, user.id]);
+  if (t) return true;
+
   return false;
 };
 
@@ -1794,33 +1789,47 @@ app.get("/api/search", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
 
   try {
-    const projects = await db.all(`
-      SELECT p.id, p.name as title, p.description, 'project' as type 
-      FROM projects p
-      LEFT JOIN project_members pm ON p.id = pm.projectId
-      WHERE (p.ownerId = ? OR pm.userId = ?) AND (LOWER(p.name) LIKE ? OR LOWER(p.description) LIKE ?)
-      GROUP BY p.id
-    `, [userId, userId, searchTerm, searchTerm]);
+    let projects;
+    let tasks;
+    let documents;
 
-    const tasks = await db.all(`
-      SELECT t.id, t.title, t.description, 'task' as type, t.projectId
-      FROM tasks t
-      LEFT JOIN projects p ON t.projectId = p.id
-      LEFT JOIN project_members pm ON p.id = pm.projectId
-      WHERE (p.ownerId = ? OR pm.userId = ? OR t.creatorId = ? OR t.assigneeId = ?) 
-      AND (LOWER(t.title) LIKE ? OR LOWER(t.description) LIKE ?)
-      GROUP BY t.id
-    `, [userId, userId, userId, userId, searchTerm, searchTerm]);
+    if (isAdminOrSuperAdmin(req.user)) {
+      projects = await db.all("SELECT id, name as title, description, 'project' as type FROM projects WHERE LOWER(name) LIKE ? OR LOWER(description) LIKE ?", [searchTerm, searchTerm]);
+      tasks = await db.all("SELECT id, title, description, 'task' as type, projectId FROM tasks WHERE LOWER(title) LIKE ? OR LOWER(description) LIKE ?", [searchTerm, searchTerm]);
+      documents = await db.all("SELECT id, title, 'document' as type, projectId FROM documents WHERE LOWER(title) LIKE ? OR LOWER(content) LIKE ?", [searchTerm, searchTerm]);
+    } else {
+      projects = await db.all(`
+        SELECT DISTINCT p.id, p.name as title, p.description, 'project' as type 
+        FROM projects p
+        LEFT JOIN project_members pm ON p.id = pm.projectId
+        LEFT JOIN team_projects tp ON p.id = tp.projectId
+        LEFT JOIN team_members tm ON tp.teamId = tm.teamId
+        LEFT JOIN tasks t ON p.id = t.projectId
+        WHERE (p.ownerId = ? OR pm.userId = ? OR tm.userId = ? OR t.assigneeId = ? OR t.creatorId = ?) AND (LOWER(p.name) LIKE ? OR LOWER(p.description) LIKE ?)
+      `, [userId, userId, userId, userId, userId, searchTerm, searchTerm]);
 
-    const documents = await db.all(`
-      SELECT d.id, d.title, 'document' as type, d.projectId
-      FROM documents d
-      LEFT JOIN projects p ON d.projectId = p.id
-      LEFT JOIN project_members pm ON p.id = pm.projectId
-      WHERE (p.ownerId = ? OR pm.userId = ? OR d.authorId = ?) 
-      AND (LOWER(d.title) LIKE ? OR LOWER(d.content) LIKE ?)
-      GROUP BY d.id
-    `, [userId, userId, userId, searchTerm, searchTerm]);
+      tasks = await db.all(`
+        SELECT DISTINCT t.id, t.title, t.description, 'task' as type, t.projectId
+        FROM tasks t
+        LEFT JOIN projects p ON t.projectId = p.id
+        LEFT JOIN project_members pm ON p.id = pm.projectId
+        LEFT JOIN team_projects tp ON p.id = tp.projectId
+        LEFT JOIN team_members tm ON tp.teamId = tm.teamId
+        WHERE (p.ownerId = ? OR pm.userId = ? OR tm.userId = ? OR t.creatorId = ? OR t.assigneeId = ?) 
+        AND (LOWER(t.title) LIKE ? OR LOWER(t.description) LIKE ?)
+      `, [userId, userId, userId, userId, userId, searchTerm, searchTerm]);
+
+      documents = await db.all(`
+        SELECT DISTINCT d.id, d.title, 'document' as type, d.projectId
+        FROM documents d
+        LEFT JOIN projects p ON d.projectId = p.id
+        LEFT JOIN project_members pm ON p.id = pm.projectId
+        LEFT JOIN team_projects tp ON p.id = tp.projectId
+        LEFT JOIN team_members tm ON tp.teamId = tm.teamId
+        WHERE (p.ownerId = ? OR pm.userId = ? OR tm.userId = ? OR d.authorId = ?) 
+        AND (LOWER(d.title) LIKE ? OR LOWER(d.content) LIKE ?)
+      `, [userId, userId, userId, userId, searchTerm, searchTerm]);
+    }
 
     let users: any[] = [];
     if (userRole === 'admin' || userRole === 'super_admin') {
@@ -1833,7 +1842,7 @@ app.get("/api/search", authenticateToken, async (req: any, res: any) => {
 
     res.json({ projects, tasks, documents, users });
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -2078,11 +2087,15 @@ app.put("/api/users/:id/role", authenticateToken, async (req: any, res: any) => 
 // Get all roles
 app.get("/api/roles", authenticateToken, async (req: any, res: any) => {
   try {
+    const allowed = await canManageRoles(req.user) || isAdminOrSuperAdmin(req.user);
+    if (!allowed) {
+      return res.status(403).json({ error: "Only admins or role managers can view roles." });
+    }
     const db = await dbPromise;
     const roles = await db.all("SELECT * FROM roles ORDER BY is_custom ASC, name ASC");
     res.json(roles);
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -2121,7 +2134,7 @@ app.post("/api/roles", authenticateToken, async (req: any, res: any) => {
     const newRole = await db.get("SELECT * FROM roles WHERE id = ?", id);
     res.json(newRole);
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -2132,8 +2145,9 @@ app.put("/api/roles/:id", authenticateToken, async (req: any, res: any) => {
     if (id === "super_admin") {
       return res.status(400).json({ error: "Super Admin role permissions are immutable." });
     }
-    if (id === "admin" && req.user.role !== "super_admin") {
-      return res.status(403).json({ error: "Only Super Admin can modify standard Admin role permissions." });
+    const BUILT_IN_ROLES = ["admin", "manager", "developer"];
+    if (BUILT_IN_ROLES.includes(id) && req.user.role !== "super_admin") {
+      return res.status(403).json({ error: "Only Super Admin can modify built-in role permissions." });
     }
 
     const allowed = await canManageRoles(req.user);
@@ -2142,6 +2156,23 @@ app.put("/api/roles/:id", authenticateToken, async (req: any, res: any) => {
     }
 
     const { name, description, permissions } = req.body;
+    
+    // Strict allowlist for permissions
+    const VALID_PERMS = ["manage_users", "manage_roles", "manage_projects", "manage_teams", "reset_database", "create_tasks", "edit_all_tasks", "delete_tasks"];
+    
+    let parsedPerms: any = {};
+    if (permissions) {
+      const inputPerms = typeof permissions === "string" ? JSON.parse(permissions) : permissions;
+      for (const key of VALID_PERMS) {
+        if (inputPerms[key] === true) {
+          // Block escalating core admin perms if not super_admin
+          if ((key === "manage_users" || key === "manage_roles" || key === "reset_database") && req.user.role !== "super_admin") {
+             return res.status(403).json({ error: "Only Super Admin can grant manage_users, manage_roles, or reset_database." });
+          }
+          parsedPerms[key] = true;
+        }
+      }
+    }
 
     const db = await dbPromise;
     const role = await db.get("SELECT * FROM roles WHERE id = ?", id);
@@ -2157,10 +2188,7 @@ app.put("/api/roles/:id", authenticateToken, async (req: any, res: any) => {
       finalName = name;
     }
 
-    let permsStr = role.permissions || "{}";
-    if (permissions) {
-      permsStr = typeof permissions === "object" ? JSON.stringify(permissions) : String(permissions);
-    }
+    const permsStr = Object.keys(parsedPerms).length > 0 ? JSON.stringify(parsedPerms) : role.permissions || "{}";
 
     await db.run(
       "UPDATE roles SET name = ?, description = ?, permissions = ? WHERE id = ?",
@@ -2170,7 +2198,7 @@ app.put("/api/roles/:id", authenticateToken, async (req: any, res: any) => {
     const updatedRole = await db.get("SELECT * FROM roles WHERE id = ?", id);
     res.json(updatedRole);
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -2200,7 +2228,7 @@ app.delete("/api/roles/:id", authenticateToken, async (req: any, res: any) => {
 
     res.json({ success: true });
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -2395,8 +2423,7 @@ app.post("/api/tasks", authenticateToken, async (req: any, res: any) => {
   let branchName = req.body.branchName;
   if (!branchName) {
     if (project && project.projectKey) {
-        await db.run("UPDATE projects SET taskCounter = COALESCE(taskCounter, 0) + 1 WHERE id = ?", [req.body.projectId]);
-        const updatedProj = await db.get("SELECT taskCounter FROM projects WHERE id = ?", req.body.projectId);
+        const updatedProj = await db.get("UPDATE projects SET taskCounter = COALESCE(taskCounter, 0) + 1 WHERE id = ? RETURNING taskCounter", [req.body.projectId]);
         const nextCount = updatedProj ? updatedProj.taskCounter : 1;
         branchName = `${project.projectKey}-${nextCount}`;
     }
@@ -2810,7 +2837,8 @@ app.get("/api/projects", authenticateToken, async (req: any, res: any) => {
          OR pm.userId = ? 
          OR tm.userId = ? 
          OR t.assigneeId = ?
-    `, [req.user.id, req.user.id, req.user.id, req.user.id]);
+         OR t.creatorId = ?
+    `, [req.user.id, req.user.id, req.user.id, req.user.id, req.user.id]);
   }
   res.json(projects.map(sanitizeProject));
 });
