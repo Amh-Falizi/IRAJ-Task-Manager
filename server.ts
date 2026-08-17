@@ -1351,22 +1351,8 @@ app.get("/api/auth/gitlab/callback", async (req: any, res: any) => {
       if (user.status && (user.status.toLowerCase() === 'inactive' || user.status.toLowerCase() === 'disabled' || user.status.toLowerCase() === 'suspended')) {
         throw new Error("Account is inactive or disabled. Contact administrator.");
       }
-      // If the account was registered locally and unverified, link it securely and revoke existing sessions
       if (user.authProvider === 'local') {
-        if (!user.emailVerified && isEmailConfirmed) {
-          const randomPassword = crypto.randomBytes(32).toString('hex');
-          const salt = await bcrypt.genSalt(10);
-          const hash = await bcrypt.hash(randomPassword, salt);
-          await db.run(
-            "UPDATE users SET passwordHash = ?, authProvider = 'gitlab', emailVerified = 1, tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?",
-            [hash, user.id]
-          );
-          user = await db.get("SELECT id, name, email, role, status, tokenVersion FROM users WHERE id = ?", user.id);
-        } else if (user.emailVerified) {
-          throw new Error("An account with this email already exists locally with verified status. Please sign in with your email and password.");
-        } else {
-          throw new Error("GitLab email is not confirmed. Please confirm your email on GitLab before linking.");
-        }
+        throw new Error("An account with this email already exists with password authentication. Please sign in with your email and password.");
       } else if (user.authProvider !== 'gitlab') {
         throw new Error(`An account with this email already exists registered via ${user.authProvider}. Please sign in using ${user.authProvider}.`);
       }
@@ -1477,20 +1463,8 @@ app.get(["/api/auth/google/callback", "/api/auth/google/callback/"], async (req:
       if (user.status && (user.status.toLowerCase() === 'inactive' || user.status.toLowerCase() === 'disabled' || user.status.toLowerCase() === 'suspended')) {
         throw new Error("Account is inactive or disabled. Contact administrator.");
       }
-      // If the account was registered locally and unverified, link it securely and revoke existing sessions
       if (user.authProvider === 'local') {
-        if (!user.emailVerified) {
-          const randomPassword = crypto.randomBytes(32).toString('hex');
-          const salt = await bcrypt.genSalt(10);
-          const hash = await bcrypt.hash(randomPassword, salt);
-          await db.run(
-            "UPDATE users SET passwordHash = ?, authProvider = 'google', emailVerified = 1, tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?",
-            [hash, user.id]
-          );
-          user = await db.get("SELECT id, name, email, role, status, tokenVersion FROM users WHERE id = ?", user.id);
-        } else {
-          throw new Error("An account with this email already exists locally with verified status. Please sign in with your email and password.");
-        }
+        throw new Error("An account with this email already exists with password authentication. Please sign in with your email and password.");
       } else if (user.authProvider !== 'google') {
         throw new Error(`An account with this email already exists registered via ${user.authProvider}. Please sign in using ${user.authProvider}.`);
       }
@@ -1623,20 +1597,8 @@ app.get(["/api/auth/github/callback", "/api/auth/github/callback/"], async (req:
       if (user.status && (user.status.toLowerCase() === 'inactive' || user.status.toLowerCase() === 'disabled' || user.status.toLowerCase() === 'suspended')) {
         throw new Error("Account is inactive or disabled. Contact administrator.");
       }
-      // If the account was registered locally and unverified, link it securely and revoke existing sessions
       if (user.authProvider === 'local') {
-        if (!user.emailVerified) {
-          const randomPassword = crypto.randomBytes(32).toString('hex');
-          const salt = await bcrypt.genSalt(10);
-          const hash = await bcrypt.hash(randomPassword, salt);
-          await db.run(
-            "UPDATE users SET passwordHash = ?, authProvider = 'github', emailVerified = 1, tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?",
-            [hash, user.id]
-          );
-          user = await db.get("SELECT id, name, email, role, status, tokenVersion FROM users WHERE id = ?", user.id);
-        } else {
-          throw new Error("An account with this email already exists locally with verified status. Please sign in with your email and password.");
-        }
+        throw new Error("An account with this email already exists with password authentication. Please sign in with your email and password.");
       } else if (user.authProvider !== 'github') {
         throw new Error(`An account with this email already exists registered via ${user.authProvider}. Please sign in using ${user.authProvider}.`);
       }
@@ -2082,6 +2044,37 @@ app.put("/api/users/:id/role", authenticateToken, async (req: any, res: any) => 
 });
 
 // Roles API endpoints
+const VALID_PERMS = [
+  "manage_users",
+  "manage_roles",
+  "manage_projects",
+  "manage_teams",
+  "reset_database",
+  "create_tasks",
+  "edit_all_tasks",
+  "delete_tasks",
+] as const;
+
+function sanitizeAndValidatePermissions(permissions: any, userRole: string): { valid: boolean; perms: Record<string, boolean>; error?: string } {
+  let inputPerms: any = {};
+  if (permissions !== undefined && permissions !== null) {
+    try {
+      inputPerms = typeof permissions === "string" ? JSON.parse(permissions) : (typeof permissions === "object" ? permissions : {});
+    } catch {
+      inputPerms = {};
+    }
+  }
+  const parsedPerms: Record<string, boolean> = {};
+  for (const key of VALID_PERMS) {
+    if (inputPerms[key] === true) {
+      if ((key === "manage_users" || key === "manage_roles" || key === "reset_database") && userRole !== "super_admin") {
+        return { valid: false, perms: {}, error: "Only Super Admin can grant manage_users, manage_roles, or reset_database." };
+      }
+      parsedPerms[key] = true;
+    }
+  }
+  return { valid: true, perms: parsedPerms };
+}
 
 // Get all roles
 app.get("/api/roles", authenticateToken, async (req: any, res: any) => {
@@ -2125,29 +2118,12 @@ app.post("/api/roles", authenticateToken, async (req: any, res: any) => {
       return res.status(400).json({ error: "A role with this ID already exists." });
     }
 
-    // Strict allowlist for permissions
-    const VALID_PERMS = ["manage_users", "manage_roles", "manage_projects", "manage_teams", "reset_database", "create_tasks", "edit_all_tasks", "delete_tasks"];
-    
-    let parsedPerms: Record<string, boolean> = {};
-    if (permissions) {
-      let inputPerms: any = {};
-      try {
-        inputPerms = typeof permissions === "string" ? JSON.parse(permissions) : (typeof permissions === "object" && permissions !== null ? permissions : {});
-      } catch (err) {
-        inputPerms = {};
-      }
-      for (const key of VALID_PERMS) {
-        if (inputPerms[key] === true) {
-          // Block escalating core admin perms if not super_admin
-          if ((key === "manage_users" || key === "manage_roles" || key === "reset_database") && req.user.role !== "super_admin") {
-             return res.status(403).json({ error: "Only Super Admin can grant manage_users, manage_roles, or reset_database." });
-          }
-          parsedPerms[key] = true;
-        }
-      }
+    const permCheck = sanitizeAndValidatePermissions(permissions, req.user.role);
+    if (!permCheck.valid) {
+      return res.status(403).json({ error: permCheck.error });
     }
 
-    const permsStr = JSON.stringify(parsedPerms);
+    const permsStr = JSON.stringify(permCheck.perms);
 
     await db.run(
       "INSERT INTO roles (id, name, description, is_custom, permissions) VALUES (?, ?, ?, 1, ?)",
@@ -2180,21 +2156,13 @@ app.put("/api/roles/:id", authenticateToken, async (req: any, res: any) => {
 
     const { name, description, permissions } = req.body;
     
-    // Strict allowlist for permissions
-    const VALID_PERMS = ["manage_users", "manage_roles", "manage_projects", "manage_teams", "reset_database", "create_tasks", "edit_all_tasks", "delete_tasks"];
-    
-    let parsedPerms: any = {};
-    if (permissions) {
-      const inputPerms = typeof permissions === "string" ? JSON.parse(permissions) : permissions;
-      for (const key of VALID_PERMS) {
-        if (inputPerms[key] === true) {
-          // Block escalating core admin perms if not super_admin
-          if ((key === "manage_users" || key === "manage_roles" || key === "reset_database") && req.user.role !== "super_admin") {
-             return res.status(403).json({ error: "Only Super Admin can grant manage_users, manage_roles, or reset_database." });
-          }
-          parsedPerms[key] = true;
-        }
+    let permsToSave: string | undefined = undefined;
+    if (permissions !== undefined) {
+      const permCheck = sanitizeAndValidatePermissions(permissions, req.user.role);
+      if (!permCheck.valid) {
+        return res.status(403).json({ error: permCheck.error });
       }
+      permsToSave = JSON.stringify(permCheck.perms);
     }
 
     const db = await dbPromise;
@@ -2211,11 +2179,11 @@ app.put("/api/roles/:id", authenticateToken, async (req: any, res: any) => {
       finalName = name;
     }
 
-    const permsStr = Object.keys(parsedPerms).length > 0 ? JSON.stringify(parsedPerms) : role.permissions || "{}";
+    const finalPerms = permsToSave !== undefined ? permsToSave : (role.permissions || "{}");
 
     await db.run(
       "UPDATE roles SET name = ?, description = ?, permissions = ? WHERE id = ?",
-      [finalName, description !== undefined ? description : role.description, permsStr, id]
+      [finalName, description !== undefined ? description : role.description, finalPerms, id]
     );
 
     const updatedRole = await db.get("SELECT * FROM roles WHERE id = ?", id);
@@ -2393,6 +2361,11 @@ app.put("/api/tasks/:taskId/comments/:commentId", authenticateToken, async (req:
   const { taskId, commentId } = req.params;
   const { content } = req.body;
   
+  const access = await checkTaskAccess(db, taskId, req.user);
+  if (!access.allowed) {
+    return res.status(403).json({ error: "Access denied to this task." });
+  }
+
   const comment = await db.get("SELECT * FROM task_comments WHERE id = ? AND taskId = ?", [commentId, taskId]);
   if (!comment) return res.status(404).json({ error: "Comment not found" });
   if (comment.userId !== req.user.id && !isAdminOrSuperAdmin(req.user)) {
@@ -2408,6 +2381,11 @@ app.put("/api/tasks/:taskId/comments/:commentId", authenticateToken, async (req:
 app.delete("/api/tasks/:taskId/comments/:commentId", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
   const { taskId, commentId } = req.params;
+
+  const access = await checkTaskAccess(db, taskId, req.user);
+  if (!access.allowed) {
+    return res.status(403).json({ error: "Access denied to this task." });
+  }
 
   const comment = await db.get("SELECT * FROM task_comments WHERE id = ? AND taskId = ?", [commentId, taskId]);
   if (!comment) return res.status(404).json({ error: "Comment not found" });
@@ -2615,11 +2593,17 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
     }
   }
   
-  if (req.body.parentId !== undefined && req.body.parentId !== null) {
+  if (req.body.parentId !== undefined && req.body.parentId !== null && req.body.parentId !== "") {
+    if (req.body.parentId === task.id) {
+      return res.status(400).json({ error: "A task cannot be its own parent." });
+    }
     const targetProjectId = req.body.projectId !== undefined ? req.body.projectId : task.projectId;
-    const parentTask = await db.get("SELECT projectId FROM tasks WHERE id = ?", req.body.parentId);
-    if (parentTask && String(parentTask.projectId) !== String(targetProjectId)) {
-      return res.status(400).json({ error: "Parent task must be in the same project." });
+    const parentTask = await db.get("SELECT id, projectId FROM tasks WHERE id = ?", req.body.parentId);
+    if (!parentTask) {
+      return res.status(400).json({ error: "Parent task does not exist." });
+    }
+    if (String(parentTask.projectId) !== String(targetProjectId)) {
+      return res.status(400).json({ error: "Parent task must belong to the same project." });
     }
   }
 
@@ -3423,10 +3407,10 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
     isFallback = true;
     // If no token or repo configured, generate web creation URL
     if (provider === 'github') {
-      prUrl = `https://github.com/${owner || 'owner'}/${name || 'repo'}/compare/${baseBranch}...${encodeURIComponent(sourceBranch)}?expand=1`;
+      prUrl = `https://github.com/${encodeURIComponent(owner || 'owner')}/${encodeURIComponent(name || 'repo')}/compare/${encodeURIComponent(baseBranch)}...${encodeURIComponent(sourceBranch)}?expand=1`;
     } else {
       const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
-      prUrl = `${gitlabUrl}/${owner || 'owner'}/${name || 'repo'}/-/merge_requests/new?merge_request%5Bsource_branch%5D=${encodeURIComponent(sourceBranch)}&merge_request%5Btarget_branch%5D=${baseBranch}`;
+      prUrl = `${gitlabUrl}/${encodeURIComponent(owner || 'owner')}/${encodeURIComponent(name || 'repo')}/-/merge_requests/new?merge_request%5Bsource_branch%5D=${encodeURIComponent(sourceBranch)}&merge_request%5Btarget_branch%5D=${encodeURIComponent(baseBranch)}`;
     }
   } else {
     try {
@@ -3487,10 +3471,10 @@ app.post("/api/projects/:id/git/pull-requests", authenticateToken, async (req: a
       isFallback = true;
       // Fallback web URL
       if (provider === 'github') {
-        prUrl = `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/compare/${baseBranch}...${encodeURIComponent(sourceBranch)}?expand=1`;
+        prUrl = `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/compare/${encodeURIComponent(baseBranch)}...${encodeURIComponent(sourceBranch)}?expand=1`;
       } else {
         const gitlabUrl = process.env.GITLAB_URL || 'https://gitlab.com';
-        prUrl = `${gitlabUrl}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/-/merge_requests/new?merge_request%5Bsource_branch%5D=${encodeURIComponent(sourceBranch)}&merge_request%5Btarget_branch%5D=${baseBranch}`;
+        prUrl = `${gitlabUrl}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/-/merge_requests/new?merge_request%5Bsource_branch%5D=${encodeURIComponent(sourceBranch)}&merge_request%5Btarget_branch%5D=${encodeURIComponent(baseBranch)}`;
       }
     }
   }
