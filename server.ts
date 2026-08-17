@@ -812,8 +812,8 @@ interface Task {
   id: string;
   title: string;
   description: string;
-  status: "todo" | "in_progress" | "review" | "done";
-  priority: "low" | "medium" | "high" | "urgent";
+  status: "todo" | "in_progress" | "review" | "done" | string;
+  priority: "low" | "medium" | "high" | "urgent" | string;
   deadline: string;
   assigneeId: string | null;
   creatorId: string;
@@ -823,6 +823,8 @@ interface Task {
   milestoneId?: string | null;
   createdAt: string;
   orderIndex?: number;
+  prUrl?: string | null;
+  prStatus?: string | null;
 }
 
 // Authentication Middleware
@@ -2607,7 +2609,28 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
     }
   }
 
-  const updated = { ...task, ...req.body, id: task.id };
+  if (req.body.status !== undefined && (typeof req.body.status !== 'string' || req.body.status.trim() === '' || req.body.status.length > 50)) {
+    return res.status(400).json({ error: "Invalid task status." });
+  }
+
+  const updated: Task = {
+    id: task.id,
+    title: req.body.title !== undefined ? String(req.body.title).trim() : task.title,
+    description: req.body.description !== undefined ? String(req.body.description || '') : task.description,
+    status: req.body.status !== undefined ? String(req.body.status) : task.status,
+    priority: req.body.priority !== undefined ? String(req.body.priority) : task.priority,
+    deadline: req.body.deadline !== undefined ? String(req.body.deadline) : task.deadline,
+    assigneeId: req.body.assigneeId !== undefined ? (req.body.assigneeId || null) : task.assigneeId,
+    creatorId: task.creatorId,
+    branchName: req.body.branchName !== undefined ? (req.body.branchName || null) : task.branchName,
+    parentId: req.body.parentId !== undefined ? (req.body.parentId || null) : task.parentId,
+    projectId: req.body.projectId !== undefined ? (req.body.projectId || null) : task.projectId,
+    milestoneId: req.body.milestoneId !== undefined ? (req.body.milestoneId || null) : task.milestoneId,
+    createdAt: task.createdAt,
+    orderIndex: req.body.orderIndex !== undefined ? Number(req.body.orderIndex) : task.orderIndex,
+    prUrl: task.prUrl,
+    prStatus: task.prStatus
+  };
 
   if (updated.status === 'done') {
     // Check if there are pending dependencies
@@ -4407,6 +4430,8 @@ app.post("/api/backup/restore-json", authenticateToken, requireSuperAdmin, async
       project_columns: ["id", "projectId", "columnsJson", "updatedAt"]
     };
 
+    const executingAdmin = await db.get("SELECT id, email, passwordHash FROM users WHERE id = ?", req.user.id);
+
     // Execute wipe and sequential restore inside a transactional block
     await db.transaction(async (tx) => {
       try {
@@ -4447,6 +4472,9 @@ app.post("/api/backup/restore-json", authenticateToken, requireSuperAdmin, async
               return null;
             }
             if (table === "users" && col === "passwordHash" && row[col] === "••••••••") {
+              if (executingAdmin && (row.id === executingAdmin.id || row.email === executingAdmin.email)) {
+                return executingAdmin.passwordHash;
+              }
               return "$2b$10$UnusablePlaceholderPasswordHash00000000000000000000000";
             }
             return row[col];

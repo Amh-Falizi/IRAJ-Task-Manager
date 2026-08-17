@@ -72,10 +72,10 @@ export default function UsersAdmin() {
       await Promise.all([fetchUsers(), fetchRoles()]);
       setLoading(false);
     };
-    if (token) {
+    if (token && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin')) {
       loadData();
     }
-  }, [token]);
+  }, [token, currentUser?.role]);
 
   const handleDeleteUser = async (userToDelete: User) => {
     if (!window.confirm(`Are you sure you want to delete user ${userToDelete.name}?`)) {

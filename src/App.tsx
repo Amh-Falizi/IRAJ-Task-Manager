@@ -37,6 +37,24 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, token, loading } = useAuth();
+  
+  if (loading) {
+    return <div className="h-full w-full flex items-center justify-center bg-page-bg text-subtle">Loading...</div>;
+  }
+  
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user?.role !== 'admin' && user?.role !== 'super_admin') {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <ThemeProvider>
@@ -66,7 +84,11 @@ export default function App() {
                     <Route path="planning" element={<Planning />} />
                     <Route path="git" element={<GitRepositoryPage />} />
                     <Route path="profile" element={<Profile />} />
-                    <Route path="admin/users" element={<UsersAdmin />} />
+                    <Route path="admin/users" element={
+                      <AdminRoute>
+                        <UsersAdmin />
+                      </AdminRoute>
+                    } />
                   </Route>
                 </Routes>
               </BrowserRouter>
