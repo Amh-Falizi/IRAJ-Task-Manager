@@ -9,7 +9,6 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
 import crypto from "crypto";
-import { GoogleGenAI } from "@google/genai";
 import { Pool } from "pg";
 import { open } from "sqlite";
 import sqlite3 from "sqlite3";
@@ -805,7 +804,7 @@ interface User {
   name: string;
   email: string;
   passwordHash: string;
-  role: "admin" | "manager" | "developer";
+  role: "super_admin" | "admin" | "manager" | "developer" | string;
   skills?: string;
 }
 
@@ -2114,6 +2113,11 @@ app.post("/api/roles", authenticateToken, async (req: any, res: any) => {
     if (id === "") {
       return res.status(400).json({ error: "Invalid Role ID. Must be alphanumeric." });
     }
+
+    const BUILT_IN_ROLES = ["super_admin", "admin", "manager", "developer"];
+    if (BUILT_IN_ROLES.includes(id)) {
+      return res.status(400).json({ error: "Cannot create a role with a reserved system role ID." });
+    }
     
     const db = await dbPromise;
     const existing = await db.get("SELECT * FROM roles WHERE id = ?", id);
@@ -2121,10 +2125,29 @@ app.post("/api/roles", authenticateToken, async (req: any, res: any) => {
       return res.status(400).json({ error: "A role with this ID already exists." });
     }
 
-    let permsStr = "{}";
+    // Strict allowlist for permissions
+    const VALID_PERMS = ["manage_users", "manage_roles", "manage_projects", "manage_teams", "reset_database", "create_tasks", "edit_all_tasks", "delete_tasks"];
+    
+    let parsedPerms: Record<string, boolean> = {};
     if (permissions) {
-      permsStr = typeof permissions === "object" ? JSON.stringify(permissions) : String(permissions);
+      let inputPerms: any = {};
+      try {
+        inputPerms = typeof permissions === "string" ? JSON.parse(permissions) : (typeof permissions === "object" && permissions !== null ? permissions : {});
+      } catch (err) {
+        inputPerms = {};
+      }
+      for (const key of VALID_PERMS) {
+        if (inputPerms[key] === true) {
+          // Block escalating core admin perms if not super_admin
+          if ((key === "manage_users" || key === "manage_roles" || key === "reset_database") && req.user.role !== "super_admin") {
+             return res.status(403).json({ error: "Only Super Admin can grant manage_users, manage_roles, or reset_database." });
+          }
+          parsedPerms[key] = true;
+        }
+      }
     }
+
+    const permsStr = JSON.stringify(parsedPerms);
 
     await db.run(
       "INSERT INTO roles (id, name, description, is_custom, permissions) VALUES (?, ?, ?, 1, ?)",
@@ -2420,6 +2443,16 @@ app.post("/api/tasks", authenticateToken, async (req: any, res: any) => {
      return res.status(403).json({ error: "You must have access to the project to create tasks in it." });
   }
   
+  if (req.body.parentId) {
+    const parentTask = await db.get("SELECT id, projectId FROM tasks WHERE id = ?", req.body.parentId);
+    if (!parentTask) {
+      return res.status(400).json({ error: "Parent task does not exist." });
+    }
+    if (String(parentTask.projectId) !== String(req.body.projectId)) {
+      return res.status(400).json({ error: "Parent task must belong to the same project." });
+    }
+  }
+
   let branchName = req.body.branchName;
   if (!branchName) {
     if (project && project.projectKey) {
@@ -2469,13 +2502,13 @@ app.post("/api/tasks", authenticateToken, async (req: any, res: any) => {
   if (newTask.parentId) {
     const parentTask = await db.get("SELECT * FROM tasks WHERE id = ? AND projectId = ?", [newTask.parentId, newTask.projectId]);
     if (parentTask) {
-       const subtasks = await db.all("SELECT status FROM tasks WHERE parentId = ?", newTask.parentId);
+       const subtasks = await db.all("SELECT status FROM tasks WHERE parentId = ? AND projectId = ?", [newTask.parentId, newTask.projectId]);
        if (subtasks.length > 0) {
            const allDone = subtasks.every((st: any) => st.status === 'done');
            if (allDone && parentTask.status !== 'done') {
-               await db.run("UPDATE tasks SET status = 'done' WHERE id = ?", newTask.parentId);
+               await db.run("UPDATE tasks SET status = 'done' WHERE id = ? AND projectId = ?", [newTask.parentId, newTask.projectId]);
            } else if (!allDone && parentTask.status === 'done') {
-               await db.run("UPDATE tasks SET status = 'in_progress' WHERE id = ?", newTask.parentId);
+               await db.run("UPDATE tasks SET status = 'in_progress' WHERE id = ? AND projectId = ?", [newTask.parentId, newTask.projectId]);
            }
        }
     }
@@ -2638,15 +2671,15 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
   }
 
   if (updated.parentId) {
-    const parentTask = await db.get("SELECT * FROM tasks WHERE id = ?", updated.parentId);
+    const parentTask = await db.get("SELECT * FROM tasks WHERE id = ? AND projectId = ?", [updated.parentId, updated.projectId]);
     if (parentTask) {
-       const subtasks = await db.all("SELECT status FROM tasks WHERE parentId = ?", updated.parentId);
+       const subtasks = await db.all("SELECT status FROM tasks WHERE parentId = ? AND projectId = ?", [updated.parentId, updated.projectId]);
        if (subtasks.length > 0) {
            const allDone = subtasks.every((st: any) => st.status === 'done');
            if (allDone && parentTask.status !== 'done') {
-               await db.run("UPDATE tasks SET status = 'done' WHERE id = ?", updated.parentId);
+               await db.run("UPDATE tasks SET status = 'done' WHERE id = ? AND projectId = ?", [updated.parentId, updated.projectId]);
            } else if (!allDone && parentTask.status === 'done') {
-               await db.run("UPDATE tasks SET status = 'in_progress' WHERE id = ?", updated.parentId);
+               await db.run("UPDATE tasks SET status = 'in_progress' WHERE id = ? AND projectId = ?", [updated.parentId, updated.projectId]);
            }
        }
     }
@@ -2710,29 +2743,30 @@ app.delete("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
     return res.status(403).json({ error: "Only project admins, owners, or the task creator can delete this task." });
   }
 
-  await db.run("DELETE FROM tasks WHERE id = ?", req.params.id);
-  // Also delete subtasks
+  // Get subtasks to cascade delete relations
+  const subtasks = await db.all("SELECT id FROM tasks WHERE parentId = ?", req.params.id);
+  const allTargetIds = [req.params.id, ...subtasks.map((st: any) => st.id)];
+
+  for (const tid of allTargetIds) {
+    await db.run("DELETE FROM task_dependencies WHERE taskId = ? OR blockedByTaskId = ?", [tid, tid]);
+    await db.run("DELETE FROM task_comments WHERE taskId = ?", tid);
+    await db.run("DELETE FROM task_activities WHERE taskId = ?", tid);
+  }
+
   await db.run("DELETE FROM tasks WHERE parentId = ?", req.params.id);
-  
-  // Clean up associated data
-  await db.run("DELETE FROM task_dependencies WHERE taskId = ? OR blockedByTaskId = ?", [req.params.id, req.params.id]);
-  await db.run("DELETE FROM task_comments WHERE taskId = ?", req.params.id);
-  await db.run("DELETE FROM task_activities WHERE taskId = ?", req.params.id);
+  await db.run("DELETE FROM tasks WHERE id = ?", req.params.id);
   
   if (task.parentId) {
-    const parentTask = await db.get("SELECT * FROM tasks WHERE id = ?", task.parentId);
+    const parentTask = await db.get("SELECT * FROM tasks WHERE id = ? AND projectId = ?", [task.parentId, task.projectId]);
     if (parentTask) {
-       const subtasks = await db.all("SELECT status FROM tasks WHERE parentId = ?", task.parentId);
-       if (subtasks.length > 0) {
-           const allDone = subtasks.every((st: any) => st.status === 'done');
+       const remainingSubtasks = await db.all("SELECT status FROM tasks WHERE parentId = ? AND projectId = ?", [task.parentId, task.projectId]);
+       if (remainingSubtasks.length > 0) {
+           const allDone = remainingSubtasks.every((st: any) => st.status === 'done');
            if (allDone && parentTask.status !== 'done') {
-               await db.run("UPDATE tasks SET status = 'done' WHERE id = ?", task.parentId);
+               await db.run("UPDATE tasks SET status = 'done' WHERE id = ? AND projectId = ?", [task.parentId, task.projectId]);
            } else if (!allDone && parentTask.status === 'done') {
-               await db.run("UPDATE tasks SET status = 'in_progress' WHERE id = ?", task.parentId);
+               await db.run("UPDATE tasks SET status = 'in_progress' WHERE id = ? AND projectId = ?", [task.parentId, task.projectId]);
            }
-       } else if (parentTask.status === 'done') {
-           // If no subtasks left, it just stays whatever it is, unless we want to change it. 
-           // Standard approach is to keep it, so we don't do anything.
        }
     }
   }
@@ -2751,10 +2785,10 @@ app.post("/api/tasks/branch", authenticateToken, async (req: any, res: any) => {
       if (!(await checkProjectAccess(db, projectId, req.user))) {
         return res.status(403).json({ error: "Access denied to this project." });
       }
-      await db.run("UPDATE projects SET taskCounter = COALESCE(taskCounter, 0) + 1 WHERE id = ?", projectId);
       const project = await db.get("SELECT projectKey, taskCounter FROM projects WHERE id = ?", projectId);
       if (project && project.projectKey) {
-        projectKey = `${project.projectKey}-${project.taskCounter}`;
+        const nextNum = (project.taskCounter || 0) + 1;
+        projectKey = `${project.projectKey}-${nextNum}`;
       }
     }
     
@@ -4318,7 +4352,8 @@ app.get("/api/backup/export-json", authenticateToken, requireSuperAdmin, async (
     const tables = [
       "users", "tasks", "teams", "projects", "project_members",
       "documents", "milestones", "team_members", "team_projects",
-      "task_dependencies", "task_comments", "task_activities", "settings", "roles"
+      "task_dependencies", "task_comments", "task_activities", "settings", "roles",
+      "project_columns"
     ];
 
     for (const table of tables) {
@@ -4384,7 +4419,8 @@ app.post("/api/backup/restore-json", authenticateToken, requireSuperAdmin, async
       task_comments: ["id", "taskId", "userId", "content", "createdAt"],
       task_activities: ["id", "taskId", "userId", "action", "createdAt"],
       settings: ["key", "value"],
-      roles: ["id", "name", "description", "is_custom", "permissions"]
+      roles: ["id", "name", "description", "is_custom", "permissions"],
+      project_columns: ["id", "projectId", "columnsJson", "updatedAt"]
     };
 
     // Execute wipe and sequential restore inside a transactional block
