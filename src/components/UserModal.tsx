@@ -29,7 +29,7 @@ export default function UserModal({ user, onClose, onSave }: UserModalProps) {
     const fetchRoles = async () => {
       try {
         const res = await fetch('/api/roles', {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { }
         });
         if (res.ok) {
           const data = await res.json();
@@ -59,8 +59,7 @@ export default function UserModal({ user, onClose, onSave }: UserModalProps) {
       const res = await fetch(url, {
         method,
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
       });

@@ -55,7 +55,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
   const [projectsList, setProjectsList] = useState<Project[]>([]);
   
   useEffect(() => {
-    fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } })
+    fetch('/api/projects', { headers: { } })
       .then(res => res.json())
       .then(data => {
         setProjectsList(data);
@@ -68,7 +68,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
 
   useEffect(() => {
     if (formData.projectId) {
-      fetch(`/api/projects/${formData.projectId}/milestones`, { headers: { Authorization: `Bearer ${token}` } })
+      fetch(`/api/projects/${formData.projectId}/milestones`, { headers: { } })
         .then(res => res.json())
         .then(data => {
           setMilestones(data);
@@ -98,9 +98,9 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
     if (isViewMode && task) {
       setLoadingDetails(true);
       Promise.all([
-        fetch(`/api/tasks/${task.id}/details`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+        fetch(`/api/tasks/${task.id}/details`, { headers: { } }).then(r => r.json()),
         (task.projectId || projectId) 
-          ? fetch(`/api/projects/${task.projectId || projectId}/activity`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()) 
+          ? fetch(`/api/projects/${task.projectId || projectId}/activity`, { headers: { } }).then(r => r.json()) 
           : Promise.resolve([])
       ])
       .then(([taskDetails, projectActivityData]) => {
@@ -119,8 +119,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
       const res = await fetch(`/api/tasks/${task.id}/comments`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ content: newComment.trim() })
       });
@@ -128,7 +127,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
       setComments([...comments, comment]);
       setNewComment('');
       // Optionally reload activities since comment adds one
-      fetch(`/api/tasks/${task.id}/details`, { headers: { Authorization: `Bearer ${token}` } })
+      fetch(`/api/tasks/${task.id}/details`, { headers: { } })
         .then(res => res.json())
         .then(data => setActivities(data.activities || []));
     } catch (err) {
@@ -142,8 +141,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
       const res = await fetch(`/api/tasks/${task.id}/comments/${commentId}`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ content: editCommentContent.trim() })
       });
@@ -163,7 +161,6 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
       await fetch(`/api/tasks/${task.id}/comments/${commentId}`, {
         method: 'DELETE',
         headers: {
-          Authorization: `Bearer ${token}`
         }
       });
       setComments(comments.filter(c => c.id !== commentId));
@@ -216,8 +213,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
       const res = await fetch(`/api/projects/${formData.projectId}/git/branches`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           branchName: targetBranch,
@@ -245,8 +241,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
       const res = await fetch('/api/tasks/branch', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ title: formData.title, type: 'feat', projectId: task?.projectId || projectId })
       });
@@ -268,8 +263,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
       const res = await fetch(`/api/projects/${t.projectId}/git/pull-requests`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           taskId: t.id,

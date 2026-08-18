@@ -237,9 +237,9 @@ export default function Dashboard() {
   const fetchData = async () => {
     try {
       const [tasksRes, usersRes, projectsRes] = await Promise.all([
-        fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } })
+        fetch('/api/tasks', { headers: { } }),
+        fetch('/api/users', { headers: { } }),
+        fetch('/api/projects', { headers: { } })
       ]);
       const [tasksData, usersData, projectsData] = await Promise.all([
         tasksRes.json(),
@@ -276,8 +276,7 @@ export default function Dashboard() {
       const res = await fetch(url, {
         method: isEdit ? 'PUT' : 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(taskData)
       });
@@ -301,8 +300,7 @@ export default function Dashboard() {
       await fetch(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ ...currentTask, ...updates })
       });
@@ -322,7 +320,7 @@ export default function Dashboard() {
     try {
       await fetch(`/api/tasks/${taskId}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       fetchData();
       success('Task deleted');

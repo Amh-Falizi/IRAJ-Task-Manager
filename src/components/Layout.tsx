@@ -48,7 +48,7 @@ export default function Layout() {
     const fetchStatus = async () => {
       try {
         const res = await fetch('/api/integrations/status', {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { }
         });
         if (res.ok) {
           const data = await res.json();
@@ -135,7 +135,7 @@ export default function Layout() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [toggleTheme]);
 
-  if (user?.role === 'admin' || user?.role === 'super_admin') {
+  if (user?.role === 'admin' || user?.role === 'super_admin' || user?.permissions?.manage_roles === true || user?.permissions?.manage_users === true) {
     navItems.push({ name: 'Admin', href: '/admin/users', icon: Shield });
   }
 

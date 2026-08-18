@@ -37,7 +37,7 @@ export default function Documents() {
   const fetchProjects = async () => {
     try {
       const res = await fetch('/api/projects', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         const data = await res.json();
@@ -56,7 +56,7 @@ export default function Documents() {
   const fetchDocuments = async () => {
     try {
       const res = await fetch(`/api/projects/${projectId}/documents`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         setDocuments(await res.json());
@@ -113,8 +113,7 @@ export default function Documents() {
       const res = await fetch(url, {
         method,
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ title: editTitle, content: editContent })
       });
@@ -139,7 +138,7 @@ export default function Documents() {
     try {
       const res = await fetch(`/api/documents/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         if (documentId === id) {

@@ -60,8 +60,7 @@ export default function GitRepositoryPage() {
       const res = await fetch(`/api/projects/${selectedProjectId}/git/pull-requests/sync`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         }
       });
       const data = await res.json();
@@ -88,7 +87,7 @@ export default function GitRepositoryPage() {
     const fetchProjects = async () => {
       try {
         const res = await fetch('/api/projects', {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { }
         });
         if (res.ok) {
           const data = await res.json();
@@ -132,7 +131,7 @@ export default function GitRepositoryPage() {
     setLoading(true);
     try {
       const res = await fetch(`/api/projects/${selectedProjectId}/git/branches`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         const data = await res.json();
@@ -152,7 +151,7 @@ export default function GitRepositoryPage() {
     if (!selectedProjectId) return;
     try {
       const res = await fetch(`/api/tasks?projectId=${selectedProjectId}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         setTasks(await res.json());
@@ -186,8 +185,7 @@ export default function GitRepositoryPage() {
       const res = await fetch(`/api/projects/${selectedProjectId}/repo`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           repoProvider,
@@ -233,8 +231,7 @@ export default function GitRepositoryPage() {
       const res = await fetch(`/api/projects/${selectedProjectId}/git/branches`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           branchName: newBranchName.trim().toUpperCase(),
@@ -277,8 +274,7 @@ export default function GitRepositoryPage() {
       const res = await fetch(`/api/projects/${selectedProjectId}/git/pull-requests`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           taskId: prTaskId || null,

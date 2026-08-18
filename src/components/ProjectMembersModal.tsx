@@ -22,7 +22,7 @@ export default function ProjectMembersModal({ project, allUsers, onClose }: Prop
   const fetchMembers = async () => {
     try {
       const res = await fetch(`/api/projects/${project.id}/members`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         setMembers(await res.json());
@@ -46,8 +46,7 @@ export default function ProjectMembersModal({ project, allUsers, onClose }: Prop
       const res = await fetch(`/api/projects/${project.id}/members`, {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
+          'Content-Type': 'application/json' 
         },
         body: JSON.stringify({ userId: selectedUserId, role: selectedRole })
       });
@@ -71,8 +70,7 @@ export default function ProjectMembersModal({ project, allUsers, onClose }: Prop
       const res = await fetch(`/api/projects/${project.id}/members`, {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
+          'Content-Type': 'application/json' 
         },
         body: JSON.stringify({ userId, role: newRole })
       });
@@ -89,7 +87,7 @@ export default function ProjectMembersModal({ project, allUsers, onClose }: Prop
     try {
       const res = await fetch(`/api/projects/${project.id}/members/${userId}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         fetchMembers();

@@ -22,7 +22,7 @@ export default function ProjectTeamsModal({ project, onClose }: Props) {
   const fetchTeams = async () => {
     try {
       // Fetch all teams
-      const allRes = await fetch('/api/teams', { headers: { Authorization: `Bearer ${token}` } });
+      const allRes = await fetch('/api/teams', { headers: { } });
       if (allRes.ok) {
         const data: Team[] = await allRes.json();
         setAllTeams(data);
@@ -46,7 +46,7 @@ export default function ProjectTeamsModal({ project, onClose }: Props) {
     try {
       const res = await fetch('/api/teams', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: addingName, description: addingDesc, projectId: project.id })
       });
       if (res.ok) {
@@ -71,7 +71,7 @@ export default function ProjectTeamsModal({ project, onClose }: Props) {
     try {
       const res = await fetch(`/api/teams/${addingExisting}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId: project.id })
       });
       if (res.ok) {
@@ -88,7 +88,7 @@ export default function ProjectTeamsModal({ project, onClose }: Props) {
     try {
       const res = await fetch(`/api/teams/${teamId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId: null })
       });
       if (res.ok) fetchTeams();

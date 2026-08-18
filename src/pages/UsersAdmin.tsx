@@ -43,7 +43,7 @@ export default function UsersAdmin() {
   const fetchUsers = async () => {
     try {
       const res = await fetch('/api/users', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         setUsers(await res.json());
@@ -56,7 +56,7 @@ export default function UsersAdmin() {
   const fetchRoles = async () => {
     try {
       const res = await fetch('/api/roles', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         setRoles(await res.json());
@@ -72,10 +72,11 @@ export default function UsersAdmin() {
       await Promise.all([fetchUsers(), fetchRoles()]);
       setLoading(false);
     };
-    if (token && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin')) {
+    const canAccess = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.permissions?.manage_roles === true || currentUser?.permissions?.manage_users === true;
+    if (token && canAccess) {
       loadData();
     }
-  }, [token, currentUser?.role]);
+  }, [token, currentUser?.role, currentUser?.permissions]);
 
   const handleDeleteUser = async (userToDelete: User) => {
     if (!window.confirm(`Are you sure you want to delete user ${userToDelete.name}?`)) {
@@ -84,7 +85,7 @@ export default function UsersAdmin() {
     try {
       const res = await fetch(`/api/users/${userToDelete.id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       
       if (res.ok) {
@@ -114,8 +115,7 @@ export default function UsersAdmin() {
       const res = await fetch(url, {
         method,
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(roleForm)
       });
@@ -139,7 +139,7 @@ export default function UsersAdmin() {
     try {
       const res = await fetch(`/api/roles/${roleId}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         success(`Role "${roleName}" deleted successfully.`);
@@ -186,8 +186,7 @@ export default function UsersAdmin() {
       const res = await fetch('/api/users/bulk/role', {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           userIds: selectedUserIds,

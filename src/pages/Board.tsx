@@ -96,7 +96,7 @@ export default function Board() {
       if (projectId && token) {
         try {
           const res = await fetch(`/api/projects/${projectId}/columns`, {
-            headers: { Authorization: `Bearer ${token}` }
+            headers: { }
           });
           if (res.ok) {
             const data = await res.json();
@@ -137,8 +137,7 @@ export default function Board() {
           fetch(`/api/projects/${projectId}/columns`, {
             method: 'PUT',
             headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`
+              'Content-Type': 'application/json'
             },
             body: JSON.stringify({ columns })
           }).catch(err => console.error("Failed to save project columns:", err));
@@ -207,10 +206,10 @@ export default function Board() {
   const fetchData = async () => {
     try {
       const results = await Promise.all([
-        fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/milestones', { headers: { Authorization: `Bearer ${token}` } })
+        fetch('/api/tasks', { headers: { } }),
+        fetch('/api/users', { headers: { } }),
+        fetch('/api/projects', { headers: { } }),
+        fetch('/api/milestones', { headers: { } })
       ]);
       
       const tasksData: Task[] = await results[0].json();
@@ -388,8 +387,7 @@ export default function Board() {
       await fetch(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
+          'Content-Type': 'application/json' 
         },
         body: JSON.stringify({ ...task, status: targetStatus, orderIndex: newOrderIndex })
       });
@@ -422,8 +420,7 @@ export default function Board() {
       const res = await fetch(url, {
         method,
         headers: { 
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
+          'Content-Type': 'application/json' 
         },
         body: JSON.stringify(taskData)
       });
@@ -446,8 +443,7 @@ export default function Board() {
       await fetch(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
+          'Content-Type': 'application/json' 
         },
         body: JSON.stringify({ ...currentTask, ...updates })
       });
@@ -483,8 +479,7 @@ export default function Board() {
         fetch(`/api/tasks/${t.id}`, {
           method: 'PUT',
           headers: { 
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}` 
+            'Content-Type': 'application/json' 
           },
           body: JSON.stringify({ ...t, ...updates })
         })
@@ -509,7 +504,7 @@ export default function Board() {
       await Promise.all(Array.from(selectedTaskIds).map(id => 
         fetch(`/api/tasks/${id}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { }
         })
       ));
       setSelectedTaskIds(new Set());
@@ -526,7 +521,7 @@ export default function Board() {
     try {
       await fetch(`/api/tasks/${taskId}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       fetchData();
       success('Task deleted');

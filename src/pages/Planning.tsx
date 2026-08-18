@@ -51,7 +51,7 @@ export default function Planning() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch('/api/users', { headers: { } });
       if (res.ok) {
         setUsers(await res.json());
       }
@@ -62,7 +62,7 @@ export default function Planning() {
 
   const fetchTasks = async () => {
     try {
-      const res = await fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch('/api/tasks', { headers: { } });
       if (res.ok) {
         let allTasks = await res.json();
         // filter by project
@@ -111,7 +111,7 @@ export default function Planning() {
   const fetchProjects = async () => {
     try {
       const res = await fetch('/api/projects', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         const data = await res.json();
@@ -130,7 +130,7 @@ export default function Planning() {
   const fetchMilestones = async () => {
     try {
       const res = await fetch(`/api/projects/${projectId}/milestones`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         setMilestones(await res.json());
@@ -153,8 +153,7 @@ export default function Planning() {
       const res = await fetch(url, {
         method,
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(formData)
       });
@@ -173,7 +172,7 @@ export default function Planning() {
     try {
       const res = await fetch(`/api/milestones/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) fetchMilestones();
     } catch (err) {
@@ -218,8 +217,7 @@ export default function Planning() {
       const res = await fetch(`/api/tasks/${editingTask.id}`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(updatedTask)
       });

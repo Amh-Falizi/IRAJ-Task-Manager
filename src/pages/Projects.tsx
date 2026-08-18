@@ -55,13 +55,13 @@ export default function Projects() {
   const fetchProjects = async () => {
     try {
       const res = await fetch('/api/projects', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         setProjects(await res.json());
       }
       const usersRes = await fetch('/api/users', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (usersRes.ok) {
         setUsers(await usersRes.json());
@@ -190,7 +190,7 @@ export default function Projects() {
                           try {
                             const res = await fetch(`/api/projects/${project.id}`, {
                               method: 'DELETE',
-                              headers: { Authorization: `Bearer ${token}` }
+                              headers: { }
                             });
                             if (res.ok) {
                               fetchProjects();
@@ -397,8 +397,7 @@ function CreateProjectModal({ project, onClose, onSuccess }: { project?: Project
       const res = await fetch(project ? `/api/projects/${project.id}` : '/api/projects', {
         method: project ? 'PUT' : 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ name, description, projectKey })
       });

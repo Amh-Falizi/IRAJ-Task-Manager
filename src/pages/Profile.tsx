@@ -158,7 +158,7 @@ export default function Profile() {
     const fetchIntegrationsStatus = async () => {
       try {
         const res = await fetch("/api/integrations/status", {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { }
         });
         if (res.ok) {
           const data = await res.json();
@@ -188,7 +188,7 @@ export default function Profile() {
     const fetchStats = async () => {
       try {
         const res = await fetch("/api/users/me/stats", {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { }
         });
         if (res.ok) {
           const data = await res.json();
@@ -210,7 +210,7 @@ export default function Profile() {
     setLoadingInfo(true);
     try {
       const res = await fetch("/api/backup/info", {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         const data = await res.json();
@@ -239,7 +239,7 @@ export default function Profile() {
   const handleJsonDownload = async () => {
     try {
       const res = await fetch("/api/backup/export-json", {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         const blob = await res.blob();
@@ -281,7 +281,6 @@ export default function Profile() {
       const res = await fetch("/api/backup/restore-json", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify(jsonData)
@@ -310,7 +309,6 @@ export default function Profile() {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ name: user?.name, skills: stringSkills }),
       });
@@ -349,7 +347,6 @@ export default function Profile() {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(passwordData),
       });
@@ -398,7 +395,6 @@ export default function Profile() {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ name, status: statusText }),
       });

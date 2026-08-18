@@ -2433,6 +2433,28 @@ app.post("/api/tasks", authenticateToken, async (req: any, res: any) => {
     }
   }
 
+  const taskStatus = req.body.status || "todo";
+  if (typeof taskStatus !== 'string' || taskStatus.trim() === '' || taskStatus.length > 50) {
+    return res.status(400).json({ error: "Invalid task status." });
+  }
+
+  if (req.body.projectId) {
+    const colRow = await db.get("SELECT columnsJson FROM project_columns WHERE projectId = ?", req.body.projectId);
+    if (colRow && colRow.columnsJson) {
+      try {
+        const parsedCols = JSON.parse(colRow.columnsJson);
+        if (Array.isArray(parsedCols) && parsedCols.length > 0) {
+          const validIds = new Set(parsedCols.map((c: any) => c.id || c.name));
+          if (!validIds.has(taskStatus)) {
+            return res.status(400).json({ error: "Specified status is not a valid column in this project." });
+          }
+        }
+      } catch (e) {
+        // fallback
+      }
+    }
+  }
+
   let branchName = req.body.branchName;
   if (!branchName) {
     if (project && project.projectKey) {
@@ -2609,8 +2631,27 @@ app.put("/api/tasks/:id", authenticateToken, async (req: any, res: any) => {
     }
   }
 
-  if (req.body.status !== undefined && (typeof req.body.status !== 'string' || req.body.status.trim() === '' || req.body.status.length > 50)) {
-    return res.status(400).json({ error: "Invalid task status." });
+  if (req.body.status !== undefined) {
+    if (typeof req.body.status !== 'string' || req.body.status.trim() === '' || req.body.status.length > 50) {
+      return res.status(400).json({ error: "Invalid task status." });
+    }
+    const targetProjId = req.body.projectId !== undefined ? req.body.projectId : task.projectId;
+    if (targetProjId) {
+      const colRow = await db.get("SELECT columnsJson FROM project_columns WHERE projectId = ?", targetProjId);
+      if (colRow && colRow.columnsJson) {
+        try {
+          const parsedCols = JSON.parse(colRow.columnsJson);
+          if (Array.isArray(parsedCols) && parsedCols.length > 0) {
+            const validIds = new Set(parsedCols.map((c: any) => c.id || c.name));
+            if (!validIds.has(req.body.status)) {
+              return res.status(400).json({ error: "Specified status is not a valid column in this project." });
+            }
+          }
+        } catch (e) {
+          // ignore column json parse error fallback
+        }
+      }
+    }
   }
 
   const updated: Task = {

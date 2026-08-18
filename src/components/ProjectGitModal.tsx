@@ -46,7 +46,7 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
     setLoading(true);
     try {
       const res = await fetch(`/api/projects/${project.id}/git/branches`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         const data = await res.json();
@@ -65,7 +65,7 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
   const fetchTasks = async () => {
     try {
       const res = await fetch(`/api/tasks?projectId=${project.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       if (res.ok) {
         setTasks(await res.json());
@@ -91,8 +91,7 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
       const res = await fetch(`/api/projects/${project.id}/repo`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           repoProvider,
@@ -133,8 +132,7 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
       const res = await fetch(`/api/projects/${project.id}/git/branches`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           branchName: newBranchName.trim(),
@@ -166,8 +164,7 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
       const res = await fetch(`/api/projects/${project.id}/git/pull-requests`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           taskId,

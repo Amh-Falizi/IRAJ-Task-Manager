@@ -18,7 +18,7 @@ export default function ProjectActivityModal({ projectId, projectName, users, on
 
   useEffect(() => {
     fetch(`/api/projects/${projectId}/activity`, {
-       headers: { Authorization: `Bearer ${token}` }
+       headers: { }
     })
     .then(res => res.json())
     .then(data => {

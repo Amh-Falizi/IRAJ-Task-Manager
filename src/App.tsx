@@ -48,7 +48,9 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (user?.role !== 'admin' && user?.role !== 'super_admin') {
+  const hasAccess = user?.role === 'admin' || user?.role === 'super_admin' || user?.permissions?.manage_roles === true || user?.permissions?.manage_users === true;
+
+  if (!hasAccess) {
     return <Navigate to="/" replace />;
   }
 

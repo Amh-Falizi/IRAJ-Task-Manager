@@ -42,9 +42,9 @@ export default function CalendarView() {
   const fetchData = async () => {
     try {
       const [tasksRes, usersRes, projectsRes] = await Promise.all([
-        fetch('/api/tasks', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/users', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/projects', { headers: { Authorization: `Bearer ${token}` } })
+        fetch('/api/tasks', { headers: { } }),
+        fetch('/api/users', { headers: { } }),
+        fetch('/api/projects', { headers: { } })
       ]);
       const tasksData = await tasksRes.json();
       const usersData = await usersRes.json();
@@ -76,8 +76,7 @@ export default function CalendarView() {
       await fetch(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
+          'Content-Type': 'application/json' 
         },
         body: JSON.stringify({ ...currentTask, ...updates })
       });
@@ -96,8 +95,7 @@ export default function CalendarView() {
       const res = await fetch(url, {
         method,
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(taskData)
       });
@@ -121,7 +119,7 @@ export default function CalendarView() {
     try {
       await fetch(`/api/tasks/${taskId}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { }
       });
       setSelectedTask(null);
       fetchData();

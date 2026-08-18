@@ -6,6 +6,7 @@ export interface User {
   skills?: string[];
   rolePrefix?: string;
   status?: string;
+  permissions?: Record<string, boolean>;
 }
 
 export interface Task {

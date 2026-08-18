@@ -53,7 +53,7 @@ export default function WorkloadModal({ projectId, projectName, onClose }: Workl
     const fetchWorkload = async () => {
       try {
         const res = await fetch(`/api/projects/${projectId}/workload`, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { }
         });
         if (res.ok && active) {
           setWorkloads(await res.json());
