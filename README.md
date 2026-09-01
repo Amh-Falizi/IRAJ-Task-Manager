@@ -97,4 +97,5 @@ npm run db-cli import-json ./backups/export.json
 
 ## License
 
-This project is licensed under the MIT License.
+Proprietary and closed source. Copyright (c) 2026 Amir Hossein Falizi. All rights reserved.
+
