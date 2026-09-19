@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import dns from "dns";
 import net from "net";
-import { Agent } from "undici";
+import { Agent, fetch } from "undici";
 import { v4 as uuidv4 } from "uuid";
 import { dbPromise } from "../db.js";
 import { decryptSecret } from "../config.js";
@@ -280,7 +280,6 @@ export class WebhookService {
             body: payloadString,
             redirect: "manual",
             signal: AbortSignal.timeout(8000),
-            // @ts-ignore undici dispatcher support in Node fetch
             dispatcher: pinnedDispatcher
           });
 

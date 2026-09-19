@@ -92,6 +92,24 @@ app.use(
 // Compress responses
 app.use(compression());
 
+const getSafeClientIp = (req: any): string => {
+  return req.ip || req.socket?.remoteAddress || "127.0.0.1";
+};
+
+// General API Rate Limiter (runs before body parsers to reject floods without buffering large payloads)
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // Limit each IP to 1000 requests per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: any) => getSafeClientIp(req),
+  validate: { xForwardedForHeader: false },
+  message: { error: "Too many requests, please try again after 15 minutes" }
+});
+
+// Apply rate limiting to API routes
+app.use("/api/", apiLimiter);
+
 // Inbound webhook body parser with rawBody buffer capture (MUST run before global JSON parser)
 app.use(
   ["/api/webhooks", "/api/webhooks/*"],
@@ -108,29 +126,12 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(cookieParser());
 
-const getSafeClientIp = (req: any): string => {
-  return req.ip || req.socket?.remoteAddress || "127.0.0.1";
-};
-
-// General API Rate Limiter
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // Limit each IP to 1000 requests per 15 minutes
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req: any) => getSafeClientIp(req),
-  validate: { xForwardedForHeader: false },
-  message: { error: "Too many requests, please try again after 15 minutes" }
-});
-
-// Apply rate limiting to API routes
-app.use("/api/", apiLimiter);
-
 // Two-tier Auth Rate Limiting for credential endpoints:
-// Tier 1: Strict per-IP rate limiter
+// Tier 1: Strict per-IP rate limiter (with skipSuccessfulRequests so office/NAT valid logins don't exhaust shared budget)
 const authIpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 30, // 30 credential attempts per 15 minutes per IP
+  max: 30, // 30 failed credential attempts per 15 minutes per IP
+  skipSuccessfulRequests: true, // Successful logins do not consume quota
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: any) => getSafeClientIp(req),
