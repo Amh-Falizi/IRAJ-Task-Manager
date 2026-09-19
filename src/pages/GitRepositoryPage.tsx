@@ -35,6 +35,11 @@ export default function GitRepositoryPage() {
   const [repoName, setRepoName] = useState('');
   const [repoUrl, setRepoUrl] = useState('');
   const [repoToken, setRepoToken] = useState('');
+  const [webhookSecret, setWebhookSecret] = useState('');
+  const [hasWebhookSecret, setHasWebhookSecret] = useState(false);
+  const [generatingSecret, setGeneratingSecret] = useState(false);
+  const [copiedWebhookUrl, setCopiedWebhookUrl] = useState(false);
+  const [copiedSecret, setCopiedSecret] = useState(false);
   const [defaultBranch, setDefaultBranch] = useState('main');
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -114,6 +119,8 @@ export default function GitRepositoryPage() {
         setRepoName(p.repoName || '');
         setRepoUrl(p.repoUrl || '');
         setRepoToken(p.repoToken || '');
+        setWebhookSecret(p.webhookSecret || '');
+        setHasWebhookSecret(Boolean(p.hasWebhookSecret || p.webhookSecret));
         setDefaultBranch(p.defaultBranch || 'main');
         setBaseBranch(p.defaultBranch || 'main');
         setPrTargetBranch(p.defaultBranch || 'main');
@@ -125,6 +132,29 @@ export default function GitRepositoryPage() {
       setSelectedProjectId(projects[0].id);
     }
   }, [selectedProjectId, projects]);
+
+  const handleGenerateWebhookSecret = async () => {
+    if (!selectedProjectId) return;
+    setGeneratingSecret(true);
+    try {
+      const res = await fetch(`/api/projects/${selectedProjectId}/webhook-secret/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to generate webhook secret');
+      }
+      const data = await res.json();
+      setWebhookSecret(data.secret);
+      setHasWebhookSecret(true);
+      success('New webhook secret generated! Copy and paste it into GitHub / GitLab webhook settings.');
+    } catch (err: any) {
+      error(err.message || 'Error generating secret');
+    } finally {
+      setGeneratingSecret(false);
+    }
+  };
 
   const fetchBranches = async () => {
     if (!selectedProjectId) return;
@@ -193,6 +223,7 @@ export default function GitRepositoryPage() {
           repoName,
           repoUrl,
           repoToken,
+          webhookSecret,
           defaultBranch
         })
       });
@@ -1027,6 +1058,57 @@ export default function GitRepositoryPage() {
                   placeholder="github_pat_... or glpat-..."
                   className="w-full px-3 py-2 text-xs font-mono bg-surface-dim border border-border-subtle rounded-lg text-strong focus:outline-none focus:border-blue-500"
                 />
+              </div>
+
+              <div className="pt-2 border-t border-border-subtle">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-subtle">
+                    Inbound Webhook Secret (HMAC-SHA256)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGenerateWebhookSecret}
+                    disabled={generatingSecret}
+                    className="text-[11px] font-semibold text-blue-500 hover:text-blue-400 flex items-center space-x-1"
+                  >
+                    <Sparkles size={12} />
+                    <span>{generatingSecret ? 'Generating...' : 'Generate New Secret'}</span>
+                  </button>
+                </div>
+                <input
+                  type="password"
+                  value={webhookSecret}
+                  onChange={(e) => setWebhookSecret(e.target.value)}
+                  placeholder={hasWebhookSecret ? "••••••••" : "Paste secret or click generate above"}
+                  className="w-full px-3 py-2 text-xs font-mono bg-surface-dim border border-border-subtle rounded-lg text-strong focus:outline-none focus:border-blue-500"
+                />
+
+                {selectedProjectId && (
+                  <div className="mt-3 p-3 bg-surface-hover border border-border-subtle rounded-lg space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-strong uppercase tracking-wider">Payload URL for {repoProvider === 'github' ? 'GitHub' : 'GitLab'}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = `${window.location.origin}/api/webhooks/${repoProvider}?projectId=${selectedProjectId}`;
+                          navigator.clipboard.writeText(url);
+                          setCopiedWebhookUrl(true);
+                          setTimeout(() => setCopiedWebhookUrl(false), 2000);
+                        }}
+                        className="text-[11px] font-semibold text-blue-500 hover:text-blue-400 flex items-center space-x-1"
+                      >
+                        {copiedWebhookUrl ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                        <span>{copiedWebhookUrl ? 'Copied URL!' : 'Copy URL'}</span>
+                      </button>
+                    </div>
+                    <div className="text-[11px] font-mono text-subtle break-all bg-surface px-2 py-1.5 rounded border border-border-subtle select-all">
+                      {window.location.origin}/api/webhooks/{repoProvider}?projectId={selectedProjectId}
+                    </div>
+                    <p className="text-[10px] text-muted leading-relaxed">
+                      In {repoProvider === 'github' ? 'GitHub (Repo Settings → Webhooks)' : 'GitLab (Settings → Webhooks)'}, add this Payload URL, select <span className="font-semibold text-subtle">application/json</span>, enter the Secret above, and trigger on <span className="font-semibold text-subtle">Push, Pull Request, and Issues</span>.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="pt-2 flex justify-end">

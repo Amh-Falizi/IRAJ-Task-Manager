@@ -101,10 +101,30 @@ class EventsService {
   public async broadcast(event: RealtimeEventPayload) {
     const { type, data, targetUserId, projectId, excludeClientId } = event;
 
-    let db: any = null;
+    let authorizedUserIds: Set<string> | null = null;
+
     if (projectId) {
       try {
-        db = await dbPromise;
+        const db = await dbPromise;
+        const project = await db.get("SELECT ownerId FROM projects WHERE id = ?", projectId);
+        if (project) {
+          authorizedUserIds = new Set<string>();
+          if (project.ownerId) authorizedUserIds.add(project.ownerId);
+
+          const members = await db.all(
+            `SELECT userId FROM project_members WHERE projectId = ?
+             UNION
+             SELECT tm.userId FROM team_members tm JOIN team_projects tp ON tm.teamId = tp.teamId WHERE tp.projectId = ?
+             UNION
+             SELECT assigneeId as userId FROM tasks WHERE projectId = ? AND assigneeId IS NOT NULL
+             UNION
+             SELECT creatorId as userId FROM tasks WHERE projectId = ? AND creatorId IS NOT NULL`,
+            [projectId, projectId, projectId, projectId]
+          );
+          members.forEach((m: any) => {
+            if (m.userId) authorizedUserIds!.add(m.userId);
+          });
+        }
       } catch (err: any) {
         console.error("[SSE] Database error during broadcast authorization:", err.message);
       }
@@ -129,17 +149,8 @@ class EventsService {
       if (projectId) {
         const isGlobalAdmin = isAdminOrSuperAdmin({ role: client.userRole });
         if (!isGlobalAdmin) {
-          if (!db) continue;
-          try {
-            const hasAccess = await checkProjectAccess(db, projectId, {
-              id: client.userId,
-              role: client.userRole
-            });
-            if (!hasAccess) {
-              continue; // Drop broadcast for unauthorized user
-            }
-          } catch {
-            continue;
+          if (!authorizedUserIds || !authorizedUserIds.has(client.userId)) {
+            continue; // Drop broadcast for unauthorized user
           }
         }
       }

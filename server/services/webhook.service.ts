@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import dns from "dns";
+import net from "net";
 import { v4 as uuidv4 } from "uuid";
 import { dbPromise } from "../db.js";
 import { decryptSecret } from "../config.js";
@@ -14,13 +16,81 @@ export interface OutboundWebhookRecord {
   createdAt: string;
 }
 
+export function isSafeIp(ip: string): boolean {
+  if (!ip) return false;
+
+  // IPv4 check
+  if (net.isIPv4(ip)) {
+    const parts = ip.split(".").map((p) => parseInt(p, 10));
+    if (parts.length !== 4 || parts.some(isNaN)) return false;
+    const [p1, p2, p3, p4] = parts;
+
+    // 0.0.0.0/8 (Current network)
+    if (p1 === 0) return false;
+    // 10.0.0.0/8 (Private)
+    if (p1 === 10) return false;
+    // 127.0.0.0/8 (Loopback)
+    if (p1 === 127) return false;
+    // 100.64.0.0/10 (Shared Address Space / CGNAT)
+    if (p1 === 100 && p2 >= 64 && p2 <= 127) return false;
+    // 169.254.0.0/16 (Link-local / Cloud metadata)
+    if (p1 === 169 && p2 === 254) return false;
+    // 172.16.0.0/12 (Private)
+    if (p1 === 172 && p2 >= 16 && p2 <= 31) return false;
+    // 192.0.0.0/24 (IETF Protocol Assignments)
+    if (p1 === 192 && p2 === 0 && p3 === 0) return false;
+    // 192.0.2.0/24 (TEST-NET-1)
+    if (p1 === 192 && p2 === 0 && p3 === 2) return false;
+    // 192.168.0.0/16 (Private)
+    if (p1 === 192 && p2 === 168) return false;
+    // 198.18.0.0/15 (Network benchmark tests)
+    if (p1 === 198 && (p2 === 18 || p2 === 19)) return false;
+    // 198.51.100.0/24 (TEST-NET-2)
+    if (p1 === 198 && p2 === 51 && p3 === 100) return false;
+    // 203.0.113.0/24 (TEST-NET-3)
+    if (p1 === 203 && p2 === 0 && p3 === 113) return false;
+    // 224.0.0.0/4 (Multicast)
+    if (p1 >= 224 && p1 <= 239) return false;
+    // 240.0.0.0/4 (Reserved)
+    if (p1 >= 240) return false;
+    // 255.255.255.255 (Broadcast)
+    if (p1 === 255 && p2 === 255 && p3 === 255 && p4 === 255) return false;
+
+    return true;
+  }
+
+  // IPv6 check
+  if (net.isIPv6(ip)) {
+    const lower = ip.toLowerCase();
+    // Loopback / Unspecified
+    if (lower === "::1" || lower === "::" || lower === "0:0:0:0:0:0:0:1" || lower === "0:0:0:0:0:0:0:0") return false;
+    // Unique Local Addresses (fc00::/7)
+    if (lower.startsWith("fc") || lower.startsWith("fd")) return false;
+    // Link-local Unicast (fe80::/10)
+    if (lower.startsWith("fe8") || lower.startsWith("fe9") || lower.startsWith("fea") || lower.startsWith("feb")) return false;
+    // Multicast (ff00::/8)
+    if (lower.startsWith("ff")) return false;
+    // IPv4-mapped IPv6 (::ffff:x.x.x.x)
+    if (lower.startsWith("::ffff:") || lower.includes(":ffff:")) {
+      const match = lower.match(/:ffff:(\d+\.\d+\.\d+\.\d+)$/);
+      if (match) {
+        return isSafeIp(match[1]);
+      }
+      return false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
 export function isSafeWebhookUrl(urlStr: string): boolean {
   try {
     const parsed = new URL(urlStr);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       return false;
     }
-    const hostname = parsed.hostname.toLowerCase();
+    const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
 
     // Block loopback, internal domains, cloud metadata
     if (
@@ -28,36 +98,16 @@ export function isSafeWebhookUrl(urlStr: string): boolean {
       hostname === "127.0.0.1" ||
       hostname === "0.0.0.0" ||
       hostname === "::1" ||
-      hostname === "[::1]" ||
-      hostname === "[::]" ||
       hostname.endsWith(".local") ||
       hostname.endsWith(".internal") ||
+      hostname.endsWith(".localhost") ||
       hostname.includes("metadata.google.internal")
     ) {
       return false;
     }
 
-    // Check if hostname is an IPv4 address
-    const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-    if (ipv4Match) {
-      const p1 = parseInt(ipv4Match[1], 10);
-      const p2 = parseInt(ipv4Match[2], 10);
-      // Loopback: 127.0.0.0/8
-      if (p1 === 127) return false;
-      // 0.0.0.0/8
-      if (p1 === 0) return false;
-      // Private Class A: 10.0.0.0/8
-      if (p1 === 10) return false;
-      // Private Class B: 172.16.0.0/12
-      if (p1 === 172 && p2 >= 16 && p2 <= 31) return false;
-      // Private Class C: 192.168.0.0/16
-      if (p1 === 192 && p2 === 168) return false;
-      // Link-local / Metadata: 169.254.0.0/16
-      if (p1 === 169 && p2 === 254) return false;
-      // Carrier-grade NAT: 100.64.0.0/10
-      if (p1 === 100 && p2 >= 64 && p2 <= 127) return false;
-      // Multicast: 224.0.0.0/4
-      if (p1 >= 224) return false;
+    if (net.isIP(hostname)) {
+      return isSafeIp(hostname);
     }
 
     // Disallow hex or octal formatted IP strings
@@ -65,6 +115,30 @@ export function isSafeWebhookUrl(urlStr: string): boolean {
       return false;
     }
 
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function isSafeDestination(urlStr: string): Promise<boolean> {
+  if (!isSafeWebhookUrl(urlStr)) {
+    return false;
+  }
+  try {
+    const parsed = new URL(urlStr);
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    if (net.isIP(host)) {
+      return isSafeIp(host);
+    }
+    // Resolve DNS records to verify actual connected IPs
+    const records = await dns.promises.lookup(host, { all: true });
+    if (!records || records.length === 0) return false;
+    for (const record of records) {
+      if (!isSafeIp(record.address)) {
+        return false;
+      }
+    }
     return true;
   } catch {
     return false;
@@ -134,25 +208,12 @@ export class WebhookService {
     const db = await dbPromise;
     const deliveryId = uuidv4();
 
-    // Check SSRF protection
-    if (!isSafeWebhookUrl(webhook.url)) {
-      console.warn(`[Webhook] Blocked outbound dispatch to forbidden SSRF address: ${webhook.url}`);
-      try {
-        await db.run(
-          "INSERT INTO webhook_deliveries (id, webhookId, event, statusCode, responseBody, payload, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
-          [
-            deliveryId,
-            webhook.id,
-            event,
-            400,
-            "Error: Forbidden destination URL (SSRF protection)",
-            payloadString.slice(0, 2000),
-            new Date().toISOString()
-          ]
-        );
-      } catch {}
-      return;
-    }
+    let currentUrl = webhook.url;
+    let redirectHops = 0;
+    const maxRedirects = 2;
+    let statusCode = 0;
+    let responseBody = "";
+    let success = false;
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -171,25 +232,47 @@ export class WebhookService {
       headers["X-Signature-SHA256"] = `sha256=${signature}`;
     }
 
-    let statusCode = 0;
-    let responseBody = "";
-    let success = false;
-
     try {
-      const response = await fetch(webhook.url, {
-        method: "POST",
-        headers,
-        body: payloadString,
-        signal: AbortSignal.timeout(8000)
-      });
+      while (redirectHops <= maxRedirects) {
+        // Validate hostname and resolved IPs before connecting
+        const isSafe = await isSafeDestination(currentUrl);
+        if (!isSafe) {
+          statusCode = 400;
+          responseBody = `Error: Blocked SSRF destination or redirect target: ${currentUrl}`;
+          console.warn(`[Webhook] Blocked outbound dispatch to forbidden address: ${currentUrl}`);
+          break;
+        }
 
-      statusCode = response.status;
-      const text = await response.text();
-      responseBody = text.slice(0, 1000); // cap response size
-      success = response.ok;
+        const response = await fetch(currentUrl, {
+          method: "POST",
+          headers,
+          body: payloadString,
+          redirect: "manual",
+          signal: AbortSignal.timeout(8000)
+        });
+
+        statusCode = response.status;
+
+        // Check for redirects
+        if ([301, 302, 303, 307, 308].includes(response.status)) {
+          const loc = response.headers.get("location");
+          if (!loc) {
+            responseBody = `Redirect ${response.status} missing Location header`;
+            break;
+          }
+          currentUrl = new URL(loc, currentUrl).toString();
+          redirectHops++;
+          continue;
+        }
+
+        const text = await response.text();
+        responseBody = text.slice(0, 1000); // cap response size
+        success = response.ok;
+        break;
+      }
     } catch (err: any) {
-      statusCode = 500;
-      responseBody = `Error: ${err.message}`;
+      if (statusCode === 0) statusCode = 500;
+      if (!responseBody) responseBody = `Error: ${err.message}`;
     }
 
     try {

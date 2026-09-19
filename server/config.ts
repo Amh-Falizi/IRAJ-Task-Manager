@@ -34,11 +34,29 @@ export const HOST = process.env.HOST || "0.0.0.0";
 const FALLBACK_SECRET = crypto.randomBytes(64).toString("hex");
 export const SECRET_KEY = process.env.SECRET_KEY || FALLBACK_SECRET;
 
+const BANNED_SECRETS = new Set([
+  "your-super-secret-key-change-this",
+  "your-secure-jwt-secret-key-change-in-production",
+  "your-secret-key",
+  "change-me",
+  "secret",
+  "123456",
+  "password"
+]);
+
 if (process.env.NODE_ENV === "production") {
-  if (!process.env.SECRET_KEY || process.env.SECRET_KEY === "your-super-secret-key-change-this") {
-    console.error("FATAL ERROR: SECRET_KEY environment variable MUST be explicitly set to a secure secret in production mode.");
+  const secretKey = process.env.SECRET_KEY ? process.env.SECRET_KEY.trim() : "";
+  if (!secretKey || BANNED_SECRETS.has(secretKey) || secretKey.length < 16) {
+    console.error("FATAL ERROR: SECRET_KEY environment variable MUST be explicitly set to a secure secret (min 16 chars) in production mode.");
     process.exit(1);
   }
+
+  const tokenKey = process.env.TOKEN_ENCRYPTION_KEY ? process.env.TOKEN_ENCRYPTION_KEY.trim() : "";
+  if (tokenKey && (BANNED_SECRETS.has(tokenKey) || tokenKey.length < 16)) {
+    console.error("FATAL ERROR: TOKEN_ENCRYPTION_KEY if provided must be a secure secret (min 16 chars) in production mode.");
+    process.exit(1);
+  }
+
   const appUrl = process.env.APP_URL ? process.env.APP_URL.trim() : "";
   if (!appUrl || appUrl === "MY_APP_URL" || !/^https?:\/\/[a-zA-Z0-9.-]+/i.test(appUrl)) {
     console.error("FATAL ERROR: APP_URL environment variable MUST be explicitly set to a valid URL starting with http:// or https:// (e.g. https://your-domain.com) in production mode.");

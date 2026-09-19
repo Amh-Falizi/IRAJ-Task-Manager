@@ -6,7 +6,7 @@ import { getIncrementedBranchName, getBranchSuggestions } from '../lib/utils';
 import { 
   X, GitBranch as GitBranchIcon, Github, Gitlab, Link as LinkIcon, 
   ExternalLink, Plus, RefreshCw, CheckCircle2, GitPullRequest, 
-  Copy, Check, Shield, AlertCircle, Key, Layers, Terminal
+  Copy, Check, Shield, AlertCircle, Key, Layers, Terminal, Sparkles
 } from 'lucide-react';
 
 interface ProjectGitModalProps {
@@ -33,6 +33,10 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
   const [repoName, setRepoName] = useState(project.repoName || '');
   const [repoUrl, setRepoUrl] = useState(project.repoUrl || '');
   const [repoToken, setRepoToken] = useState(project.repoToken || '');
+  const [webhookSecret, setWebhookSecret] = useState(project.webhookSecret || '');
+  const [hasWebhookSecret, setHasWebhookSecret] = useState(Boolean(project.hasWebhookSecret || project.webhookSecret));
+  const [generatingSecret, setGeneratingSecret] = useState(false);
+  const [copiedWebhookUrl, setCopiedWebhookUrl] = useState(false);
   const [defaultBranch, setDefaultBranch] = useState(project.defaultBranch || 'main');
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -41,6 +45,29 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
   const [selectedTaskId, setSelectedTaskId] = useState('');
   const [baseBranch, setBaseBranch] = useState(project.defaultBranch || 'main');
   const [creatingBranch, setCreatingBranch] = useState(false);
+
+  const handleGenerateWebhookSecret = async () => {
+    if (!project.id) return;
+    setGeneratingSecret(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}/webhook-secret/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to generate webhook secret');
+      }
+      const data = await res.json();
+      setWebhookSecret(data.secret);
+      setHasWebhookSecret(true);
+      success('New webhook secret generated! Copy and paste it into GitHub / GitLab webhook settings.');
+    } catch (err: any) {
+      error(err.message || 'Error generating secret');
+    } finally {
+      setGeneratingSecret(false);
+    }
+  };
 
   const fetchBranches = async () => {
     setLoading(true);
@@ -99,6 +126,7 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
           repoName,
           repoUrl,
           repoToken,
+          webhookSecret,
           defaultBranch
         })
       });
@@ -650,6 +678,52 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
                   placeholder="github_pat_... or glpat-..."
                   className="w-full px-3 py-2 text-xs font-mono bg-surface-dim border border-border-subtle rounded-lg text-strong focus:outline-none focus:border-blue-500"
                 />
+              </div>
+
+              <div className="pt-2 border-t border-border-subtle">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-subtle">
+                    Inbound Webhook Secret (HMAC-SHA256)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGenerateWebhookSecret}
+                    disabled={generatingSecret}
+                    className="text-[11px] font-semibold text-blue-500 hover:text-blue-400 flex items-center space-x-1"
+                  >
+                    <Sparkles size={12} />
+                    <span>{generatingSecret ? 'Generating...' : 'Generate New Secret'}</span>
+                  </button>
+                </div>
+                <input
+                  type="password"
+                  value={webhookSecret}
+                  onChange={(e) => setWebhookSecret(e.target.value)}
+                  placeholder={hasWebhookSecret ? "••••••••" : "Paste secret or click generate above"}
+                  className="w-full px-3 py-2 text-xs font-mono bg-surface-dim border border-border-subtle rounded-lg text-strong focus:outline-none focus:border-blue-500"
+                />
+
+                <div className="mt-3 p-3 bg-surface-hover border border-border-subtle rounded-lg space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-strong uppercase tracking-wider">Payload URL for {repoProvider === 'github' ? 'GitHub' : 'GitLab'}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = `${window.location.origin}/api/webhooks/${repoProvider}?projectId=${project.id}`;
+                        navigator.clipboard.writeText(url);
+                        setCopiedWebhookUrl(true);
+                        setTimeout(() => setCopiedWebhookUrl(false), 2000);
+                      }}
+                      className="text-[11px] font-semibold text-blue-500 hover:text-blue-400 flex items-center space-x-1"
+                    >
+                      {copiedWebhookUrl ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                      <span>{copiedWebhookUrl ? 'Copied URL!' : 'Copy URL'}</span>
+                    </button>
+                  </div>
+                  <div className="text-[11px] font-mono text-subtle break-all bg-surface px-2 py-1.5 rounded border border-border-subtle select-all">
+                    {window.location.origin}/api/webhooks/{repoProvider}?projectId={project.id}
+                  </div>
+                </div>
               </div>
 
               <div className="pt-2 flex justify-end space-x-3">

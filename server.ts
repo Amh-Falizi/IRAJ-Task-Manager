@@ -91,28 +91,6 @@ app.use(
 // Compress responses
 app.use(compression());
 
-// Basic Rate Limiting
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // Limit each IP to 1000 requests per 15 minutes
-  standardHeaders: true,
-  legacyHeaders: false,
-  validate: { xForwardedForHeader: false },
-  message: { error: "Too many requests from this IP, please try again after 15 minutes" }
-});
-
-// Apply rate limiting to API routes
-app.use("/api/", apiLimiter);
-
-// Protect auth routes more strictly
-const authLimiter = rateLimit({
-  windowMs: 60 * 1000 * 60, // 1 hour window
-  max: 50, // limit to 50 auth requests per hour
-  validate: { xForwardedForHeader: false },
-  message: { error: "Too many auth attempts from this IP, please try again after an hour" }
-});
-app.use("/api/auth/", authLimiter);
-
 app.use(
   express.json({
     limit: "10mb",
@@ -122,6 +100,45 @@ app.use(
   })
 ); // Limit body size to prevent payload bombing and capture rawBody for webhook HMAC validation
 app.use(cookieParser());
+
+const getSafeClientIp = (req: any): string => {
+  return req.ip || req.socket?.remoteAddress || "127.0.0.1";
+};
+
+// Basic Rate Limiting
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // Limit each IP to 1000 requests per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: any) => getSafeClientIp(req),
+  validate: { xForwardedForHeader: false },
+  message: { error: "Too many requests, please try again after 15 minutes" }
+});
+
+// Apply rate limiting to API routes
+app.use("/api/", apiLimiter);
+
+// Protect auth routes with composite IP + account identifier keying to prevent X-Forwarded-For rotation bypass
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30, // limit to 30 auth requests per 15 minutes per IP + account combo
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: any) => {
+    const ip = getSafeClientIp(req);
+    const identifier =
+      typeof req.body?.email === "string"
+        ? req.body.email.toLowerCase().trim().slice(0, 100)
+        : typeof req.body?.username === "string"
+        ? req.body.username.toLowerCase().trim().slice(0, 100)
+        : "";
+    return `${ip}:${identifier}`;
+  },
+  validate: { xForwardedForHeader: false },
+  message: { error: "Too many authentication attempts. Please try again after 15 minutes." }
+});
+app.use("/api/auth/", authLimiter);
 
 /* --- MODULAR API ROUTERS --- */
 app.use("/api/auth", authRouter);

@@ -1,4 +1,5 @@
 import express from "express";
+import crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { dbPromise, extractTaskNumber } from "../db.js";
 import { encryptSecret, decryptSecret } from "../config.js";
@@ -13,6 +14,24 @@ import {
 
 export const projectsRouter = express.Router();
 const router = projectsRouter;
+
+const sanitizeProject = (project: any) => {
+  if (!project) return project;
+  const sanitized = { ...project };
+  if (sanitized.repoToken && sanitized.repoToken.trim() !== '') {
+    sanitized.repoToken = '••••••••';
+  } else {
+    sanitized.repoToken = '';
+  }
+  if (sanitized.webhookSecret && sanitized.webhookSecret.trim() !== '') {
+    sanitized.hasWebhookSecret = true;
+    sanitized.webhookSecret = '••••••••';
+  } else {
+    sanitized.hasWebhookSecret = false;
+    sanitized.webhookSecret = '';
+  }
+  return sanitized;
+};
 
 // Projects APIs
 router.get("/projects/:id/workload", authenticateToken, async (req: any, res: any) => {
@@ -62,17 +81,6 @@ router.get("/projects/:id/workload", authenticateToken, async (req: any, res: an
 
   res.json(result);
 });
-
-const sanitizeProject = (project: any) => {
-  if (!project) return project;
-  const sanitized = { ...project };
-  if (sanitized.repoToken && sanitized.repoToken.trim() !== '') {
-    sanitized.repoToken = '••••••••';
-  } else {
-    sanitized.repoToken = '';
-  }
-  return sanitized;
-};
 
 router.get("/projects", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
@@ -228,7 +236,7 @@ router.put("/projects/:id/repo", authenticateToken, async (req: any, res: any) =
     return res.status(403).json({ error: "Only project owners, project admins, or system administrators can configure repository settings." });
   }
 
-  const { repoProvider, repoOwner, repoName, repoUrl, repoToken, defaultBranch } = req.body;
+  const { repoProvider, repoOwner, repoName, repoUrl, repoToken, defaultBranch, webhookSecret } = req.body;
 
   let owner = repoOwner || '';
   let name = repoName || '';
@@ -243,8 +251,29 @@ router.put("/projects/:id/repo", authenticateToken, async (req: any, res: any) =
     } catch (e) {}
   }
 
-  const rawToken = repoToken !== undefined && repoToken !== '••••••••' ? repoToken : (project.repoToken ? decryptSecret(project.repoToken) : '');
-  const storedToken = rawToken ? encryptSecret(rawToken) : '';
+  // Preserve storedToken safely without destroying if decrypt fails or masked token was sent
+  let storedToken = project.repoToken || null;
+  if (repoToken !== undefined) {
+    if (repoToken === '••••••••') {
+      storedToken = project.repoToken;
+    } else if (typeof repoToken === 'string' && repoToken.trim() !== '') {
+      storedToken = encryptSecret(repoToken.trim());
+    } else if (repoToken === '' || repoToken === null) {
+      storedToken = null;
+    }
+  }
+
+  // Preserve or update webhookSecret safely
+  let storedWebhookSecret = project.webhookSecret || null;
+  if (webhookSecret !== undefined) {
+    if (webhookSecret === '••••••••') {
+      storedWebhookSecret = project.webhookSecret;
+    } else if (typeof webhookSecret === 'string' && webhookSecret.trim() !== '') {
+      storedWebhookSecret = encryptSecret(webhookSecret.trim());
+    } else if (webhookSecret === '' || webhookSecret === null) {
+      storedWebhookSecret = null;
+    }
+  }
 
   await db.run(
     `UPDATE projects SET 
@@ -253,6 +282,7 @@ router.put("/projects/:id/repo", authenticateToken, async (req: any, res: any) =
       repoName = ?, 
       repoUrl = ?, 
       repoToken = ?, 
+      webhookSecret = ?,
       defaultBranch = ? 
      WHERE id = ?`,
     [
@@ -261,6 +291,7 @@ router.put("/projects/:id/repo", authenticateToken, async (req: any, res: any) =
       name,
       repoUrl || '',
       storedToken,
+      storedWebhookSecret,
       defaultBranch || 'main',
       req.params.id
     ]
@@ -268,6 +299,77 @@ router.put("/projects/:id/repo", authenticateToken, async (req: any, res: any) =
 
   const updated = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
   res.json(sanitizeProject(updated));
+});
+
+// Get Project Inbound Webhook Secret Status
+router.get("/projects/:id/webhook-secret", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+  const isProjectAdmin = pm && pm.role === 'admin';
+
+  if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+    return res.status(403).json({ error: "Only project owners, admins, or managers can view webhook secrets." });
+  }
+
+  res.json({
+    hasWebhookSecret: Boolean(project.webhookSecret && project.webhookSecret.trim() !== ''),
+    webhookSecret: project.webhookSecret ? '••••••••' : null
+  });
+});
+
+// Generate and store new Inbound Webhook Secret for Project
+router.post("/projects/:id/webhook-secret/generate", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+  const isProjectAdmin = pm && pm.role === 'admin';
+
+  if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+    return res.status(403).json({ error: "Only project owners, admins, or managers can generate webhook secrets." });
+  }
+
+  const generatedSecret = crypto.randomBytes(24).toString("hex");
+  const encrypted = encryptSecret(generatedSecret);
+
+  await db.run("UPDATE projects SET webhookSecret = ? WHERE id = ?", [encrypted, req.params.id]);
+
+  res.json({
+    success: true,
+    secret: generatedSecret,
+    message: "New webhook secret generated. Copy it now, it will not be shown again in plain text."
+  });
+});
+
+// Update or delete Project Inbound Webhook Secret
+router.put("/projects/:id/webhook-secret", authenticateToken, async (req: any, res: any) => {
+  const db = await dbPromise;
+  const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+
+  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+  const isProjectAdmin = pm && pm.role === 'admin';
+
+  if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+    return res.status(403).json({ error: "Only project owners, admins, or managers can update webhook secrets." });
+  }
+
+  const { secret } = req.body;
+  let encryptedSecret: string | null = null;
+  if (typeof secret === 'string' && secret.trim()) {
+    encryptedSecret = encryptSecret(secret.trim());
+  }
+
+  await db.run("UPDATE projects SET webhookSecret = ? WHERE id = ?", [encryptedSecret, req.params.id]);
+
+  res.json({
+    success: true,
+    hasWebhookSecret: Boolean(encryptedSecret)
+  });
 });
 
 // Get Live Branches from GitHub or GitLab for a Project

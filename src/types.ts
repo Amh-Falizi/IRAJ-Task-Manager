@@ -44,6 +44,8 @@ export interface Project {
   repoName?: string | null;
   repoUrl?: string | null;
   repoToken?: string | null;
+  webhookSecret?: string | null;
+  hasWebhookSecret?: boolean;
   defaultBranch?: string | null;
 }
 
