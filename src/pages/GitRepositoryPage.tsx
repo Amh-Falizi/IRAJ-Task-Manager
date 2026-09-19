@@ -13,7 +13,7 @@ import {
 import TaskModal from '../components/TaskModal';
 
 export default function GitRepositoryPage() {
-  const { token, user } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { success, error, info } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -101,7 +101,7 @@ export default function GitRepositoryPage() {
       }
     };
     fetchProjects();
-  }, [token]);
+  }, [isAuthenticated]);
 
   // Sync active project state
   useEffect(() => {

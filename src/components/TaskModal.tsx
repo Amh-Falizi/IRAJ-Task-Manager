@@ -26,7 +26,7 @@ interface TaskModalProps {
 }
 
 export default function TaskModal({ task, users, tasks = [], columns, onClose, onSave, onUpdateTask, onDeleteTask, onCreateSubtask, parentId, projectId, initialStatus, initialDeadline }: TaskModalProps) {
-  const { token, user } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { success, error, info } = useToast();
   const { gitEnabled } = useGitFeature();
   const isEdit = !!task;
@@ -64,7 +64,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
         }
       })
       .catch(err => console.error("Error fetching projects", err));
-  }, [token]);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (formData.projectId) {
@@ -77,7 +77,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
     } else {
       setMilestones([]);
     }
-  }, [formData.projectId, token]);
+  }, [formData.projectId, isAuthenticated]);
 
   const [generatingBranch, setGeneratingBranch] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
@@ -111,7 +111,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
       .catch(err => console.error("Error fetching details", err))
       .finally(() => setLoadingDetails(false));
     }
-  }, [isViewMode, task, token, projectId]);
+  }, [isViewMode, task, isAuthenticated, projectId]);
 
   const handleCreateComment = async () => {
     if (!newComment.trim() || !task) return;

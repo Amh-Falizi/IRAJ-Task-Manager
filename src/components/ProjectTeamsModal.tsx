@@ -10,7 +10,7 @@ interface Props {
 }
 
 export default function ProjectTeamsModal({ project, onClose }: Props) {
-  const { token, user: currentUser } = useAuth();
+  const { isAuthenticated, user: currentUser } = useAuth();
   const [teams, setTeams] = useState<Team[]>([]);
   const [allTeams, setAllTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);

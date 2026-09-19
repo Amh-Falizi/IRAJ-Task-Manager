@@ -11,7 +11,7 @@ interface UserModalProps {
 }
 
 export default function UserModal({ user, onClose, onSave }: UserModalProps) {
-  const { token, user: currentUser } = useAuth();
+  const { isAuthenticated, user: currentUser } = useAuth();
   const isEdit = !!user;
   const isSelf = currentUser?.id === user?.id;
   const [formData, setFormData] = useState({
@@ -40,7 +40,7 @@ export default function UserModal({ user, onClose, onSave }: UserModalProps) {
       }
     };
     fetchRoles();
-  }, [token]);
+  }, [isAuthenticated]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -9,7 +9,7 @@ import MDEditor from '@uiw/react-md-editor';
 import { EmptyState } from '../components/EmptyState';
 
 export default function Documents() {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const projectId = searchParams.get('projectId');
   const documentId = searchParams.get('documentId');
@@ -26,13 +26,13 @@ export default function Documents() {
 
   useEffect(() => {
     fetchProjects();
-  }, [token]);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (projectId) {
       fetchDocuments();
     }
-  }, [projectId, token]);
+  }, [projectId, isAuthenticated]);
 
   const fetchProjects = async () => {
     try {

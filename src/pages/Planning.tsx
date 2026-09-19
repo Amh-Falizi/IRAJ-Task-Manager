@@ -11,7 +11,7 @@ import CustomSelect from '../components/CustomSelect';
 import { HelpIcon, Tooltip } from '../components/Tooltip';
 
 export default function Planning() {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { success, error, info } = useToast();
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('projectId');
@@ -40,14 +40,14 @@ export default function Planning() {
   useEffect(() => {
     fetchProjects();
     fetchUsers();
-  }, [token]);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (projectId) {
       fetchMilestones();
       fetchTasks();
     }
-  }, [projectId, token]);
+  }, [projectId, isAuthenticated]);
 
   const fetchUsers = async () => {
     try {

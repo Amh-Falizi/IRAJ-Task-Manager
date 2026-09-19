@@ -14,7 +14,7 @@ type SortOption = 'custom' | 'priority' | 'deadline' | 'createdAt';
 type SortDirection = 'asc' | 'desc';
 
 export default function Graph() {
-  const { token, user } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('projectId');
   
@@ -49,7 +49,7 @@ export default function Graph() {
   }, [projectId]);
 
   const fetchData = async () => {
-    if (!token) return;
+    if (!isAuthenticated) return;
     try {
       const results = await Promise.all([
         fetch('/api/tasks', { headers: { } }),
@@ -82,7 +82,7 @@ export default function Graph() {
 
   useEffect(() => {
     fetchData();
-  }, [token, projectId]);
+  }, [isAuthenticated, projectId]);
 
   const filteredTasks = useMemo(() => {
     let result = tasks;

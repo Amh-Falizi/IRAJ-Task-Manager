@@ -149,3 +149,20 @@ export const canManageRoles = async (user: any): Promise<boolean> => {
   if (user.role === "super_admin") return true;
   return await hasPermission(user, "manage_roles");
 };
+
+export const requireAdmin = (req: any, res: any, next: any) => {
+  if (req.user && (isAdminOrSuperAdmin(req.user) || req.user.role === "super_admin")) {
+    next();
+  } else {
+    res.status(403).json({ error: "Access denied. Admin privileges required." });
+  }
+};
+
+export const requireSuperAdmin = (req: any, res: any, next: any) => {
+  if (req.user && req.user.role === "super_admin") {
+    next();
+  } else {
+    res.status(403).json({ error: "Access denied. Super Admin privileges required." });
+  }
+};
+

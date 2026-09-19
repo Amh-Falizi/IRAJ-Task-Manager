@@ -8,7 +8,7 @@ import UserAvatar from '../components/UserAvatar';
 import CustomSelect from '../components/CustomSelect';
 
 export default function UsersAdmin() {
-  const { token, user: currentUser } = useAuth();
+  const { isAuthenticated, user: currentUser } = useAuth();
   const { success, error } = useToast();
   
   const [users, setUsers] = useState<User[]>([]);
@@ -73,10 +73,10 @@ export default function UsersAdmin() {
       setLoading(false);
     };
     const canAccess = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.permissions?.manage_roles === true || currentUser?.permissions?.manage_users === true;
-    if (token && canAccess) {
+    if (isAuthenticated && canAccess) {
       loadData();
     }
-  }, [token, currentUser?.role, currentUser?.permissions]);
+  }, [isAuthenticated, currentUser?.role, currentUser?.permissions]);
 
   const handleDeleteUser = async (userToDelete: User) => {
     if (!window.confirm(`Are you sure you want to delete user ${userToDelete.name}?`)) {

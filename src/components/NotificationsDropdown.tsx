@@ -17,7 +17,7 @@ interface Notification {
 }
 
 export default function NotificationsDropdown({ expanded, compact }: { expanded?: boolean; compact?: boolean }) {
-  const { user, token } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -43,7 +43,7 @@ export default function NotificationsDropdown({ expanded, compact }: { expanded?
     const abortController = new AbortController();
 
     const fetchTasks = async () => {
-      if (!token || !user) return;
+      if (!isAuthenticated || !user) return;
       try {
         const res = await fetch('/api/tasks', {
           headers: {
@@ -125,7 +125,7 @@ export default function NotificationsDropdown({ expanded, compact }: { expanded?
       clearInterval(interval);
       abortController.abort();
     };
-  }, [token, user]);
+  }, [isAuthenticated, user]);
 
   const markAsRead = (notifId: string, e: React.MouseEvent) => {
     e.stopPropagation();

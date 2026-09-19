@@ -16,7 +16,7 @@ interface ProjectGitModalProps {
 }
 
 export default function ProjectGitModal({ project, onClose, onUpdateProject }: ProjectGitModalProps) {
-  const { token, user } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { success, error, info } = useToast();
 
   const canManageRepoSettings = user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'manager' || project.ownerId === user?.id;

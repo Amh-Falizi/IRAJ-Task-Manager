@@ -12,7 +12,7 @@ interface Props {
 }
 
 export default function ProjectMembersModal({ project, allUsers, onClose }: Props) {
-  const { token, user: currentUser } = useAuth();
+  const { isAuthenticated, user: currentUser } = useAuth();
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedUserId, setSelectedUserId] = useState('');

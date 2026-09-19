@@ -24,13 +24,13 @@ import Planning from './pages/Planning';
 import GitRepositoryPage from './pages/GitRepositoryPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { token, loading } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   
   if (loading) {
     return <div className="h-full w-full flex items-center justify-center bg-page-bg text-subtle">Loading...</div>;
   }
   
-  if (!token) {
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
@@ -38,13 +38,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { user, token, loading } = useAuth();
+  const { user, isAuthenticated, loading } = useAuth();
   
   if (loading) {
     return <div className="h-full w-full flex items-center justify-center bg-page-bg text-subtle">Loading...</div>;
   }
   
-  if (!token) {
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 

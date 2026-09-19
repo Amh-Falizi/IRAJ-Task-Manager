@@ -125,7 +125,7 @@ function SortableWidget({
 }
 
 export default function Dashboard() {
-  const { user, token } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const { success, error, info } = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -258,7 +258,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData();
-  }, [token]);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const handleGlobalNewTask = () => {

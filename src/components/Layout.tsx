@@ -15,7 +15,7 @@ import WelcomeModal from './WelcomeModal';
 import GlobalSearch from './GlobalSearch';
 
 export default function Layout() {
-  const { user, token, logout } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { gitEnabled, setGitEnabled } = useGitFeature();
   const location = useLocation();
@@ -58,8 +58,8 @@ export default function Layout() {
         console.error('Failed to fetch integration status:', err);
       }
     };
-    if (token) fetchStatus();
-  }, [token, location.pathname]);
+    if (isAuthenticated) fetchStatus();
+  }, [isAuthenticated, location.pathname]);
 
   React.useEffect(() => {
     const checkMobile = () => {

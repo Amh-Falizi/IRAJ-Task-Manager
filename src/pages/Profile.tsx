@@ -54,7 +54,7 @@ export const STATUS_OPTIONS = [
 ];
 
 export default function Profile() {
-  const { user, token, updateUser, login } = useAuth();
+  const { user, isAuthenticated, updateUser, login } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { success, error } = useToast();
   const { gitEnabled } = useGitFeature();
@@ -168,8 +168,8 @@ export default function Profile() {
         console.error("Failed to fetch integrations status:", e);
       }
     };
-    if (token) fetchIntegrationsStatus();
-  }, [token]);
+    if (isAuthenticated) fetchIntegrationsStatus();
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (user) {
@@ -199,8 +199,8 @@ export default function Profile() {
         console.error(e);
       }
     }
-    if (token) fetchStats();
-  }, [token]);
+    if (isAuthenticated) fetchStats();
+  }, [isAuthenticated]);
 
   /**
    * Fetches database engine details and record statistics from the server.
@@ -225,10 +225,10 @@ export default function Profile() {
 
   // Automatically trigger database metadata fetch when user switches to the Backup tab
   useEffect(() => {
-    if (activeTab === 'backup' && token) {
+    if (activeTab === 'backup' && isAuthenticated) {
       fetchDbInfo();
     }
-  }, [activeTab, token]);
+  }, [activeTab, isAuthenticated]);
 
   /**
    * Initiates download of the live binary SQLite database file.

@@ -42,7 +42,7 @@ const priorityWeight = {
 };
 
 export default function Board() {
-  const { token, user } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { success, error, info } = useToast();
   const { gitEnabled } = useGitFeature();
   const navigate = useNavigate();
@@ -93,7 +93,7 @@ export default function Board() {
   useEffect(() => {
     let isMounted = true;
     const loadColumns = async () => {
-      if (projectId && token) {
+      if (projectId && isAuthenticated) {
         try {
           const res = await fetch(`/api/projects/${projectId}/columns`, {
             headers: { }
@@ -126,12 +126,12 @@ export default function Board() {
     };
     loadColumns();
     return () => { isMounted = false; };
-  }, [projectId, token]);
+  }, [projectId, isAuthenticated]);
 
   useEffect(() => {
     if (currentProjectIdRef.current === projectId) {
       localStorage.setItem(`board-columns-${projectId || 'all'}`, JSON.stringify(columns));
-      if (projectId && token) {
+      if (projectId && isAuthenticated) {
         // Debounced sync to server
         const timer = setTimeout(() => {
           fetch(`/api/projects/${projectId}/columns`, {
@@ -145,7 +145,7 @@ export default function Board() {
         return () => clearTimeout(timer);
       }
     }
-  }, [columns, projectId, token]);
+  }, [columns, projectId, isAuthenticated]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isWorkloadModalOpen, setIsWorkloadModalOpen] = useState(false);
@@ -240,7 +240,7 @@ export default function Board() {
 
   useEffect(() => {
     fetchData();
-  }, [token, projectId]);
+  }, [isAuthenticated, projectId]);
 
   const sortedTasks = useMemo(() => {
     return [...tasks].sort((a, b) => {

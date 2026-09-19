@@ -23,7 +23,7 @@ import TaskModal from '../components/TaskModal';
 import { Tooltip } from '../components/Tooltip';
 
 export default function CalendarView() {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('projectId');
 
@@ -69,7 +69,7 @@ export default function CalendarView() {
 
   useEffect(() => {
     fetchData();
-  }, [token, projectId]);
+  }, [isAuthenticated, projectId]);
 
   const handleUpdateTask = async (taskId: string, currentTask: Task, updates: Partial<Task>) => {
     try {

@@ -17,7 +17,7 @@ import { EmptyState } from '../components/EmptyState';
 import { Tooltip } from '../components/Tooltip';
 
 export default function Projects() {
-  const { token, user: currentUser } = useAuth();
+  const { isAuthenticated, user: currentUser } = useAuth();
   const { success, error, info } = useToast();
   const { gitEnabled } = useGitFeature();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -74,8 +74,8 @@ export default function Projects() {
   };
 
   useEffect(() => {
-    if (token) fetchProjects();
-  }, [token]);
+    if (isAuthenticated) fetchProjects();
+  }, [isAuthenticated]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-surface-dim overflow-y-auto">
@@ -379,7 +379,7 @@ export default function Projects() {
 }
 
 function CreateProjectModal({ project, onClose, onSuccess }: { project?: Project | null, onClose: () => void, onSuccess: () => void }) {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [name, setName] = useState(project?.name || '');
   const [projectKey, setProjectKey] = useState(project?.projectKey || '');
   const [description, setDescription] = useState(project?.description || '');

@@ -12,7 +12,7 @@ interface ProjectActivityModalProps {
 }
 
 export default function ProjectActivityModal({ projectId, projectName, users, onClose }: ProjectActivityModalProps) {
-  const { token, user } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -29,7 +29,7 @@ export default function ProjectActivityModal({ projectId, projectName, users, on
       console.error("Failed to load project activity", err);
       setLoading(false);
     });
-  }, [projectId, token]);
+  }, [projectId, isAuthenticated]);
 
   const getActionIcon = (action: string) => {
     if (action.includes('created task')) return <FileText size={14} className="text-blue-500" />;

@@ -10,7 +10,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import { EmptyState } from '../components/EmptyState';
 
 export default function Teams() {
-  const { token, user: currentUser } = useAuth();
+  const { isAuthenticated, user: currentUser } = useAuth();
   const { success, error, info } = useToast();
   const [teams, setTeams] = useState<Team[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -40,7 +40,7 @@ export default function Teams() {
 
   useEffect(() => {
     fetchTeams();
-  }, [token]);
+  }, [isAuthenticated]);
 
   return (
     <div className="flex h-full flex-col bg-surface-dim">
@@ -185,7 +185,7 @@ export default function Teams() {
 }
 
 function CreateTeamModal({ team, onClose, onSuccess }: { team?: Team | null, onClose: () => void, onSuccess: () => void }) {
-  const { token, user } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [name, setName] = useState(team?.name || '');
   const [description, setDescription] = useState(team?.description || '');
   const [projectId, setProjectId] = useState(team?.projectId || '');
@@ -198,7 +198,7 @@ function CreateTeamModal({ team, onClose, onSuccess }: { team?: Team | null, onC
       .then(r => r.json())
       .then(setProjects)
       .catch(console.error);
-  }, [token]);
+  }, [isAuthenticated]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -326,7 +326,7 @@ function CreateTeamModal({ team, onClose, onSuccess }: { team?: Team | null, onC
 }
 
 function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: () => void, onTeamDeleted: () => void }) {
-  const { token, user: currentUser } = useAuth();
+  const { isAuthenticated, user: currentUser } = useAuth();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [teamProjects, setTeamProjects] = useState<Project[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);

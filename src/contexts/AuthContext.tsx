@@ -3,8 +3,9 @@ import { User } from "../types";
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
-  login: (newToken: string | undefined, newUser: User) => void;
+  isAuthenticated: boolean;
+  token?: string | null;
+  login: (userOrToken?: any, maybeUser?: User) => void;
   logout: () => void;
   updateUser: (user: User) => void;
   loading: boolean;
@@ -94,9 +95,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .finally(() => setLoading(false));
   }, []);
 
-  const login = (_newToken: string | undefined, newUser: User) => {
+  const login = (userOrToken?: any, maybeUser?: User) => {
     cleanupLocalStorage();
-    setUser(newUser);
+    const resolvedUser = maybeUser || (userOrToken && typeof userOrToken === "object" ? userOrToken : null);
+    if (resolvedUser) {
+      setUser(resolvedUser);
+    }
     refreshSettings();
   };
 
@@ -110,11 +114,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(updatedUser);
   };
 
-  // Provide a non-null placeholder string when logged in to preserve component checks (if (token))
+  const isAuthenticated = !!user;
+  // Deprecated backwards-compat placeholder string for any external or lingering references
   const token = user ? "cookie_authenticated" : null;
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, updateUser, loading, settings, refreshSettings, updateSettings }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, token, login, logout, updateUser, loading, settings, refreshSettings, updateSettings }}>
       {children}
     </AuthContext.Provider>
   );

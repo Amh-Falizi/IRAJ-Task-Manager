@@ -20,7 +20,7 @@ interface UserWorkload {
 }
 
 export default function WorkloadModal({ projectId, projectName, onClose }: WorkloadModalProps) {
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [workloads, setWorkloads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -66,7 +66,7 @@ export default function WorkloadModal({ projectId, projectName, onClose }: Workl
     };
     fetchWorkload();
     return () => { active = false; };
-  }, [projectId, token]);
+  }, [projectId, isAuthenticated]);
 
   return (
     <div className="fixed inset-y-0 right-0 left-0 md:left-[var(--sidebar-width,80px)] z-50 overflow-y-auto flex justify-center items-start p-4 bg-black/80 backdrop-blur-sm transition-all duration-300">
