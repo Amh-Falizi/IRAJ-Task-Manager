@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { authenticateToken, isProjectAdminOrOwner } from "../middleware/auth.js";
@@ -7,6 +7,17 @@ import { webhookService, isSafeWebhookUrl } from "../services/webhook.service.js
 import { encryptSecret } from "../config.js";
 
 export const webhooksRouter = Router();
+
+// Scoped JSON body parser with rawBody verification buffer for inbound webhooks
+webhooksRouter.use(
+  "/webhooks",
+  express.json({
+    limit: "5mb",
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    }
+  })
+);
 
 // Inbound GitHub webhook endpoint
 webhooksRouter.post("/webhooks/github", async (req: any, res: any) => {

@@ -9,7 +9,8 @@ import {
   isProjectAdminOrOwner,
   checkProjectAccess,
   checkTaskAccess,
-  hasPermission
+  hasPermission,
+  getAccessibleProjects
 } from "../middleware/auth.js";
 
 export const projectsRouter = express.Router();
@@ -83,26 +84,14 @@ router.get("/projects/:id/workload", authenticateToken, async (req: any, res: an
 });
 
 router.get("/projects", authenticateToken, async (req: any, res: any) => {
-  const db = await dbPromise;
-  let projects;
-  if (isAdminOrSuperAdmin(req.user)) {
-    projects = await db.all("SELECT * FROM projects");
-  } else {
-    projects = await db.all(`
-      SELECT DISTINCT p.* 
-      FROM projects p 
-      LEFT JOIN project_members pm ON p.id = pm.projectId 
-      LEFT JOIN team_projects tp ON p.id = tp.projectId 
-      LEFT JOIN team_members tm ON tp.teamId = tm.teamId 
-      LEFT JOIN tasks t ON p.id = t.projectId 
-      WHERE p.ownerId = ? 
-         OR pm.userId = ? 
-         OR tm.userId = ? 
-         OR t.assigneeId = ?
-         OR t.creatorId = ?
-    `, [req.user.id, req.user.id, req.user.id, req.user.id, req.user.id]);
+  try {
+    const db = await dbPromise;
+    const projects = await getAccessibleProjects(db, req.user);
+    res.json(projects.map(sanitizeProject));
+  } catch (err: any) {
+    console.error("Failed to list projects:", err);
+    res.status(500).json({ error: "Failed to retrieve projects" });
   }
-  res.json(projects.map(sanitizeProject));
 });
 
 router.get("/projects/:id", authenticateToken, async (req: any, res: any) => {
@@ -303,73 +292,88 @@ router.put("/projects/:id/repo", authenticateToken, async (req: any, res: any) =
 
 // Get Project Inbound Webhook Secret Status
 router.get("/projects/:id/webhook-secret", authenticateToken, async (req: any, res: any) => {
-  const db = await dbPromise;
-  const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
-  if (!project) return res.status(404).json({ error: "Project not found" });
+  try {
+    const db = await dbPromise;
+    const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+    if (!project) return res.status(404).json({ error: "Project not found" });
 
-  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
-  const isProjectAdmin = pm && pm.role === 'admin';
+    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+    const isProjectAdmin = pm && pm.role === 'admin';
 
-  if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
-    return res.status(403).json({ error: "Only project owners, admins, or managers can view webhook secrets." });
+    if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+      return res.status(403).json({ error: "Only project owners, admins, or managers can view webhook secrets." });
+    }
+
+    res.json({
+      hasWebhookSecret: Boolean(project.webhookSecret && project.webhookSecret.trim() !== ''),
+      webhookSecret: project.webhookSecret ? '••••••••' : null
+    });
+  } catch (err: any) {
+    console.error("Error retrieving webhook secret status:", err);
+    res.status(500).json({ error: "Internal server error retrieving webhook status" });
   }
-
-  res.json({
-    hasWebhookSecret: Boolean(project.webhookSecret && project.webhookSecret.trim() !== ''),
-    webhookSecret: project.webhookSecret ? '••••••••' : null
-  });
 });
 
 // Generate and store new Inbound Webhook Secret for Project
 router.post("/projects/:id/webhook-secret/generate", authenticateToken, async (req: any, res: any) => {
-  const db = await dbPromise;
-  const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
-  if (!project) return res.status(404).json({ error: "Project not found" });
+  try {
+    const db = await dbPromise;
+    const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+    if (!project) return res.status(404).json({ error: "Project not found" });
 
-  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
-  const isProjectAdmin = pm && pm.role === 'admin';
+    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+    const isProjectAdmin = pm && pm.role === 'admin';
 
-  if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
-    return res.status(403).json({ error: "Only project owners, admins, or managers can generate webhook secrets." });
+    if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+      return res.status(403).json({ error: "Only project owners, admins, or managers can generate webhook secrets." });
+    }
+
+    const generatedSecret = crypto.randomBytes(24).toString("hex");
+    const encrypted = encryptSecret(generatedSecret);
+
+    await db.run("UPDATE projects SET webhookSecret = ? WHERE id = ?", [encrypted, req.params.id]);
+
+    res.json({
+      success: true,
+      secret: generatedSecret,
+      message: "New webhook secret generated. Copy it now, it will not be shown again in plain text."
+    });
+  } catch (err: any) {
+    console.error("Error generating webhook secret:", err);
+    res.status(500).json({ error: "Internal server error generating webhook secret" });
   }
-
-  const generatedSecret = crypto.randomBytes(24).toString("hex");
-  const encrypted = encryptSecret(generatedSecret);
-
-  await db.run("UPDATE projects SET webhookSecret = ? WHERE id = ?", [encrypted, req.params.id]);
-
-  res.json({
-    success: true,
-    secret: generatedSecret,
-    message: "New webhook secret generated. Copy it now, it will not be shown again in plain text."
-  });
 });
 
 // Update or delete Project Inbound Webhook Secret
 router.put("/projects/:id/webhook-secret", authenticateToken, async (req: any, res: any) => {
-  const db = await dbPromise;
-  const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
-  if (!project) return res.status(404).json({ error: "Project not found" });
+  try {
+    const db = await dbPromise;
+    const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+    if (!project) return res.status(404).json({ error: "Project not found" });
 
-  const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
-  const isProjectAdmin = pm && pm.role === 'admin';
+    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+    const isProjectAdmin = pm && pm.role === 'admin';
 
-  if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
-    return res.status(403).json({ error: "Only project owners, admins, or managers can update webhook secrets." });
+    if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+      return res.status(403).json({ error: "Only project owners, admins, or managers can update webhook secrets." });
+    }
+
+    const { secret } = req.body;
+    let encryptedSecret: string | null = null;
+    if (typeof secret === 'string' && secret.trim()) {
+      encryptedSecret = encryptSecret(secret.trim());
+    }
+
+    await db.run("UPDATE projects SET webhookSecret = ? WHERE id = ?", [encryptedSecret, req.params.id]);
+
+    res.json({
+      success: true,
+      hasWebhookSecret: Boolean(encryptedSecret)
+    });
+  } catch (err: any) {
+    console.error("Error updating webhook secret:", err);
+    res.status(500).json({ error: "Internal server error updating webhook secret" });
   }
-
-  const { secret } = req.body;
-  let encryptedSecret: string | null = null;
-  if (typeof secret === 'string' && secret.trim()) {
-    encryptedSecret = encryptSecret(secret.trim());
-  }
-
-  await db.run("UPDATE projects SET webhookSecret = ? WHERE id = ?", [encryptedSecret, req.params.id]);
-
-  res.json({
-    success: true,
-    hasWebhookSecret: Boolean(encryptedSecret)
-  });
 });
 
 // Get Live Branches from GitHub or GitLab for a Project

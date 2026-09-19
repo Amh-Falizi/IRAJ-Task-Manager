@@ -103,6 +103,49 @@ export const checkProjectAccess = async (
   return false;
 };
 
+/**
+ * Get all project records accessible to the given user based on the canonical project access policy.
+ */
+export const getAccessibleProjects = async (db: any, user: any): Promise<any[]> => {
+  if (isAdminOrSuperAdmin(user)) {
+    return await db.all("SELECT * FROM projects");
+  }
+
+  return await db.all(
+    `SELECT DISTINCT p.* 
+     FROM projects p 
+     LEFT JOIN project_members pm ON p.id = pm.projectId 
+     LEFT JOIN team_projects tp ON p.id = tp.projectId 
+     LEFT JOIN team_members tm ON tp.teamId = tm.teamId 
+     WHERE p.ownerId = ? 
+        OR pm.userId = ? 
+        OR tm.userId = ?`,
+    [user.id, user.id, user.id]
+  );
+};
+
+/**
+ * Get the set of all user IDs authorized to access a given project.
+ */
+export const getAuthorizedProjectUserIds = async (db: any, projectId: string): Promise<Set<string>> => {
+  const authorized = new Set<string>();
+  const project = await db.get("SELECT ownerId FROM projects WHERE id = ?", projectId);
+  if (!project) return authorized;
+  if (project.ownerId) authorized.add(project.ownerId);
+
+  const members = await db.all(
+    `SELECT userId FROM project_members WHERE projectId = ?
+     UNION
+     SELECT tm.userId FROM team_members tm JOIN team_projects tp ON tm.teamId = tp.teamId WHERE tp.projectId = ?`,
+    [projectId, projectId]
+  );
+  members.forEach((m: any) => {
+    if (m.userId) authorized.add(m.userId);
+  });
+
+  return authorized;
+};
+
 export const checkTaskAccess = async (
   db: any,
   taskId: string,

@@ -18,50 +18,66 @@ const router = tasksRouter;
 
 // Get Tasks
 router.get("/", authenticateToken, async (req: any, res: any) => {
-  const db = await dbPromise;
-  
-  let query = `
-    SELECT DISTINCT t.* 
-    FROM tasks t
-    LEFT JOIN projects p ON t.projectId = p.id
-    LEFT JOIN project_members pm ON p.id = pm.projectId
-    LEFT JOIN team_projects tp ON p.id = tp.projectId
-    LEFT JOIN team_members tm ON tp.teamId = tm.teamId
-  `;
-  
-  const conditions = [];
-  const queryParams = [];
-  
-  if (!isAdminOrSuperAdmin(req.user)) {
-    conditions.push(`(p.ownerId = ? OR pm.userId = ? OR tm.userId = ? OR t.assigneeId = ? OR t.creatorId = ?)`);
-    queryParams.push(req.user.id, req.user.id, req.user.id, req.user.id, req.user.id);
-  }
-  
-  if (req.query.projectId) {
-    conditions.push("t.projectId = ?");
-    queryParams.push(req.query.projectId);
-  }
-  
-  if (conditions.length > 0) {
-    query += " WHERE " + conditions.join(" AND ");
-  }
+  try {
+    const db = await dbPromise;
+    
+    if (req.query.projectId) {
+      const hasAccess = await checkProjectAccess(db, req.query.projectId, req.user);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to project tasks." });
+      }
+    }
+    
+    let query = `
+      SELECT DISTINCT t.* 
+      FROM tasks t
+      LEFT JOIN projects p ON t.projectId = p.id
+      LEFT JOIN project_members pm ON p.id = pm.projectId
+      LEFT JOIN team_projects tp ON p.id = tp.projectId
+      LEFT JOIN team_members tm ON tp.teamId = tm.teamId
+    `;
+    
+    const conditions = [];
+    const queryParams = [];
+    
+    if (!isAdminOrSuperAdmin(req.user)) {
+      if (req.query.projectId) {
+        // Project access already verified above
+      } else {
+        conditions.push(`(p.ownerId = ? OR pm.userId = ? OR tm.userId = ? OR ((t.projectId IS NULL OR t.projectId = '') AND (t.assigneeId = ? OR t.creatorId = ?)))`);
+        queryParams.push(req.user.id, req.user.id, req.user.id, req.user.id, req.user.id);
+      }
+    }
+    
+    if (req.query.projectId) {
+      conditions.push("t.projectId = ?");
+      queryParams.push(req.query.projectId);
+    }
+    
+    if (conditions.length > 0) {
+      query += " WHERE " + conditions.join(" AND ");
+    }
 
-  const tasks = await db.all(query, queryParams);
-  
-  if (tasks.length > 0) {
-    const taskIds = tasks.map((t: any) => t.id);
-    const placeholders = taskIds.map(() => '?').join(',');
-    const deps = await db.all(`SELECT * FROM task_dependencies WHERE taskId IN (${placeholders})`, taskIds);
-    tasks.forEach((t: any) => {
-      t.dependencies = deps.filter((d: any) => d.taskId === t.id).map((d: any) => d.blockedByTaskId);
-    });
-  } else {
-    tasks.forEach((t: any) => {
-      t.dependencies = [];
-    });
+    const tasks = await db.all(query, queryParams);
+    
+    if (tasks.length > 0) {
+      const taskIds = tasks.map((t: any) => t.id);
+      const placeholders = taskIds.map(() => '?').join(',');
+      const deps = await db.all(`SELECT * FROM task_dependencies WHERE taskId IN (${placeholders})`, taskIds);
+      tasks.forEach((t: any) => {
+        t.dependencies = deps.filter((d: any) => d.taskId === t.id).map((d: any) => d.blockedByTaskId);
+      });
+    } else {
+      tasks.forEach((t: any) => {
+        t.dependencies = [];
+      });
+    }
+    
+    res.json(tasks);
+  } catch (err: any) {
+    console.error("Failed to fetch tasks:", err);
+    res.status(500).json({ error: "Internal server error fetching tasks" });
   }
-  
-  res.json(tasks);
 });
 
 // Logs activity

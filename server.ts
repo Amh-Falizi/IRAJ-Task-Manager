@@ -24,7 +24,8 @@ import { webhooksRouter } from "./server/routes/webhooks.routes.js";
 import { startBackgroundJobs } from "./server/services/sync.service.js";
 
 const app = express();
-app.set("trust proxy", 1); // Trust first proxy for rate limiting (Cloud Run/Nginx)
+// Safely trust reverse proxy hops from private subnets/loopbacks
+app.set("trust proxy", "loopback, linklocal, uniquelocal");
 
 // Request logging
 app.use(morgan("dev"));
@@ -91,21 +92,16 @@ app.use(
 // Compress responses
 app.use(compression());
 
-app.use(
-  express.json({
-    limit: "10mb",
-    verify: (req: any, _res, buf) => {
-      req.rawBody = buf;
-    }
-  })
-); // Limit body size to prevent payload bombing and capture rawBody for webhook HMAC validation
+// Standard lightweight body parser (1MB payload limit, no wasteful rawBody buffer retention on general API calls)
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(cookieParser());
 
 const getSafeClientIp = (req: any): string => {
   return req.ip || req.socket?.remoteAddress || "127.0.0.1";
 };
 
-// Basic Rate Limiting
+// General API Rate Limiter
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 1000, // Limit each IP to 1000 requests per 15 minutes
@@ -119,26 +115,38 @@ const apiLimiter = rateLimit({
 // Apply rate limiting to API routes
 app.use("/api/", apiLimiter);
 
-// Protect auth routes with composite IP + account identifier keying to prevent X-Forwarded-For rotation bypass
-const authLimiter = rateLimit({
+// Two-tier Auth Rate Limiting:
+// Tier 1: Strict per-IP rate limiter
+const authIpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 30, // limit to 30 auth requests per 15 minutes per IP + account combo
+  max: 30, // 30 requests per 15 minutes per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: any) => getSafeClientIp(req),
+  validate: { xForwardedForHeader: false },
+  message: { error: "Too many authentication attempts from this IP address. Please try again after 15 minutes." }
+});
+
+// Tier 2: Strict per-Account rate limiter (prevents distributed password spraying across rotating IPs)
+const authAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per 15 minutes per account
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: any) => {
-    const ip = getSafeClientIp(req);
     const identifier =
       typeof req.body?.email === "string"
         ? req.body.email.toLowerCase().trim().slice(0, 100)
         : typeof req.body?.username === "string"
         ? req.body.username.toLowerCase().trim().slice(0, 100)
         : "";
-    return `${ip}:${identifier}`;
+    return identifier || getSafeClientIp(req);
   },
   validate: { xForwardedForHeader: false },
-  message: { error: "Too many authentication attempts. Please try again after 15 minutes." }
+  message: { error: "Too many authentication attempts for this account. Please try again after 15 minutes." }
 });
-app.use("/api/auth/", authLimiter);
+
+app.use("/api/auth/", authIpLimiter, authAccountLimiter);
 
 /* --- MODULAR API ROUTERS --- */
 app.use("/api/auth", authRouter);

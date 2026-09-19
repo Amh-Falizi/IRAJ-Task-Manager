@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import dns from "dns";
 import net from "net";
+import { Agent } from "undici";
 import { v4 as uuidv4 } from "uuid";
 import { dbPromise } from "../db.js";
 import { decryptSecret } from "../config.js";
@@ -121,28 +122,50 @@ export function isSafeWebhookUrl(urlStr: string): boolean {
   }
 }
 
-export async function isSafeDestination(urlStr: string): Promise<boolean> {
+export interface SafeDestinationResult {
+  safe: boolean;
+  pinnedIp?: string;
+  family?: 4 | 6;
+  error?: string;
+}
+
+export async function validateAndResolveSafeDestination(urlStr: string): Promise<SafeDestinationResult> {
   if (!isSafeWebhookUrl(urlStr)) {
-    return false;
+    return { safe: false, error: "Invalid or blocked URL scheme/format" };
   }
   try {
     const parsed = new URL(urlStr);
     const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
     if (net.isIP(host)) {
-      return isSafeIp(host);
+      if (!isSafeIp(host)) {
+        return { safe: false, error: `Forbidden IP address: ${host}` };
+      }
+      return { safe: true, pinnedIp: host, family: net.isIPv6(host) ? 6 : 4 };
     }
     // Resolve DNS records to verify actual connected IPs
     const records = await dns.promises.lookup(host, { all: true });
-    if (!records || records.length === 0) return false;
+    if (!records || records.length === 0) {
+      return { safe: false, error: "DNS lookup returned no records" };
+    }
     for (const record of records) {
       if (!isSafeIp(record.address)) {
-        return false;
+        return { safe: false, error: `Host resolves to non-public IP: ${record.address}` };
       }
     }
-    return true;
-  } catch {
-    return false;
+    const chosen = records[0];
+    return {
+      safe: true,
+      pinnedIp: chosen.address,
+      family: chosen.family === 6 ? 6 : 4
+    };
+  } catch (err: any) {
+    return { safe: false, error: err.message || "Failed to resolve destination" };
   }
+}
+
+export async function isSafeDestination(urlStr: string): Promise<boolean> {
+  const result = await validateAndResolveSafeDestination(urlStr);
+  return result.safe;
 }
 
 export class WebhookService {
@@ -234,21 +257,35 @@ export class WebhookService {
 
     try {
       while (redirectHops <= maxRedirects) {
-        // Validate hostname and resolved IPs before connecting
-        const isSafe = await isSafeDestination(currentUrl);
-        if (!isSafe) {
+        // Validate hostname and resolve IP records
+        const destResult = await validateAndResolveSafeDestination(currentUrl);
+        if (!destResult.safe || !destResult.pinnedIp) {
           statusCode = 400;
-          responseBody = `Error: Blocked SSRF destination or redirect target: ${currentUrl}`;
+          responseBody = `Error: Blocked SSRF destination or redirect target: ${currentUrl} (${destResult.error || "Forbidden destination"})`;
           console.warn(`[Webhook] Blocked outbound dispatch to forbidden address: ${currentUrl}`);
           break;
         }
+
+        const pinnedIp = destResult.pinnedIp;
+        const pinnedFamily = destResult.family || (net.isIPv6(pinnedIp) ? 6 : 4);
+
+        // Pin the resolved IP address to eliminate DNS rebinding TOCTOU window
+        const pinnedDispatcher = new Agent({
+          connect: {
+            lookup: (_hostname, _options, callback) => {
+              callback(null, [{ address: pinnedIp, family: pinnedFamily }]);
+            }
+          }
+        });
 
         const response = await fetch(currentUrl, {
           method: "POST",
           headers,
           body: payloadString,
           redirect: "manual",
-          signal: AbortSignal.timeout(8000)
+          signal: AbortSignal.timeout(8000),
+          // @ts-ignore undici dispatcher support in Node fetch
+          dispatcher: pinnedDispatcher
         });
 
         statusCode = response.status;

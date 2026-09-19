@@ -1,7 +1,7 @@
 import { Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { dbPromise } from "../db.js";
-import { checkProjectAccess, isAdminOrSuperAdmin } from "../middleware/auth.js";
+import { getAuthorizedProjectUserIds, isAdminOrSuperAdmin } from "../middleware/auth.js";
 
 export interface SseClient {
   id: string;
@@ -106,25 +106,7 @@ class EventsService {
     if (projectId) {
       try {
         const db = await dbPromise;
-        const project = await db.get("SELECT ownerId FROM projects WHERE id = ?", projectId);
-        if (project) {
-          authorizedUserIds = new Set<string>();
-          if (project.ownerId) authorizedUserIds.add(project.ownerId);
-
-          const members = await db.all(
-            `SELECT userId FROM project_members WHERE projectId = ?
-             UNION
-             SELECT tm.userId FROM team_members tm JOIN team_projects tp ON tm.teamId = tp.teamId WHERE tp.projectId = ?
-             UNION
-             SELECT assigneeId as userId FROM tasks WHERE projectId = ? AND assigneeId IS NOT NULL
-             UNION
-             SELECT creatorId as userId FROM tasks WHERE projectId = ? AND creatorId IS NOT NULL`,
-            [projectId, projectId, projectId, projectId]
-          );
-          members.forEach((m: any) => {
-            if (m.userId) authorizedUserIds!.add(m.userId);
-          });
-        }
+        authorizedUserIds = await getAuthorizedProjectUserIds(db, projectId);
       } catch (err: any) {
         console.error("[SSE] Database error during broadcast authorization:", err.message);
       }
