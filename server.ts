@@ -19,6 +19,8 @@ import { tasksRouter } from "./server/routes/tasks.routes.js";
 import { projectsRouter } from "./server/routes/projects.routes.js";
 import { documentsRouter } from "./server/routes/documents.routes.js";
 import { backupRouter } from "./server/routes/backup.routes.js";
+import { eventsRouter } from "./server/routes/events.routes.js";
+import { webhooksRouter } from "./server/routes/webhooks.routes.js";
 import { startBackgroundJobs } from "./server/services/sync.service.js";
 
 const app = express();
@@ -121,6 +123,8 @@ app.use("/api/tasks", tasksRouter);
 app.use("/api", projectsRouter);
 app.use("/api", documentsRouter);
 app.use("/api/backup", backupRouter);
+app.use("/api", eventsRouter);
+app.use("/api", webhooksRouter);
 
 async function startServer() {
   // Ensure database initialization begins

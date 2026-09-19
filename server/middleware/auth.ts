@@ -3,7 +3,12 @@ import { AUTH_COOKIE_NAME, SECRET_KEY } from "../config.js";
 import { dbPromise } from "../db.js";
 
 export const authenticateToken = (req: any, res: any, next: any) => {
-  const token = req.cookies?.[AUTH_COOKIE_NAME];
+  const token =
+    req.cookies?.[AUTH_COOKIE_NAME] ||
+    (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")
+      ? req.headers.authorization.slice(7)
+      : null) ||
+    req.query?.token;
 
   if (!token) return res.sendStatus(401);
 

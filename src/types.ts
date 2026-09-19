@@ -9,11 +9,13 @@ export interface User {
   permissions?: Record<string, boolean>;
 }
 
+export type TaskStatus = "todo" | "in_progress" | "review" | "done" | string;
+
 export interface Task {
   id: string;
   title: string;
   description: string;
-  status: "todo" | "in_progress" | "review" | "done";
+  status: TaskStatus;
   priority: "low" | "medium" | "high" | "urgent";
   deadline: string;
   assigneeId: string | null;
@@ -125,3 +127,15 @@ export interface TaskActivity {
   createdAt: string;
   user?: User; // added on client side
 }
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  link?: string | null;
+  read: number;
+  createdAt: string;
+}
+

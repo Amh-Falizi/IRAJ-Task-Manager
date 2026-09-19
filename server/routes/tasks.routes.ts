@@ -2,6 +2,8 @@ import express from "express";
 import { v4 as uuidv4 } from "uuid";
 import { dbPromise, extractTaskNumber } from "../db.js";
 import { Task } from "../types.js";
+import { eventsService } from "../services/events.service.js";
+import { webhookService } from "../services/webhook.service.js";
 import {
   authenticateToken,
   isAdminOrSuperAdmin,
@@ -99,12 +101,72 @@ router.post("/:id/comments", authenticateToken, async (req: any, res: any) => {
   }
 
   const commentId = uuidv4();
+  const createdAt = new Date().toISOString();
   await db.run(
     "INSERT INTO task_comments (id, taskId, userId, content, createdAt) VALUES (?, ?, ?, ?, ?)",
-    [commentId, taskId, req.user.id, req.body.content, new Date().toISOString()]
+    [commentId, taskId, req.user.id, req.body.content, createdAt]
   );
   await logActivity(db, taskId, req.user.id, `commented: ${req.body.content.substring(0, 50)}...`);
   const comment = await db.get("SELECT * FROM task_comments WHERE id = ?", commentId);
+
+  // Fetch task to get title, projectId, and assignee
+  const task = await db.get("SELECT * FROM tasks WHERE id = ?", taskId);
+
+  if (task) {
+    const notifiedUserIds = new Set<string>();
+    notifiedUserIds.add(req.user.id); // Don't notify commenter
+
+    // Parse @mentions (e.g. @john or @alex.smith)
+    const mentionMatches = req.body.content.match(/@([a-zA-Z0-9._-]+)/g);
+    if (mentionMatches) {
+      const allUsers = await db.all("SELECT id, name, email FROM users");
+      for (const m of mentionMatches) {
+        const queryName = m.substring(1).toLowerCase();
+        const matched = allUsers.find(
+          (u: any) =>
+            u.name.toLowerCase().replace(/\s+/g, "").includes(queryName) ||
+            u.email.toLowerCase().split("@")[0] === queryName
+        );
+        if (matched && !notifiedUserIds.has(matched.id)) {
+          notifiedUserIds.add(matched.id);
+          await eventsService.notifyUser(matched.id, {
+            type: "mention",
+            title: "Mentioned in comment",
+            message: `${req.user.name} mentioned you in "${task.title}": "${req.body.content.slice(0, 100)}"`,
+            link: `/board?taskId=${task.id}`
+          });
+        }
+      }
+    }
+
+    // Notify assignee if not commenter and not already notified
+    if (task.assigneeId && !notifiedUserIds.has(task.assigneeId)) {
+      notifiedUserIds.add(task.assigneeId);
+      await eventsService.notifyUser(task.assigneeId, {
+        type: "system",
+        title: "New comment on assigned task",
+        message: `${req.user.name} commented on "${task.title}": "${req.body.content.slice(0, 100)}"`,
+        link: `/board?taskId=${task.id}`
+      });
+    }
+
+    // Broadcast SSE event
+    eventsService.broadcast({
+      type: "task:comment_added",
+      data: { taskId, comment },
+      projectId: task.projectId
+    });
+
+    // Dispatch outbound webhook
+    if (task.projectId) {
+      webhookService.dispatchProjectEvent(task.projectId, "task.comment", {
+        task,
+        comment,
+        author: { id: req.user.id, name: req.user.name }
+      });
+    }
+  }
+
   res.json(comment);
 });
 
@@ -268,6 +330,31 @@ router.post("/", authenticateToken, async (req: any, res: any) => {
   }
 
   await logActivity(db, newTask.id, req.user.id, "created task");
+
+  // Notify assignee if not the creator
+  if (newTask.assigneeId && newTask.assigneeId !== req.user.id) {
+    await eventsService.notifyUser(newTask.assigneeId, {
+      type: "assignment",
+      title: "New task assigned to you",
+      message: `${req.user.name} assigned you to "${newTask.title}"`,
+      link: `/board?taskId=${newTask.id}`
+    });
+  }
+
+  // Broadcast real-time SSE event
+  eventsService.broadcast({
+    type: "task:created",
+    data: newTask,
+    projectId: newTask.projectId
+  });
+
+  // Dispatch outbound project webhooks
+  if (newTask.projectId) {
+    webhookService.dispatchProjectEvent(newTask.projectId, "task.created", {
+      task: newTask,
+      creator: { id: req.user.id, name: req.user.name }
+    });
+  }
 
   res.json(newTask);
 });
@@ -509,6 +596,56 @@ router.put("/:id", authenticateToken, async (req: any, res: any) => {
   }
   await logActivity(db, updated.id, req.user.id, actionStr);
 
+  // Notify new assignee if changed
+  if (updated.assigneeId && updated.assigneeId !== task.assigneeId && updated.assigneeId !== req.user.id) {
+    await eventsService.notifyUser(updated.assigneeId, {
+      type: "assignment",
+      title: "Task assigned to you",
+      message: `${req.user.name} assigned you to "${updated.title}"`,
+      link: `/board?taskId=${updated.id}`
+    });
+  }
+
+  // Notify on status change
+  if (task.status !== updated.status) {
+    if (task.assigneeId && task.assigneeId !== req.user.id) {
+      await eventsService.notifyUser(task.assigneeId, {
+        type: "status_change",
+        title: "Task status changed",
+        message: `${req.user.name} changed status of "${updated.title}" to ${updated.status}`,
+        link: `/board?taskId=${updated.id}`
+      });
+    }
+    if (task.creatorId && task.creatorId !== req.user.id && task.creatorId !== task.assigneeId) {
+      await eventsService.notifyUser(task.creatorId, {
+        type: "status_change",
+        title: "Task status changed",
+        message: `${req.user.name} changed status of "${updated.title}" to ${updated.status}`,
+        link: `/board?taskId=${updated.id}`
+      });
+    }
+  }
+
+  // Broadcast real-time SSE event
+  eventsService.broadcast({
+    type: "task:updated",
+    data: updated,
+    projectId: updated.projectId
+  });
+
+  // Dispatch outbound project webhooks
+  if (updated.projectId) {
+    webhookService.dispatchProjectEvent(updated.projectId, "task.updated", {
+      task: updated,
+      previous: {
+        status: task.status,
+        assigneeId: task.assigneeId,
+        priority: task.priority
+      },
+      updatedBy: { id: req.user.id, name: req.user.name }
+    });
+  }
+
   res.json(updated);
 });
 
@@ -568,6 +705,22 @@ router.delete("/:id", authenticateToken, async (req: any, res: any) => {
            }
        }
     }
+  }
+
+  // Broadcast real-time SSE event
+  eventsService.broadcast({
+    type: "task:deleted",
+    data: { id: task.id, projectId: task.projectId },
+    projectId: task.projectId
+  });
+
+  // Dispatch outbound project webhooks
+  if (task.projectId) {
+    webhookService.dispatchProjectEvent(task.projectId, "task.deleted", {
+      taskId: task.id,
+      title: task.title,
+      deletedBy: { id: req.user.id, name: req.user.name }
+    });
   }
 
   res.json({ success: true });
