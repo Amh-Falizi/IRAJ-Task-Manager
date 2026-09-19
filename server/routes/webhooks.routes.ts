@@ -3,7 +3,8 @@ import crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { authenticateToken, isProjectAdminOrOwner } from "../middleware/auth.js";
 import { dbPromise } from "../db.js";
-import { webhookService } from "../services/webhook.service.js";
+import { webhookService, isSafeWebhookUrl } from "../services/webhook.service.js";
+import { encryptSecret } from "../config.js";
 
 export const webhooksRouter = Router();
 
@@ -11,17 +12,32 @@ export const webhooksRouter = Router();
 webhooksRouter.post("/webhooks/github", async (req: any, res: any) => {
   const event = req.headers["x-github-event"] as string;
   const signature = req.headers["x-hub-signature-256"] as string;
+  const projectId = req.query.projectId as string | undefined;
 
   if (!event) {
     return res.status(400).json({ error: "Missing X-GitHub-Event header" });
   }
 
   try {
-    const result = await webhookService.handleGitHubWebhook(event, req.body, signature);
+    const result = await webhookService.handleGitHubWebhook(
+      event,
+      req.body,
+      req.rawBody,
+      signature,
+      projectId
+    );
     res.json(result);
   } catch (err: any) {
-    console.error("[Webhook GitHub] Error processing:", err);
-    res.status(500).json({ error: "Failed to process webhook" });
+    console.error("[Webhook GitHub] Verification/processing error:", err.message);
+    const statusCode =
+      err.message?.includes("signature") ||
+      err.message?.includes("secret") ||
+      err.message?.includes("Header")
+        ? 401
+        : err.message?.includes("not found")
+        ? 404
+        : 500;
+    res.status(statusCode).json({ error: err.message || "Failed to process webhook" });
   }
 });
 
@@ -29,17 +45,31 @@ webhooksRouter.post("/webhooks/github", async (req: any, res: any) => {
 webhooksRouter.post("/webhooks/gitlab", async (req: any, res: any) => {
   const event = req.headers["x-gitlab-event"] as string;
   const token = req.headers["x-gitlab-token"] as string;
+  const projectId = req.query.projectId as string | undefined;
 
   if (!event) {
     return res.status(400).json({ error: "Missing X-Gitlab-Event header" });
   }
 
   try {
-    const result = await webhookService.handleGitLabWebhook(event, req.body, token);
+    const result = await webhookService.handleGitLabWebhook(
+      event,
+      req.body,
+      token,
+      projectId
+    );
     res.json(result);
   } catch (err: any) {
-    console.error("[Webhook GitLab] Error processing:", err);
-    res.status(500).json({ error: "Failed to process webhook" });
+    console.error("[Webhook GitLab] Verification/processing error:", err.message);
+    const statusCode =
+      err.message?.includes("token") ||
+      err.message?.includes("secret") ||
+      err.message?.includes("Header")
+        ? 401
+        : err.message?.includes("not found")
+        ? 404
+        : 500;
+    res.status(statusCode).json({ error: err.message || "Failed to process webhook" });
   }
 });
 
@@ -49,14 +79,22 @@ webhooksRouter.get("/projects/:projectId/webhooks", authenticateToken, async (re
     const db = await dbPromise;
     const { projectId } = req.params;
 
+    const isAdmin = await isProjectAdminOrOwner(db, projectId, req.user);
+    if (!isAdmin) {
+      return res.status(403).json({ error: "Only project administrators can view webhooks" });
+    }
+
     const webhooks = await db.all(
-      "SELECT id, projectId, url, events, active, createdAt FROM webhooks WHERE projectId = ? ORDER BY createdAt DESC",
+      "SELECT id, projectId, url, secret, events, active, createdAt FROM webhooks WHERE projectId = ? ORDER BY createdAt DESC",
       [projectId]
     );
 
     res.json(
       webhooks.map((w: any) => ({
-        ...w,
+        id: w.id,
+        projectId: w.projectId,
+        url: w.url,
+        hasSecret: Boolean(w.secret),
         events: (() => {
           try {
             return JSON.parse(w.events);
@@ -64,7 +102,8 @@ webhooksRouter.get("/projects/:projectId/webhooks", authenticateToken, async (re
             return [w.events];
           }
         })(),
-        active: Boolean(w.active)
+        active: Boolean(w.active),
+        createdAt: w.createdAt
       }))
     );
   } catch (err: any) {
@@ -89,19 +128,25 @@ webhooksRouter.post("/projects/:projectId/webhooks", authenticateToken, async (r
       return res.status(400).json({ error: "Valid HTTP/HTTPS webhook URL is required" });
     }
 
+    if (!isSafeWebhookUrl(url)) {
+      return res.status(400).json({ error: "Webhook URL points to a forbidden local or internal private network target." });
+    }
+
     const webhookId = uuidv4();
     const eventsJson = JSON.stringify(Array.isArray(events) && events.length > 0 ? events : ["*"]);
     const createdAt = new Date().toISOString();
+    const encryptedSecret = secret && typeof secret === "string" && secret.trim() ? encryptSecret(secret.trim()) : null;
 
     await db.run(
       "INSERT INTO webhooks (id, projectId, url, secret, events, active, createdAt) VALUES (?, ?, ?, ?, ?, 1, ?)",
-      [webhookId, projectId, url, secret || null, eventsJson, createdAt]
+      [webhookId, projectId, url, encryptedSecret, eventsJson, createdAt]
     );
 
     res.status(201).json({
       id: webhookId,
       projectId,
       url,
+      hasSecret: Boolean(encryptedSecret),
       events: JSON.parse(eventsJson),
       active: true,
       createdAt
@@ -139,6 +184,11 @@ webhooksRouter.post("/projects/:projectId/webhooks/:webhookId/test", authenticat
     const db = await dbPromise;
     const { projectId, webhookId } = req.params;
 
+    const isAdmin = await isProjectAdminOrOwner(db, projectId, req.user);
+    if (!isAdmin) {
+      return res.status(403).json({ error: "Only project administrators can test webhooks" });
+    }
+
     const webhook = await db.get("SELECT * FROM webhooks WHERE id = ? AND projectId = ?", [
       webhookId,
       projectId
@@ -170,7 +220,12 @@ webhooksRouter.post("/projects/:projectId/webhooks/:webhookId/test", authenticat
 webhooksRouter.get("/projects/:projectId/webhooks/:webhookId/deliveries", authenticateToken, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
-    const { webhookId } = req.params;
+    const { projectId, webhookId } = req.params;
+
+    const isAdmin = await isProjectAdminOrOwner(db, projectId, req.user);
+    if (!isAdmin) {
+      return res.status(403).json({ error: "Only project administrators can view webhook deliveries" });
+    }
 
     const deliveries = await db.all(
       "SELECT id, webhookId, event, statusCode, responseBody, createdAt FROM webhook_deliveries WHERE webhookId = ? ORDER BY createdAt DESC LIMIT 20",

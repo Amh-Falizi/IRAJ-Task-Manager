@@ -30,9 +30,11 @@ services:
       - NODE_ENV=production
       - HOST=${HOST:-0.0.0.0}
       - PORT=${PORT:-3000}
+      - SECRET_KEY=${SECRET_KEY:-your-secure-jwt-secret-key-change-in-production}
+      - TOKEN_ENCRYPTION_KEY=${TOKEN_ENCRYPTION_KEY:-}
       - DATABASE_URL=postgres://${POSTGRES_USER:-devuser}:${POSTGRES_PASSWORD:-devpassword}@postgres:5432/${POSTGRES_DB:-devdb}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - APP_URL=${APP_URL}
+      - APP_URL=${APP_URL:-http://localhost:3000}
       - VITE_APP_NAME=${VITE_APP_NAME:-ProjectManager}
       - VITE_APP_VERSION=${VITE_APP_VERSION:-1.0.0}
       - GITLAB_URL=${GITLAB_URL}

@@ -100,12 +100,6 @@ export const checkProjectAccess = async (
   );
   if (tm) return true;
 
-  const t = await db.get(
-    "SELECT 1 FROM tasks WHERE projectId = ? AND (assigneeId = ? OR creatorId = ?)",
-    [projectId, user.id, user.id]
-  );
-  if (t) return true;
-
   return false;
 };
 

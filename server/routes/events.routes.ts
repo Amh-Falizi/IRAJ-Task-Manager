@@ -8,9 +8,10 @@ export const eventsRouter = Router();
 // Server-Sent Events stream
 eventsRouter.get("/events", authenticateToken, (req: any, res: any) => {
   const userId = req.user.id;
+  const userRole = req.user.role;
   const projectId = req.query.projectId as string | undefined;
 
-  const clientId = eventsService.registerClient(userId, res, projectId);
+  const clientId = eventsService.registerClient(userId, userRole, res, projectId);
 
   req.on("close", () => {
     eventsService.unregisterClient(clientId);

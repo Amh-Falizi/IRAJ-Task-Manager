@@ -62,11 +62,12 @@ export function encryptSecret(text: string): string {
   return `enc:${iv.toString("hex")}:${authTag}:${encrypted}`;
 }
 
-export function decryptSecret(text: string): string {
-  if (!text || !text.startsWith("enc:")) return text;
+export function decryptSecret(text: string): string | null {
+  if (!text) return text;
+  if (!text.startsWith("enc:")) return text;
   try {
     const parts = text.split(":");
-    if (parts.length !== 4) return text;
+    if (parts.length !== 4) return null;
     const iv = Buffer.from(parts[1], "hex");
     const authTag = Buffer.from(parts[2], "hex");
     const encryptedText = parts[3];
@@ -77,7 +78,7 @@ export function decryptSecret(text: string): string {
     return decrypted;
   } catch (e) {
     console.error("Failed to decrypt secret:", e);
-    return "";
+    return null;
   }
 }
 

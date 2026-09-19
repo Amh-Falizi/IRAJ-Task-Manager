@@ -113,7 +113,14 @@ const authLimiter = rateLimit({
 });
 app.use("/api/auth/", authLimiter);
 
-app.use(express.json({ limit: "10mb" })); // Limit body size to prevent payload bombing
+app.use(
+  express.json({
+    limit: "10mb",
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    }
+  })
+); // Limit body size to prevent payload bombing and capture rawBody for webhook HMAC validation
 app.use(cookieParser());
 
 /* --- MODULAR API ROUTERS --- */

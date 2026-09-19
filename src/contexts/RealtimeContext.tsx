@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode, useRef, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
 
@@ -11,11 +11,13 @@ interface RealtimeEvent {
 interface RealtimeContextType {
   isConnected: boolean;
   lastEvent: RealtimeEvent | null;
+  reconnect: () => void;
 }
 
 const RealtimeContext = createContext<RealtimeContextType>({
   isConnected: false,
-  lastEvent: null
+  lastEvent: null,
+  reconnect: () => {}
 });
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {
@@ -24,133 +26,174 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const [isConnected, setIsConnected] = useState(false);
   const [lastEvent, setLastEvent] = useState<RealtimeEvent | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const retryCountRef = useRef(0);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const isCancelledRef = useRef(false);
+
+  const connect = useCallback(() => {
+    if (isCancelledRef.current || !isAuthenticated || !user) return;
+
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    try {
+      const eventSource = new EventSource('/api/events', { withCredentials: true });
+      eventSourceRef.current = eventSource;
+
+      eventSource.onopen = () => {
+        if (!isCancelledRef.current) {
+          setIsConnected(true);
+          retryCountRef.current = 0; // Reset retry counter on successful open
+        }
+      };
+
+      eventSource.addEventListener('connected', () => {
+        setIsConnected(true);
+        retryCountRef.current = 0;
+      });
+
+      // Task created event
+      eventSource.addEventListener('task:created', (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          const eventObj = { type: 'task:created', data, timestamp: new Date().toISOString() };
+          setLastEvent(eventObj);
+          window.dispatchEvent(new CustomEvent('realtime:task-changed', { detail: eventObj }));
+        } catch (err) {
+          console.error('[Realtime] Parse error:', err);
+        }
+      });
+
+      // Task updated event
+      eventSource.addEventListener('task:updated', (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          const eventObj = { type: 'task:updated', data, timestamp: new Date().toISOString() };
+          setLastEvent(eventObj);
+          window.dispatchEvent(new CustomEvent('realtime:task-changed', { detail: eventObj }));
+        } catch (err) {
+          console.error('[Realtime] Parse error:', err);
+        }
+      });
+
+      // Task deleted event
+      eventSource.addEventListener('task:deleted', (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          const eventObj = { type: 'task:deleted', data, timestamp: new Date().toISOString() };
+          setLastEvent(eventObj);
+          window.dispatchEvent(new CustomEvent('realtime:task-changed', { detail: eventObj }));
+        } catch (err) {
+          console.error('[Realtime] Parse error:', err);
+        }
+      });
+
+      // Task comment added event
+      eventSource.addEventListener('task:comment_added', (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          const eventObj = { type: 'task:comment_added', data, timestamp: new Date().toISOString() };
+          setLastEvent(eventObj);
+          window.dispatchEvent(new CustomEvent('realtime:task-changed', { detail: eventObj }));
+        } catch (err) {
+          console.error('[Realtime] Parse error:', err);
+        }
+      });
+
+      // User Notification event
+      eventSource.addEventListener('notification:new', (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          const eventObj = { type: 'notification:new', data, timestamp: new Date().toISOString() };
+          setLastEvent(eventObj);
+          window.dispatchEvent(new CustomEvent('realtime:notification-new', { detail: data }));
+
+          if (data.title && data.message) {
+            info(`${data.title}: ${data.message}`);
+          }
+        } catch (err) {
+          console.error('[Realtime] Parse error:', err);
+        }
+      });
+
+      eventSource.onerror = () => {
+        setIsConnected(false);
+        if (eventSourceRef.current) {
+          eventSourceRef.current.close();
+          eventSourceRef.current = null;
+        }
+
+        // Apply exponential backoff with max retry ceiling
+        if (!isCancelledRef.current && isAuthenticated) {
+          if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+
+          retryCountRef.current += 1;
+          // Stop hammering server after 10 consecutive failures until user re-focuses or manually reconnects
+          if (retryCountRef.current > 10) {
+            console.warn('[Realtime] Max connection retries reached. Pausing auto-reconnect until tab re-focus.');
+            return;
+          }
+
+          const delayMs = Math.min(1500 * Math.pow(1.5, retryCountRef.current - 1), 30000);
+          reconnectTimeoutRef.current = setTimeout(connect, delayMs);
+        }
+      };
+    } catch (err) {
+      console.warn('[Realtime] EventSource initialization failed:', err);
+      if (!isCancelledRef.current && isAuthenticated) {
+        retryCountRef.current += 1;
+        const delayMs = Math.min(2000 * Math.pow(1.5, retryCountRef.current - 1), 30000);
+        reconnectTimeoutRef.current = setTimeout(connect, delayMs);
+      }
+    }
+  }, [isAuthenticated, user, info]);
 
   useEffect(() => {
+    isCancelledRef.current = false;
+
     if (!isAuthenticated || !user) {
       setIsConnected(false);
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
       return;
     }
 
-    let eventSource: EventSource | null = null;
-    let isCancelled = false;
+    connect();
 
-    const connect = () => {
-      if (isCancelled) return;
-
-      try {
-        eventSource = new EventSource('/api/events', { withCredentials: true });
-
-        eventSource.onopen = () => {
-          if (!isCancelled) {
-            setIsConnected(true);
-          }
-        };
-
-        eventSource.addEventListener('connected', (e: MessageEvent) => {
-          setIsConnected(true);
-        });
-
-        // Task created event
-        eventSource.addEventListener('task:created', (e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data);
-            const eventObj = { type: 'task:created', data, timestamp: new Date().toISOString() };
-            setLastEvent(eventObj);
-            window.dispatchEvent(new CustomEvent('realtime:task-changed', { detail: eventObj }));
-          } catch (err) {
-            console.error('[Realtime] Parse error:', err);
-          }
-        });
-
-        // Task updated event
-        eventSource.addEventListener('task:updated', (e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data);
-            const eventObj = { type: 'task:updated', data, timestamp: new Date().toISOString() };
-            setLastEvent(eventObj);
-            window.dispatchEvent(new CustomEvent('realtime:task-changed', { detail: eventObj }));
-          } catch (err) {
-            console.error('[Realtime] Parse error:', err);
-          }
-        });
-
-        // Task deleted event
-        eventSource.addEventListener('task:deleted', (e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data);
-            const eventObj = { type: 'task:deleted', data, timestamp: new Date().toISOString() };
-            setLastEvent(eventObj);
-            window.dispatchEvent(new CustomEvent('realtime:task-changed', { detail: eventObj }));
-          } catch (err) {
-            console.error('[Realtime] Parse error:', err);
-          }
-        });
-
-        // Task comment added event
-        eventSource.addEventListener('task:comment_added', (e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data);
-            const eventObj = { type: 'task:comment_added', data, timestamp: new Date().toISOString() };
-            setLastEvent(eventObj);
-            window.dispatchEvent(new CustomEvent('realtime:task-changed', { detail: eventObj }));
-          } catch (err) {
-            console.error('[Realtime] Parse error:', err);
-          }
-        });
-
-        // User Notification event
-        eventSource.addEventListener('notification:new', (e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data);
-            const eventObj = { type: 'notification:new', data, timestamp: new Date().toISOString() };
-            setLastEvent(eventObj);
-            window.dispatchEvent(new CustomEvent('realtime:notification-new', { detail: data }));
-            
-            // Show toast
-            if (data.title && data.message) {
-              info(`${data.title}: ${data.message}`);
-            }
-          } catch (err) {
-            console.error('[Realtime] Parse error:', err);
-          }
-        });
-
-        eventSource.onerror = (err) => {
-          setIsConnected(false);
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-          }
-
-          // Reconnect after 5 seconds if still authenticated
-          if (!isCancelled) {
-            if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-            reconnectTimeoutRef.current = setTimeout(connect, 5000);
-          }
-        };
-      } catch (err) {
-        console.warn('[Realtime] EventSource connection failed:', err);
-        if (!isCancelled) {
-          reconnectTimeoutRef.current = setTimeout(connect, 10000);
-        }
+    const handleFocus = () => {
+      if (!isConnected && isAuthenticated && !isCancelledRef.current) {
+        retryCountRef.current = 0;
+        connect();
       }
     };
 
-    connect();
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('online', handleFocus);
 
     return () => {
-      isCancelled = true;
+      isCancelledRef.current = true;
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleFocus);
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-      if (eventSource) {
-        eventSource.close();
-        eventSource = null;
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
       }
       setIsConnected(false);
     };
-  }, [isAuthenticated, user, info]);
+  }, [isAuthenticated, user, connect, isConnected]);
+
+  const handleManualReconnect = useCallback(() => {
+    retryCountRef.current = 0;
+    connect();
+  }, [connect]);
 
   return (
-    <RealtimeContext.Provider value={{ isConnected, lastEvent }}>
+    <RealtimeContext.Provider value={{ isConnected, lastEvent, reconnect: handleManualReconnect }}>
       {children}
     </RealtimeContext.Provider>
   );

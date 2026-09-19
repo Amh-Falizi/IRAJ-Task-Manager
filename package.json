@@ -1,14 +1,14 @@
 {
-  "name": "react-example",
+  "name": "devteam-task-manager",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "license": "UNLICENSED",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "cross-env NODE_ENV=production node dist/server.cjs",
-    "clean": "rm -rf dist",
+    "clean": "node -e \"try { fs.rmSync('dist', { recursive: true, force: true }); } catch (e) {}\"",
     "lint": "tsc --noEmit",
     "db-cli": "tsx scripts/db-cli.ts"
   },

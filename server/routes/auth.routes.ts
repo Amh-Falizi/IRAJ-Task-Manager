@@ -209,7 +209,9 @@ router.post("/forgot-password", async (req, res) => {
 
       return res.json({ message: "If that email is registered, a password reset link has been sent." });
     } else {
-      console.log(`[DEV MODE] Password reset link for ${email}: ${resetLink}`);
+      if (process.env.NODE_ENV !== "production") {
+        console.log(`[DEV ONLY] Password reset link for ${email}: ${resetLink}`);
+      }
       return res.json({ message: "If that email is registered, a password reset link has been sent." });
     }
   } catch (error) {

@@ -153,7 +153,12 @@ router.post("/:id/comments", authenticateToken, async (req: any, res: any) => {
     // Broadcast SSE event
     eventsService.broadcast({
       type: "task:comment_added",
-      data: { taskId, comment },
+      data: {
+        taskId,
+        projectId: task.projectId,
+        commentId: comment.id,
+        action: "comment_added"
+      },
       projectId: task.projectId
     });
 
@@ -344,7 +349,18 @@ router.post("/", authenticateToken, async (req: any, res: any) => {
   // Broadcast real-time SSE event
   eventsService.broadcast({
     type: "task:created",
-    data: newTask,
+    data: {
+      id: newTask.id,
+      taskId: newTask.id,
+      projectId: newTask.projectId,
+      title: newTask.title,
+      status: newTask.status,
+      priority: newTask.priority,
+      assigneeId: newTask.assigneeId,
+      prStatus: newTask.prStatus,
+      prUrl: newTask.prUrl,
+      action: "created"
+    },
     projectId: newTask.projectId
   });
 
@@ -629,7 +645,18 @@ router.put("/:id", authenticateToken, async (req: any, res: any) => {
   // Broadcast real-time SSE event
   eventsService.broadcast({
     type: "task:updated",
-    data: updated,
+    data: {
+      id: updated.id,
+      taskId: updated.id,
+      projectId: updated.projectId,
+      title: updated.title,
+      status: updated.status,
+      priority: updated.priority,
+      assigneeId: updated.assigneeId,
+      prStatus: updated.prStatus,
+      prUrl: updated.prUrl,
+      action: "updated"
+    },
     projectId: updated.projectId
   });
 

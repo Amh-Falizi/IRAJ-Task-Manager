@@ -142,7 +142,17 @@ export function startBackgroundJobs() {
     try {
       const db = await dbPromise;
       await purgeStaleUnverifiedUsers(db);
-    } catch (e) {}
+
+      // Retention cleanup: purge notifications older than 30 days
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      await db.run("DELETE FROM notifications WHERE createdAt < ?", [thirtyDaysAgo]);
+
+      // Retention cleanup: purge webhook deliveries older than 14 days
+      const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+      await db.run("DELETE FROM webhook_deliveries WHERE createdAt < ?", [fourteenDaysAgo]);
+    } catch (e: any) {
+      console.error("[Background Jobs] Retention cleanup error:", e.message);
+    }
   }, 60 * 60 * 1000);
 
   const noncePurgeInterval = setInterval(async () => {

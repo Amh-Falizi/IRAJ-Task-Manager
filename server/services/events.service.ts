@@ -1,10 +1,12 @@
 import { Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { dbPromise } from "../db.js";
+import { checkProjectAccess, isAdminOrSuperAdmin } from "../middleware/auth.js";
 
 export interface SseClient {
   id: string;
   userId: string;
+  userRole: string;
   projectId?: string;
   res: Response;
   connectedAt: Date;
@@ -26,7 +28,12 @@ class EventsService {
     this.startHeartbeat();
   }
 
-  public registerClient(userId: string, res: Response, projectId?: string): string {
+  public registerClient(
+    userId: string,
+    userRole: string,
+    res: Response,
+    projectId?: string
+  ): string {
     const clientId = uuidv4();
 
     // Configure headers for Server-Sent Events
@@ -42,6 +49,7 @@ class EventsService {
     const client: SseClient = {
       id: clientId,
       userId,
+      userRole,
       projectId,
       res,
       connectedAt: new Date()
@@ -56,7 +64,9 @@ class EventsService {
       timestamp: new Date().toISOString()
     });
 
-    console.log(`[SSE] Client connected: ${clientId} (User: ${userId}, Total: ${this.clients.size})`);
+    console.log(
+      `[SSE] Client connected: ${clientId} (User: ${userId}, Role: ${userRole}, Total: ${this.clients.size})`
+    );
 
     return clientId;
   }
@@ -85,8 +95,20 @@ class EventsService {
     }
   }
 
-  public broadcast(event: RealtimeEventPayload) {
+  /**
+   * Broadcast an event strictly scoped to authorized users
+   */
+  public async broadcast(event: RealtimeEventPayload) {
     const { type, data, targetUserId, projectId, excludeClientId } = event;
+
+    let db: any = null;
+    if (projectId) {
+      try {
+        db = await dbPromise;
+      } catch (err: any) {
+        console.error("[SSE] Database error during broadcast authorization:", err.message);
+      }
+    }
 
     for (const [clientId, client] of this.clients.entries()) {
       if (excludeClientId && clientId === excludeClientId) {
@@ -98,9 +120,28 @@ class EventsService {
         continue;
       }
 
-      // If targeted to a specific project and client is filtered to another project, skip
+      // If client is explicitly filtering by another project, skip
       if (projectId && client.projectId && client.projectId !== projectId) {
         continue;
+      }
+
+      // If targeted to a project, verify client has access to this project
+      if (projectId) {
+        const isGlobalAdmin = isAdminOrSuperAdmin({ role: client.userRole });
+        if (!isGlobalAdmin) {
+          if (!db) continue;
+          try {
+            const hasAccess = await checkProjectAccess(db, projectId, {
+              id: client.userId,
+              role: client.userRole
+            });
+            if (!hasAccess) {
+              continue; // Drop broadcast for unauthorized user
+            }
+          } catch {
+            continue;
+          }
+        }
       }
 
       this.sendToClient(client, type, data);
