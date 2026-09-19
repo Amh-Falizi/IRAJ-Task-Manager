@@ -92,6 +92,17 @@ app.use(
 // Compress responses
 app.use(compression());
 
+// Inbound webhook body parser with rawBody buffer capture (MUST run before global JSON parser)
+app.use(
+  ["/api/webhooks", "/api/webhooks/*"],
+  express.json({
+    limit: "5mb",
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    }
+  })
+);
+
 // Standard lightweight body parser (1MB payload limit, no wasteful rawBody buffer retention on general API calls)
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
@@ -115,11 +126,11 @@ const apiLimiter = rateLimit({
 // Apply rate limiting to API routes
 app.use("/api/", apiLimiter);
 
-// Two-tier Auth Rate Limiting:
+// Two-tier Auth Rate Limiting for credential endpoints:
 // Tier 1: Strict per-IP rate limiter
 const authIpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 30, // 30 requests per 15 minutes per IP
+  max: 30, // 30 credential attempts per 15 minutes per IP
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: any) => getSafeClientIp(req),
@@ -127,10 +138,11 @@ const authIpLimiter = rateLimit({
   message: { error: "Too many authentication attempts from this IP address. Please try again after 15 minutes." }
 });
 
-// Tier 2: Strict per-Account rate limiter (prevents distributed password spraying across rotating IPs)
+// Tier 2: Strict per-Account rate limiter with skipSuccessfulRequests to prevent targeted account DoS
 const authAccountLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // 10 attempts per 15 minutes per account
+  max: 10, // 10 failed attempts per 15 minutes per account
+  skipSuccessfulRequests: true, // Successful logins do not consume quota
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: any) => {
@@ -143,10 +155,20 @@ const authAccountLimiter = rateLimit({
     return identifier || getSafeClientIp(req);
   },
   validate: { xForwardedForHeader: false },
-  message: { error: "Too many authentication attempts for this account. Please try again after 15 minutes." }
+  message: { error: "Too many failed authentication attempts for this account. Please try again after 15 minutes." }
 });
 
-app.use("/api/auth/", authIpLimiter, authAccountLimiter);
+// Apply specifically to credential submitting endpoints, NOT to /me, /logout, or OAuth redirect handlers
+app.use(
+  [
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password"
+  ],
+  authIpLimiter,
+  authAccountLimiter
+);
 
 /* --- MODULAR API ROUTERS --- */
 app.use("/api/auth", authRouter);

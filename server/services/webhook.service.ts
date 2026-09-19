@@ -163,11 +163,6 @@ export async function validateAndResolveSafeDestination(urlStr: string): Promise
   }
 }
 
-export async function isSafeDestination(urlStr: string): Promise<boolean> {
-  const result = await validateAndResolveSafeDestination(urlStr);
-  return result.safe;
-}
-
 export class WebhookService {
   /**
    * Dispatch an event to all configured outbound webhooks for a project
@@ -278,34 +273,42 @@ export class WebhookService {
           }
         });
 
-        const response = await fetch(currentUrl, {
-          method: "POST",
-          headers,
-          body: payloadString,
-          redirect: "manual",
-          signal: AbortSignal.timeout(8000),
-          // @ts-ignore undici dispatcher support in Node fetch
-          dispatcher: pinnedDispatcher
-        });
+        try {
+          const response = await fetch(currentUrl, {
+            method: "POST",
+            headers,
+            body: payloadString,
+            redirect: "manual",
+            signal: AbortSignal.timeout(8000),
+            // @ts-ignore undici dispatcher support in Node fetch
+            dispatcher: pinnedDispatcher
+          });
 
-        statusCode = response.status;
+          statusCode = response.status;
 
-        // Check for redirects
-        if ([301, 302, 303, 307, 308].includes(response.status)) {
-          const loc = response.headers.get("location");
-          if (!loc) {
-            responseBody = `Redirect ${response.status} missing Location header`;
-            break;
+          // Check for redirects
+          if ([301, 302, 303, 307, 308].includes(response.status)) {
+            const loc = response.headers.get("location");
+            if (!loc) {
+              responseBody = `Redirect ${response.status} missing Location header`;
+              break;
+            }
+            currentUrl = new URL(loc, currentUrl).toString();
+            redirectHops++;
+            continue;
           }
-          currentUrl = new URL(loc, currentUrl).toString();
-          redirectHops++;
-          continue;
-        }
 
-        const text = await response.text();
-        responseBody = text.slice(0, 1000); // cap response size
-        success = response.ok;
-        break;
+          const text = await response.text();
+          responseBody = text.slice(0, 1000); // cap response size
+          success = response.ok;
+          break;
+        } finally {
+          try {
+            await pinnedDispatcher.close();
+          } catch {
+            // ignore agent close errors
+          }
+        }
       }
     } catch (err: any) {
       if (statusCode === 0) statusCode = 500;

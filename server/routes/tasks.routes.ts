@@ -256,6 +256,13 @@ router.post("/", authenticateToken, async (req: any, res: any) => {
   if (!hasProjectAccess) {
      return res.status(403).json({ error: "You must have access to the project to create tasks in it." });
   }
+
+  if (req.body.assigneeId && req.body.projectId) {
+    const isAssigneeValid = await checkProjectAccess(db, req.body.projectId, { id: req.body.assigneeId, role: "user" });
+    if (!isAssigneeValid) {
+      return res.status(400).json({ error: "Assignee must be a member of the project or linked team." });
+    }
+  }
   
   if (req.body.parentId) {
     const parentTask = await db.get("SELECT id, projectId FROM tasks WHERE id = ?", req.body.parentId);
@@ -484,6 +491,14 @@ router.put("/:id", authenticateToken, async (req: any, res: any) => {
     const hasDestAccess = await checkProjectAccess(db, req.body.projectId, req.user);
     if (!hasDestAccess) {
       return res.status(403).json({ error: "You do not have access to the destination project." });
+    }
+  }
+
+  const effectiveProjectId = req.body.projectId !== undefined ? req.body.projectId : task.projectId;
+  if (req.body.assigneeId && effectiveProjectId) {
+    const isAssigneeValid = await checkProjectAccess(db, effectiveProjectId, { id: req.body.assigneeId, role: "user" });
+    if (!isAssigneeValid) {
+      return res.status(400).json({ error: "Assignee must be a member of the project or linked team." });
     }
   }
   
