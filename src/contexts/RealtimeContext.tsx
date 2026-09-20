@@ -11,12 +11,14 @@ export interface RealtimeEvent {
 interface RealtimeContextType {
   isConnected: boolean;
   lastEvent: RealtimeEvent | null;
+  getLastEvent: () => RealtimeEvent | null;
   reconnect: () => void;
 }
 
 const RealtimeContext = createContext<RealtimeContextType>({
   isConnected: false,
   lastEvent: null,
+  getLastEvent: () => null,
   reconnect: () => {}
 });
 
@@ -28,7 +30,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
   const [isConnected, setIsConnected] = useState(false);
   const isConnectedRef = useRef(false);
-  const [lastEvent, setLastEvent] = useState<RealtimeEvent | null>(null);
+  const lastEventRef = useRef<RealtimeEvent | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef(0);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -65,7 +67,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         try {
           const data = JSON.parse(e.data);
           const eventObj = { type: 'task:created', data, timestamp: new Date().toISOString() };
-          setLastEvent(eventObj);
+          lastEventRef.current = eventObj;
           window.dispatchEvent(new CustomEvent('realtime:task-changed', { detail: eventObj }));
         } catch (err) {
           console.error('[Realtime] Parse error:', err);
@@ -77,7 +79,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         try {
           const data = JSON.parse(e.data);
           const eventObj = { type: 'task:updated', data, timestamp: new Date().toISOString() };
-          setLastEvent(eventObj);
+          lastEventRef.current = eventObj;
           window.dispatchEvent(new CustomEvent('realtime:task-changed', { detail: eventObj }));
         } catch (err) {
           console.error('[Realtime] Parse error:', err);
@@ -89,7 +91,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         try {
           const data = JSON.parse(e.data);
           const eventObj = { type: 'task:deleted', data, timestamp: new Date().toISOString() };
-          setLastEvent(eventObj);
+          lastEventRef.current = eventObj;
           window.dispatchEvent(new CustomEvent('realtime:task-changed', { detail: eventObj }));
         } catch (err) {
           console.error('[Realtime] Parse error:', err);
@@ -101,7 +103,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         try {
           const data = JSON.parse(e.data);
           const eventObj = { type: 'task:comment_added', data, timestamp: new Date().toISOString() };
-          setLastEvent(eventObj);
+          lastEventRef.current = eventObj;
           window.dispatchEvent(new CustomEvent('realtime:task-changed', { detail: eventObj }));
         } catch (err) {
           console.error('[Realtime] Parse error:', err);
@@ -113,7 +115,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         try {
           const data = JSON.parse(e.data);
           const eventObj = { type: 'notification:new', data, timestamp: new Date().toISOString() };
-          setLastEvent(eventObj);
+          lastEventRef.current = eventObj;
           window.dispatchEvent(new CustomEvent('realtime:notification-new', { detail: data }));
 
           if (data.title && data.message && infoRef.current) {
@@ -202,7 +204,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   }, [connect]);
 
   return (
-    <RealtimeContext.Provider value={{ isConnected, lastEvent, reconnect: handleManualReconnect }}>
+    <RealtimeContext.Provider value={{ isConnected, lastEvent: lastEventRef.current, getLastEvent: () => lastEventRef.current, reconnect: handleManualReconnect }}>
       {children}
     </RealtimeContext.Provider>
   );

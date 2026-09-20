@@ -227,7 +227,15 @@ router.get("/users", authenticateToken, async (req: any, res: any) => {
       WHERE u.status IS NULL OR (LOWER(u.status) != 'disabled' AND LOWER(u.status) != 'inactive' AND LOWER(u.status) != 'suspended')
     `, [req.user.id, req.user.id, req.user.id, req.user.id, req.user.id]);
     
-    res.json(users.map((u: any) => ({ ...u, skills: u.skills ? JSON.parse(u.skills) : [], rolePrefix: u.rolePrefix || "", status: u.status || "Available" })));
+    res.json(users.map((u: any) => ({
+      id: u.id,
+      name: u.name,
+      role: u.role,
+      skills: u.skills ? (typeof u.skills === 'string' ? JSON.parse(u.skills) : u.skills) : [],
+      rolePrefix: u.rolePrefix || "",
+      status: u.status || "Available",
+      email: u.id === req.user.id ? u.email : undefined
+    })));
   } catch (err: any) {
     console.error("Get users error:", err);
     res.status(500).json({ error: "Failed to retrieve users." });

@@ -230,7 +230,7 @@ export async function purgeStaleUnverifiedUsers(db: any) {
 }
 
 export async function initDb(): Promise<DatabaseWrapper> {
-  let db: DatabaseWrapper;
+  let db!: DatabaseWrapper;
   const rawUrl = process.env.DATABASE_URL ? process.env.DATABASE_URL.trim() : "";
   const isPgConfigured = /^postgres(ql)?:\/\//i.test(rawUrl) && rawUrl !== "postgres://user:password@localhost:5432/dbname";
   

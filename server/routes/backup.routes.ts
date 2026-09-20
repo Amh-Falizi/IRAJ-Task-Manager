@@ -86,6 +86,27 @@ router.get("/export-json", authenticateToken, requireSuperAdmin, async (req: any
   }
 });
 
+export function hasMaskedPlaceholders(obj: any): boolean {
+  if (obj === null || obj === undefined) return false;
+  if (typeof obj === "string") {
+    const trimmed = obj.trim();
+    if (trimmed === "••••••••" || trimmed === "********") return true;
+    if (trimmed.length >= 4 && (trimmed.replace(/•/g, "").length === 0 || trimmed.replace(/\*/g, "").length === 0)) {
+      return true;
+    }
+    return false;
+  }
+  if (Array.isArray(obj)) {
+    return obj.some(hasMaskedPlaceholders);
+  }
+  if (typeof obj === "object") {
+    for (const key of Object.keys(obj)) {
+      if (hasMaskedPlaceholders(obj[key])) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * POST /api/backup/restore-json
  * @description Restores workspace database records from a portable JSON schema.
@@ -105,6 +126,10 @@ router.post("/restore-json", authenticateToken, requireSuperAdmin, async (req: a
       return res.status(400).json({ error: "Invalid backup: 'users' table data is missing." });
     }
 
+    if (hasMaskedPlaceholders(backupData)) {
+      return res.status(400).json({ error: "Backup contains masked credentials (e.g. ••••••••). Please provide a valid unredacted backup file." });
+    }
+
     const ALLOWED_TABLE_COLUMNS: Record<string, string[]> = {
       users: ["id", "name", "email", "passwordHash", "role", "skills", "rolePrefix", "status", "tokenVersion", "authProvider", "emailVerified", "createdAt"],
       tasks: ["id", "title", "description", "status", "priority", "deadline", "assigneeId", "creatorId", "branchName", "parentId", "projectId", "milestoneId", "createdAt", "orderIndex", "prUrl", "prStatus"],
@@ -121,11 +146,9 @@ router.post("/restore-json", authenticateToken, requireSuperAdmin, async (req: a
       settings: ["key", "value"],
       roles: ["id", "name", "description", "is_custom", "permissions"],
       project_columns: ["id", "projectId", "columnsJson", "updatedAt"],
-      webhooks: ["id", "projectId", "name", "url", "secret", "events", "isActive", "createdAt"],
+      webhooks: ["id", "projectId", "url", "secret", "events", "active", "createdAt"],
       notifications: ["id", "userId", "type", "title", "message", "link", "read", "createdAt"]
     };
-
-    const executingAdmin = await db.get("SELECT id, email, passwordHash FROM users WHERE id = ?", req.user.id);
 
     // Execute wipe and sequential restore inside a transactional block
     await db.transaction(async (tx) => {
@@ -162,21 +185,7 @@ router.post("/restore-json", authenticateToken, requireSuperAdmin, async (req: a
 
           const placeholders = presentCols.map(() => "?").join(", ");
           const insertSql = `INSERT INTO ${table} (${presentCols.join(", ")}) VALUES (${placeholders})`;
-          const params = presentCols.map(col => {
-            if (table === "projects" && (col === "repoToken" || col === "webhookSecret") && row[col] === "••••••••") {
-              return null;
-            }
-            if (table === "webhooks" && col === "secret" && row[col] === "••••••••") {
-              return null;
-            }
-            if (table === "users" && col === "passwordHash" && row[col] === "••••••••") {
-              if (executingAdmin && (row.id === executingAdmin.id || row.email === executingAdmin.email)) {
-                return executingAdmin.passwordHash;
-              }
-              return "$2b$10$UnusablePlaceholderPasswordHash00000000000000000000000";
-            }
-            return row[col];
-          });
+          const params = presentCols.map(col => row[col]);
           await tx.run(insertSql, params);
         }
       }
@@ -185,6 +194,6 @@ router.post("/restore-json", authenticateToken, requireSuperAdmin, async (req: a
     res.json({ success: true, message: "Workspace restored successfully from JSON backup!" });
   } catch (error: any) {
     console.error("Restore JSON error:", error);
-    res.status(500).json({ error: `Failed to restore database: ${error.message}` });
+    res.status(500).json({ error: "Failed to restore database: Invalid or corrupted backup file." });
   }
 });

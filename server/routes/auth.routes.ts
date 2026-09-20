@@ -330,7 +330,7 @@ export const getUserPermissions = async (db: any, role: string): Promise<Record<
   return {};
 };
 
-const validateAndGetOAuthRole = async (db: any, email: string): Promise<string> => {
+export const validateAndGetOAuthRole = async (db: any, email: string): Promise<string> => {
   const userCount = await db.get("SELECT COUNT(*) as count FROM users");
   const count = Number(userCount?.count || 0);
   if (count === 0) {

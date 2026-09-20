@@ -52,8 +52,8 @@ if (process.env.NODE_ENV === "production") {
   }
 
   const tokenKey = process.env.TOKEN_ENCRYPTION_KEY ? process.env.TOKEN_ENCRYPTION_KEY.trim() : "";
-  if (tokenKey && (BANNED_SECRETS.has(tokenKey) || tokenKey.length < 16)) {
-    console.error("FATAL ERROR: TOKEN_ENCRYPTION_KEY if provided must be a secure secret (min 16 chars) in production mode.");
+  if (!tokenKey || BANNED_SECRETS.has(tokenKey) || tokenKey.length < 16) {
+    console.error("FATAL ERROR: TOKEN_ENCRYPTION_KEY environment variable MUST be explicitly set to a dedicated secure secret (min 16 chars) in production mode, independent of SECRET_KEY.");
     process.exit(1);
   }
 
@@ -66,7 +66,7 @@ if (process.env.NODE_ENV === "production") {
   console.warn("WARNING: SECRET_KEY is not set in the environment. Using a dynamically generated secret. Existing sessions will be invalidated if the server restarts.");
 }
 
-const RAW_ENCRYPTION_SECRET = process.env.TOKEN_ENCRYPTION_KEY || SECRET_KEY;
+const RAW_ENCRYPTION_SECRET = process.env.TOKEN_ENCRYPTION_KEY || (process.env.NODE_ENV === "production" ? "" : SECRET_KEY);
 const ENCRYPTION_KEY = crypto.createHash("sha256").update(RAW_ENCRYPTION_SECRET).digest();
 
 export function encryptSecret(text: string): string {

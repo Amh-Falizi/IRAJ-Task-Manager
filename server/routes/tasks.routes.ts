@@ -423,7 +423,7 @@ router.post("/", authenticateToken, async (req: any, res: any) => {
         prUrl: newTask.prUrl,
         action: "created"
       },
-      projectId: newTask.projectId
+      projectId: newTask.projectId || undefined
     });
 
     // Dispatch outbound project webhooks
@@ -732,7 +732,7 @@ router.put("/:id", authenticateToken, async (req: any, res: any) => {
         prUrl: updated.prUrl,
         action: "updated"
       },
-      projectId: updated.projectId
+      projectId: updated.projectId || undefined
     });
 
     // Dispatch outbound project webhooks

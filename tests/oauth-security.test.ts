@@ -2,7 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
-import { getUserPermissions } from "../server/routes/auth.routes.js";
+import { validateAndGetOAuthRole, getUserPermissions } from "../server/routes/auth.routes.js";
 
 describe("OAuth Security and Auto-Registration Tests", () => {
   let db: any;
@@ -39,65 +39,78 @@ describe("OAuth Security and Auto-Registration Tests", () => {
     `);
   });
 
-  test("First registered user via OAuth becomes super_admin when user count is 0", async () => {
-    const userCountRow = await db.get("SELECT COUNT(*) as count FROM users");
-    const isFirstUser = (userCountRow?.count || 0) === 0;
-    assert.equal(isFirstUser, true);
-
-    const assignedRole = isFirstUser ? "super_admin" : "developer";
-    assert.equal(assignedRole, "super_admin");
+  test("First registered user via validateAndGetOAuthRole becomes super_admin when user count is 0", async () => {
+    const role = await validateAndGetOAuthRole(db, "firstadmin@company.com");
+    assert.equal(role, "super_admin");
 
     await db.run(
       "INSERT INTO users (id, name, email, passwordHash, role, authProvider, emailVerified, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      ["u-first", "First OAuth Admin", "admin@company.com", "$2b$10$dummyhashvalue1234567890", assignedRole, "gitlab", 1, new Date().toISOString()]
+      ["u-first", "First OAuth Admin", "firstadmin@company.com", "$2b$10$dummyhashvalue1234567890", role, "gitlab", 1, new Date().toISOString()]
     );
 
     const savedUser = await db.get("SELECT * FROM users WHERE id = 'u-first'");
     assert.equal(savedUser.role, "super_admin");
   });
 
-  test("Subsequent OAuth users do not receive super_admin role automatically", async () => {
-    const userCountRow = await db.get("SELECT COUNT(*) as count FROM users");
-    const isFirstUser = (userCountRow?.count || 0) === 0;
-    assert.equal(isFirstUser, false);
+  test("Subsequent OAuth users receive developer role when allowed", async () => {
+    const origEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+    try {
+      const role = await validateAndGetOAuthRole(db, "developer@company.com");
+      assert.equal(role, "developer");
 
-    const assignedRole = isFirstUser ? "super_admin" : "developer";
-    assert.equal(assignedRole, "developer");
+      await db.run(
+        "INSERT INTO users (id, name, email, passwordHash, role, authProvider, emailVerified, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ["u-second", "Second User", "developer@company.com", "$2b$10$dummyhashvalue1234567890", role, "gitlab", 1, new Date().toISOString()]
+      );
 
-    await db.run(
-      "INSERT INTO users (id, name, email, passwordHash, role, authProvider, emailVerified, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      ["u-second", "Second User", "dev@company.com", "$2b$10$dummyhashvalue1234567890", assignedRole, "gitlab", 1, new Date().toISOString()]
-    );
-
-    const savedSecondUser = await db.get("SELECT * FROM users WHERE id = 'u-second'");
-    assert.equal(savedSecondUser.role, "developer");
+      const savedSecondUser = await db.get("SELECT * FROM users WHERE id = 'u-second'");
+      assert.equal(savedSecondUser.role, "developer");
+    } finally {
+      process.env.NODE_ENV = origEnv;
+    }
   });
 
-  test("OAuth domain whitelist restriction correctly filters unauthorized domains", () => {
-    const allowedDomains = ["acme.com", "partner.org"];
-    
-    const isDomainAllowed = (email: string) => {
-      const emailDomain = email.split("@")[1]?.toLowerCase();
-      return allowedDomains.includes(emailDomain);
-    };
-
-    assert.equal(isDomainAllowed("alice@acme.com"), true);
-    assert.equal(isDomainAllowed("bob@partner.org"), true);
-    assert.equal(isDomainAllowed("attacker@evil.com"), false);
-    assert.equal(isDomainAllowed("charlie@othercorp.net"), false);
+  test("OAuth domain whitelist restriction throws error for unauthorized domains", async () => {
+    const origDomains = process.env.OAUTH_ALLOWED_DOMAINS;
+    process.env.OAUTH_ALLOWED_DOMAINS = "acme.com, partner.org";
+    try {
+      await assert.doesNotReject(async () => {
+        await validateAndGetOAuthRole(db, "alice@acme.com");
+      });
+      await assert.doesNotReject(async () => {
+        await validateAndGetOAuthRole(db, "bob@partner.org");
+      });
+      await assert.rejects(async () => {
+        await validateAndGetOAuthRole(db, "attacker@evil.com");
+      }, /not authorized for OAuth sign-in/);
+    } finally {
+      process.env.OAUTH_ALLOWED_DOMAINS = origDomains;
+    }
   });
 
-  test("Production default closed policy for auto-registration", () => {
-    const isProd = true;
-    
-    // Default when unset in prod must be false
-    const envVal: string | undefined = undefined;
-    const allowUnsetProd = isProd ? (envVal === "true") : true;
-    assert.equal(allowUnsetProd, false);
+  test("Production default closed policy for auto-registration", async () => {
+    const origEnv = process.env.NODE_ENV;
+    const origAuto = process.env.OAUTH_AUTO_REGISTER;
+    const origDomains = process.env.OAUTH_ALLOWED_DOMAINS;
+    try {
+      process.env.NODE_ENV = "production";
+      delete process.env.OAUTH_AUTO_REGISTER;
+      delete process.env.OAUTH_ALLOWED_DOMAINS;
 
-    // Explicit false in dev or prod must be false
-    const explicitFalseEnv: string | undefined = "false";
-    const explicitFalse = explicitFalseEnv === "true";
-    assert.equal(explicitFalse, false);
+      // Unset in prod should reject
+      await assert.rejects(async () => {
+        await validateAndGetOAuthRole(db, "newuser@example.com");
+      }, /Self-registration via OAuth is disabled in production/);
+
+      // Explicit true in prod should allow
+      process.env.OAUTH_AUTO_REGISTER = "true";
+      const role = await validateAndGetOAuthRole(db, "newuser@example.com");
+      assert.equal(role, "developer");
+    } finally {
+      process.env.NODE_ENV = origEnv;
+      process.env.OAUTH_AUTO_REGISTER = origAuto;
+      process.env.OAUTH_ALLOWED_DOMAINS = origDomains;
+    }
   });
 });

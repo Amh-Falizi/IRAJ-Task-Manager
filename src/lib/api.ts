@@ -26,6 +26,25 @@ export interface RequestOptions extends RequestInit {
   skipAuthRedirect?: boolean;
 }
 
+export async function apiFetchRaw(url: string, options: RequestOptions = {}): Promise<Response> {
+  const { skipAuthRedirect = false, headers = {}, ...rest } = options;
+
+  const response = await fetch(url, {
+    ...rest,
+    headers: {
+      ...(headers as Record<string, string>)
+    }
+  });
+
+  if (response.status === 401) {
+    if (!skipAuthRedirect && !url.includes("/api/auth/login") && !url.includes("/api/auth/me") && !url.includes("/api/auth/logout")) {
+      notifyUnauthorized();
+    }
+  }
+
+  return response;
+}
+
 export async function apiFetch<T = any>(url: string, options: RequestOptions = {}): Promise<T> {
   const { skipAuthRedirect = false, headers = {}, ...rest } = options;
 

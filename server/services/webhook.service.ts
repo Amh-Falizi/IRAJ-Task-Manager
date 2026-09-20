@@ -350,12 +350,15 @@ export class WebhookService {
     signatureHeader?: string,
     projectIdParam?: string
   ): Promise<{ success: boolean; message: string }> {
-    const db = await dbPromise;
-
     if (event === "ping") {
       return { success: true, message: "PONG" };
     }
 
+    if (!signatureHeader) {
+      throw new Error("Missing X-Hub-Signature-256 header");
+    }
+
+    const db = await dbPromise;
     const repoFullName = payload.repository?.full_name; // e.g. owner/repo
     let project: any = null;
 
@@ -498,8 +501,11 @@ export class WebhookService {
     tokenHeader?: string,
     projectIdParam?: string
   ): Promise<{ success: boolean; message: string }> {
-    const db = await dbPromise;
+    if (!tokenHeader) {
+      throw new Error("Missing X-Gitlab-Token header");
+    }
 
+    const db = await dbPromise;
     const projectPath = payload.project?.path_with_namespace;
     let project: any = null;
 

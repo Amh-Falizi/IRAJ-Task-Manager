@@ -578,7 +578,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block font-sans">Status</label>
               <CustomSelect
-                value={formData.status}
+                value={formData.status || 'todo'}
                 onChange={(val) => setFormData(p => ({ ...p, status: val as any }))}
                 options={(columns || [
                   { id: 'todo', title: 'To Do' },
@@ -594,7 +594,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
               <label className="text-[9px] font-bold text-subtle uppercase tracking-widest block font-sans">Priority</label>
               <CustomSelect
                 disabled={isDeveloper}
-                value={formData.priority}
+                value={formData.priority || 'medium'}
                 onChange={(val) => setFormData(p => ({ ...p, priority: val as any }))}
                 options={[
                   { value: 'low', label: 'LOW' },
@@ -720,7 +720,10 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
                 <span className="text-[10px] text-muted">💡 Increment suggestion:</span>
                 <button
                   type="button"
-                  onClick={() => setFormData(p => ({ ...p, branchName: getIncrementedBranchName(formData.branchName) || '' }))}
+                  onClick={() => {
+                    const inc = formData.branchName ? getIncrementedBranchName(formData.branchName) : null;
+                    if (inc) setFormData(p => ({ ...p, branchName: inc }));
+                  }}
                   className="px-2 py-0.5 text-[10px] font-mono font-semibold text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded transition-all"
                 >
                   {getIncrementedBranchName(formData.branchName)}

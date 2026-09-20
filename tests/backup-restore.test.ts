@@ -1,6 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { encryptSecret, decryptSecret } from "../server/config.js";
+import { hasMaskedPlaceholders } from "../server/routes/backup.routes.js";
 
 describe("Backup Export and Restore Security Tests", () => {
   test("Exported secrets are encrypted opaque blobs and decrypted correctly", () => {
@@ -16,53 +17,47 @@ describe("Backup Export and Restore Security Tests", () => {
     assert.equal(decrypted, rawSecret);
   });
 
-  test("Restore rejects masked bullet placeholders from corrupting database", () => {
-    const dummyExport = {
+  test("Restore hasMaskedPlaceholders correctly detects masked bullet placeholders", () => {
+    const dummyExportWithBullets = {
       version: "2.0.0",
-      data: {
-        projects: [
-          {
-            id: "proj-test",
-            name: "Test Project",
-            repoToken: "••••••••", // Masked placeholder
-            webhookSecret: "••••••••"
-          }
-        ]
-      }
+      users: [{ id: "u-1", name: "Admin" }],
+      projects: [
+        {
+          id: "proj-test",
+          name: "Test Project",
+          repoToken: "••••••••", // Masked placeholder
+          webhookSecret: "••••••••"
+        }
+      ]
     };
 
-    const isPlaceholder = (val?: string | null) => {
-      if (!val) return false;
-      const trimmed = val.trim();
-      return (
-        trimmed === "••••••••" ||
-        trimmed === "********" ||
-        trimmed.replace(/•/g, "").length === 0 ||
-        trimmed.replace(/\*/g, "").length === 0
-      );
+    assert.equal(hasMaskedPlaceholders(dummyExportWithBullets), true);
+
+    const validExport = {
+      version: "2.0.0",
+      users: [{ id: "u-1", name: "Admin" }],
+      projects: [
+        {
+          id: "proj-test",
+          name: "Test Project",
+          repoToken: encryptSecret("valid-token"),
+          webhookSecret: encryptSecret("valid-secret")
+        }
+      ]
     };
 
-    const project = dummyExport.data.projects[0];
-    assert.equal(isPlaceholder(project.repoToken), true);
-    assert.equal(isPlaceholder(project.webhookSecret), true);
-
-    const validEncrypted = encryptSecret("valid-secret-token");
-    assert.equal(isPlaceholder(validEncrypted), false);
+    assert.equal(hasMaskedPlaceholders(validExport), false);
   });
 
   test("Restore error responses are sanitized without leaking internals", () => {
     const simulateClientResponse = (err: any) => {
-      // In production, internal DB trace/schema is withheld
-      const isDev = false;
       return {
-        error: isDev
-          ? `Restore failed: ${err.message}`
-          : "Restore failed: Invalid or corrupted backup file."
+        error: "Failed to restore database: Invalid or corrupted backup file."
       };
     };
 
     const response = simulateClientResponse(new Error("SQLITE_CORRUPT: disk I/O error table users row 49"));
-    assert.equal(response.error, "Restore failed: Invalid or corrupted backup file.");
+    assert.equal(response.error, "Failed to restore database: Invalid or corrupted backup file.");
     assert.ok(!response.error.includes("SQLITE_CORRUPT"));
   });
 });

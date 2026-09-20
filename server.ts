@@ -4,6 +4,7 @@ import "dotenv/config";
 import { isIP } from "node:net";
 import express from "express";
 import path from "path";
+import fs from "fs";
 import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import helmet from "helmet";
@@ -236,9 +237,21 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, { index: false }));
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      const indexPath = path.join(distPath, "index.html");
+      try {
+        if (fs.existsSync(indexPath)) {
+          let html = fs.readFileSync(indexPath, "utf8");
+          const nonce = res.locals.cspNonce || "";
+          html = html.replace(/<script(?![^>]*\bnonce=)/gi, `<script nonce="${nonce}"`);
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          return res.send(html);
+        }
+      } catch (err) {
+        console.error("Error serving index.html with CSP nonce:", err);
+      }
+      res.sendFile(indexPath);
     });
   }
 

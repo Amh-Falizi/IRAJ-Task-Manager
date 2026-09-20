@@ -68,7 +68,7 @@ export async function runBackgroundPrSync() {
           } else if (provider === "gitlab") {
             const gitlabUrl = process.env.GITLAB_URL || "https://gitlab.com";
             const encodedProjectPath = encodeURIComponent(`${owner}/${name}`);
-            const headers = { "PRIVATE-TOKEN": token };
+            const headers: Record<string, string> = token ? { "PRIVATE-TOKEN": token } : {};
             const glRes = await fetch(
               `${gitlabUrl}/api/v4/projects/${encodedProjectPath}/merge_requests/${prNumber}`,
               {
