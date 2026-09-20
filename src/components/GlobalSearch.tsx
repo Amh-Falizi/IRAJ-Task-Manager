@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect, useRef } from "react";
 import {
   Search,
@@ -50,7 +51,7 @@ export default function GlobalSearch() {
     const fetchResults = async () => {
       setIsLoading(true);
       try {
-        const res = await fetch(
+        const res = await apiFetchRaw(
           `/api/search?q=${encodeURIComponent(debouncedQuery)}`,
           {
             headers: {

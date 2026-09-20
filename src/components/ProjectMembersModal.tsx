@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Project, User, ProjectMember } from '../types';
@@ -21,7 +22,7 @@ export default function ProjectMembersModal({ project, allUsers, onClose }: Prop
 
   const fetchMembers = async () => {
     try {
-      const res = await fetch(`/api/projects/${project.id}/members`, {
+      const res = await apiFetchRaw(`/api/projects/${project.id}/members`, {
         headers: { }
       });
       if (res.ok) {
@@ -43,7 +44,7 @@ export default function ProjectMembersModal({ project, allUsers, onClose }: Prop
     if (!selectedUserId) return;
     setAdding(true);
     try {
-      const res = await fetch(`/api/projects/${project.id}/members`, {
+      const res = await apiFetchRaw(`/api/projects/${project.id}/members`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json' 
@@ -67,7 +68,7 @@ export default function ProjectMembersModal({ project, allUsers, onClose }: Prop
 
   const handleUpdateRole = async (userId: string, newRole: string) => {
     try {
-      const res = await fetch(`/api/projects/${project.id}/members`, {
+      const res = await apiFetchRaw(`/api/projects/${project.id}/members`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json' 
@@ -85,7 +86,7 @@ export default function ProjectMembersModal({ project, allUsers, onClose }: Prop
   const handleRemoveMember = async (userId: string) => {
 
     try {
-      const res = await fetch(`/api/projects/${project.id}/members/${userId}`, {
+      const res = await apiFetchRaw(`/api/projects/${project.id}/members/${userId}`, {
         method: 'DELETE',
         headers: { }
       });

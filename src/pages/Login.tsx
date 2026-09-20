@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
@@ -34,7 +35,7 @@ export default function Login() {
 
   const handleGitLabLogin = async () => {
     try {
-      const res = await fetch(`/api/auth/gitlab/url?origin=${encodeURIComponent(window.location.origin)}`);
+      const res = await apiFetchRaw(`/api/auth/gitlab/url?origin=${encodeURIComponent(window.location.origin)}`);
       if (!res.ok) throw new Error('Failed to get GitLab auth URL');
       const data = await res.json();
       
@@ -49,7 +50,7 @@ export default function Login() {
 
   const handleGoogleLogin = async () => {
     try {
-      const res = await fetch(`/api/auth/google/url?origin=${encodeURIComponent(window.location.origin)}`);
+      const res = await apiFetchRaw(`/api/auth/google/url?origin=${encodeURIComponent(window.location.origin)}`);
       if (!res.ok) throw new Error('Failed to get Google auth URL');
       const data = await res.json();
       
@@ -64,7 +65,7 @@ export default function Login() {
 
   const handleGitHubLogin = async () => {
     try {
-      const res = await fetch(`/api/auth/github/url?origin=${encodeURIComponent(window.location.origin)}`);
+      const res = await apiFetchRaw(`/api/auth/github/url?origin=${encodeURIComponent(window.location.origin)}`);
       if (!res.ok) throw new Error('Failed to get GitHub auth URL');
       const data = await res.json();
       
@@ -80,7 +81,7 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await apiFetchRaw('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),

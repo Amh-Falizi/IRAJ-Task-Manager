@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
@@ -10,12 +10,13 @@ import {
   canManageUsers,
   canManageRoles
 } from "../middleware/auth.js";
+import { AuthRequest } from "../types.js";
 
 export const usersRouter = express.Router();
 const router = usersRouter;
 
 // Update Profile
-router.put("/users/me", authenticateToken, async (req: any, res: any) => {
+router.put("/users/me", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const { name, skills, status } = req.body;
@@ -33,16 +34,16 @@ router.put("/users/me", authenticateToken, async (req: any, res: any) => {
     if (skills !== undefined) {
       await db.run(
         "UPDATE users SET name = ?, skills = ?, status = ? WHERE id = ?",
-        [name, JSON.stringify(skills), statusVal, req.user.id]
+        [name, JSON.stringify(skills), statusVal, req.user!.id]
       );
     } else {
       await db.run(
         "UPDATE users SET name = ?, status = ? WHERE id = ?",
-        [name, statusVal, req.user.id]
+        [name, statusVal, req.user!.id]
       );
     }
     
-    const updatedUser = await db.get("SELECT id, name, email, role, skills, rolePrefix, status FROM users WHERE id = ?", req.user.id);
+    const updatedUser = await db.get("SELECT id, name, email, role, skills, rolePrefix, status FROM users WHERE id = ?", req.user!.id);
     res.json({
       ...updatedUser,
       skills: updatedUser.skills ? JSON.parse(updatedUser.skills) : [],
@@ -56,7 +57,7 @@ router.put("/users/me", authenticateToken, async (req: any, res: any) => {
 });
 
 // Change Password
-router.put("/users/me/password", authenticateToken, async (req: any, res: any) => {
+router.put("/users/me/password", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const { currentPassword, newPassword } = req.body;
@@ -69,7 +70,7 @@ router.put("/users/me/password", authenticateToken, async (req: any, res: any) =
       return res.status(400).json({ error: "New password must be at least 8 characters long." });
     }
 
-    const user = await db.get("SELECT passwordHash, tokenVersion, role FROM users WHERE id = ?", req.user.id);
+    const user = await db.get("SELECT passwordHash, tokenVersion, role FROM users WHERE id = ?", req.user!.id);
     if (!user || !(await bcrypt.compare(currentPassword, user.passwordHash))) {
       return res.status(400).json({ error: "Incorrect current password." });
     }
@@ -77,9 +78,9 @@ router.put("/users/me/password", authenticateToken, async (req: any, res: any) =
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(newPassword, salt);
     const nextTokenVersion = (user.tokenVersion || 1) + 1;
-    await db.run("UPDATE users SET passwordHash = ?, tokenVersion = ? WHERE id = ?", [passwordHash, nextTokenVersion, req.user.id]);
+    await db.run("UPDATE users SET passwordHash = ?, tokenVersion = ? WHERE id = ?", [passwordHash, nextTokenVersion, req.user!.id]);
     
-    const newToken = jwt.sign({ id: req.user.id, role: user.role, tokenVersion: nextTokenVersion }, SECRET_KEY, { expiresIn: "7d" });
+    const newToken = jwt.sign({ id: req.user!.id, role: user.role, tokenVersion: nextTokenVersion }, SECRET_KEY, { expiresIn: "7d" });
     setAuthCookie(res, newToken);
     res.json({ success: true });
   } catch (err: any) {
@@ -89,14 +90,14 @@ router.put("/users/me/password", authenticateToken, async (req: any, res: any) =
 });
 
 // User Stats
-router.get("/users/me/stats", authenticateToken, async (req: any, res: any) => {
+router.get("/users/me/stats", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
-    const tasksCount = await db.get("SELECT COUNT(*) as count FROM tasks WHERE assigneeId = ?", req.user.id);
+    const tasksCount = await db.get("SELECT COUNT(*) as count FROM tasks WHERE assigneeId = ?", req.user!.id);
     const projectsCountQuery = isAdminOrSuperAdmin(req.user) 
       ? "SELECT COUNT(*) as count FROM projects" 
       : "SELECT COUNT(DISTINCT projectId) as count FROM project_members WHERE userId = ?";
-    const projectsCount = await db.get(projectsCountQuery, isAdminOrSuperAdmin(req.user) ? [] : [req.user.id]);
+    const projectsCount = await db.get(projectsCountQuery, isAdminOrSuperAdmin(req.user) ? [] : [req.user!.id]);
     
     const recentActivity = await db.all(`
       SELECT a.*, t.title as taskTitle
@@ -105,7 +106,7 @@ router.get("/users/me/stats", authenticateToken, async (req: any, res: any) => {
       WHERE a.userId = ?
       ORDER BY a.createdAt DESC
       LIMIT 10
-    `, [req.user.id]);
+    `, [req.user!.id]);
 
     res.json({
       tasks: tasksCount ? Number(tasksCount.count) : 0,
@@ -119,12 +120,12 @@ router.get("/users/me/stats", authenticateToken, async (req: any, res: any) => {
 });
 
 // Global Search
-router.get("/search", authenticateToken, async (req: any, res: any) => {
-  const query = req.query.q;
+router.get("/search", authenticateToken, async (req: AuthRequest, res: Response) => {
+  const query = req.query.q as string | undefined;
   if (!query) return res.json({ projects: [], tasks: [], documents: [], users: [] });
 
-  const userId = req.user.id;
-  const userRole = req.user.role;
+  const userId = req.user!.id;
+  const userRole = req.user!.role;
   const searchTerm = `%${query.toLowerCase()}%`;
   const db = await dbPromise;
 
@@ -187,7 +188,7 @@ router.get("/search", authenticateToken, async (req: any, res: any) => {
 });
 
 // Get Users (for assigning tasks and team directories)
-router.get("/users", authenticateToken, async (req: any, res: any) => {
+router.get("/users", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const canSeeAll = isAdminOrSuperAdmin(req.user) || await canManageUsers(req.user);
@@ -225,7 +226,7 @@ router.get("/users", authenticateToken, async (req: any, res: any) => {
         WHERE tm_my.userId = ?
       ) peers ON peers.peerId = u.id
       WHERE u.status IS NULL OR (LOWER(u.status) != 'disabled' AND LOWER(u.status) != 'inactive' AND LOWER(u.status) != 'suspended')
-    `, [req.user.id, req.user.id, req.user.id, req.user.id, req.user.id]);
+    `, [req.user!.id, req.user!.id, req.user!.id, req.user!.id, req.user!.id]);
     
     res.json(users.map((u: any) => ({
       id: u.id,
@@ -234,7 +235,7 @@ router.get("/users", authenticateToken, async (req: any, res: any) => {
       skills: u.skills ? (typeof u.skills === 'string' ? JSON.parse(u.skills) : u.skills) : [],
       rolePrefix: u.rolePrefix || "",
       status: u.status || "Available",
-      email: u.id === req.user.id ? u.email : undefined
+      email: u.id === req.user!.id ? u.email : undefined
     })));
   } catch (err: any) {
     console.error("Get users error:", err);
@@ -243,7 +244,7 @@ router.get("/users", authenticateToken, async (req: any, res: any) => {
 });
 
 // Admin create user
-router.post("/users", authenticateToken, async (req: any, res: any) => {
+router.post("/users", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const allowed = await canManageUsers(req.user);
     if (!allowed) {
@@ -256,7 +257,7 @@ router.post("/users", authenticateToken, async (req: any, res: any) => {
     }
     if (email) email = email.toLowerCase().trim();
 
-    if ((role === "super_admin" || role === "admin") && req.user.role !== "super_admin") {
+    if ((role === "super_admin" || role === "admin") && req.user!.role !== "super_admin") {
       return res.status(403).json({ error: "Only Super Admin can assign Admin or Super Admin roles." });
     }
     
@@ -284,7 +285,7 @@ router.post("/users", authenticateToken, async (req: any, res: any) => {
 });
 
 // Admin bulk change user roles
-router.put("/users/bulk/role", authenticateToken, async (req: any, res: any) => {
+router.put("/users/bulk/role", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const allowed = await canManageUsers(req.user);
     if (!allowed) {
@@ -299,7 +300,7 @@ router.put("/users/bulk/role", authenticateToken, async (req: any, res: any) => 
       return res.status(400).json({ error: "Role is required." });
     }
 
-    if ((role === "super_admin" || role === "admin") && req.user.role !== "super_admin") {
+    if ((role === "super_admin" || role === "admin") && req.user!.role !== "super_admin") {
       return res.status(403).json({ error: "Only Super Admin can assign Admin or Super Admin roles." });
     }
 
@@ -308,7 +309,7 @@ router.put("/users/bulk/role", authenticateToken, async (req: any, res: any) => 
     // Check if any target user is admin or super_admin
     const placeholders = userIds.map(() => "?").join(",");
     const targetPrivileged = await db.all(`SELECT id FROM users WHERE (role = 'super_admin' OR role = 'admin') AND id IN (${placeholders})`, userIds);
-    if (targetPrivileged.length > 0 && req.user.role !== "super_admin") {
+    if (targetPrivileged.length > 0 && req.user!.role !== "super_admin") {
       return res.status(403).json({ error: "Only Super Admin can modify Admin or Super Admin accounts." });
     }
 
@@ -327,7 +328,7 @@ router.put("/users/bulk/role", authenticateToken, async (req: any, res: any) => 
 });
 
 // Admin update user
-router.put("/users/:id", authenticateToken, async (req: any, res: any) => {
+router.put("/users/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const allowed = await canManageUsers(req.user);
     if (!allowed) {
@@ -340,10 +341,10 @@ router.put("/users/:id", authenticateToken, async (req: any, res: any) => {
     const targetUser = await db.get("SELECT * FROM users WHERE id = ?", req.params.id);
     if (!targetUser) return res.status(404).json({ error: "User not found." });
 
-    if ((targetUser.role === "super_admin" || targetUser.role === "admin") && req.user.role !== "super_admin") {
+    if ((targetUser.role === "super_admin" || targetUser.role === "admin") && req.user!.role !== "super_admin") {
       return res.status(403).json({ error: "Only Super Admin can edit Admin or Super Admin accounts." });
     }
-    if ((role === "super_admin" || role === "admin") && req.user.role !== "super_admin") {
+    if ((role === "super_admin" || role === "admin") && req.user!.role !== "super_admin") {
       return res.status(403).json({ error: "Only Super Admin can assign Admin or Super Admin roles." });
     }
 
@@ -390,7 +391,7 @@ router.put("/users/:id", authenticateToken, async (req: any, res: any) => {
 });
 
 // Admin delete user
-router.delete("/users/:id", authenticateToken, async (req: any, res: any) => {
+router.delete("/users/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const allowed = await canManageUsers(req.user);
     if (!allowed) {
@@ -401,11 +402,11 @@ router.delete("/users/:id", authenticateToken, async (req: any, res: any) => {
     const targetUser = await db.get("SELECT * FROM users WHERE id = ?", req.params.id);
     if (!targetUser) return res.status(404).json({ error: "User not found." });
 
-    if (targetUser.role === "super_admin" && req.user.role !== "super_admin") {
+    if (targetUser.role === "super_admin" && req.user!.role !== "super_admin") {
       return res.status(403).json({ error: "Only Super Admin can delete Super Admin accounts." });
     }
 
-    if (req.user.id === req.params.id) {
+    if (req.user!.id === req.params.id) {
        return res.status(400).json({ error: "Cannot delete your own account." });
     }
 
@@ -422,7 +423,7 @@ router.delete("/users/:id", authenticateToken, async (req: any, res: any) => {
 });
 
 // Admin change user role
-router.put("/users/:id/role", authenticateToken, async (req: any, res: any) => {
+router.put("/users/:id/role", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const allowed = await canManageUsers(req.user);
     if (!allowed) {
@@ -434,7 +435,7 @@ router.put("/users/:id/role", authenticateToken, async (req: any, res: any) => {
       return res.status(400).json({ error: "Role is required." });
     }
 
-    if ((role === "super_admin" || role === "admin") && req.user.role !== "super_admin") {
+    if ((role === "super_admin" || role === "admin") && req.user!.role !== "super_admin") {
       return res.status(403).json({ error: "Only Super Admin can assign Admin or Super Admin roles." });
     }
 
@@ -442,7 +443,7 @@ router.put("/users/:id/role", authenticateToken, async (req: any, res: any) => {
     const targetUser = await db.get("SELECT * FROM users WHERE id = ?", req.params.id);
     if (!targetUser) return res.status(404).json({ error: "User not found." });
 
-    if ((targetUser.role === "super_admin" || targetUser.role === "admin") && req.user.role !== "super_admin") {
+    if ((targetUser.role === "super_admin" || targetUser.role === "admin") && req.user!.role !== "super_admin") {
       return res.status(403).json({ error: "Only Super Admin can edit Admin or Super Admin accounts." });
     }
 
@@ -497,7 +498,7 @@ function sanitizeAndValidatePermissions(permissions: any, userRole: string): { v
 }
 
 // Get all roles
-router.get("/roles", authenticateToken, async (req: any, res: any) => {
+router.get("/roles", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const allowed = await canManageRoles(req.user) || isAdminOrSuperAdmin(req.user);
     if (!allowed) {
@@ -512,7 +513,7 @@ router.get("/roles", authenticateToken, async (req: any, res: any) => {
 });
 
 // Create custom role
-router.post("/roles", authenticateToken, async (req: any, res: any) => {
+router.post("/roles", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const allowed = await canManageRoles(req.user);
     if (!allowed) {
@@ -538,7 +539,7 @@ router.post("/roles", authenticateToken, async (req: any, res: any) => {
       return res.status(400).json({ error: "A role with this ID already exists." });
     }
 
-    const permCheck = sanitizeAndValidatePermissions(permissions, req.user.role);
+    const permCheck = sanitizeAndValidatePermissions(permissions, req.user!.role);
     if (!permCheck.valid) {
       return res.status(403).json({ error: permCheck.error });
     }
@@ -558,14 +559,14 @@ router.post("/roles", authenticateToken, async (req: any, res: any) => {
 });
 
 // Update role permissions and settings
-router.put("/roles/:id", authenticateToken, async (req: any, res: any) => {
+router.put("/roles/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     if (id === "super_admin") {
       return res.status(400).json({ error: "Super Admin role permissions are immutable." });
     }
     const BUILT_IN_ROLES = ["admin", "manager", "developer"];
-    if (BUILT_IN_ROLES.includes(id) && req.user.role !== "super_admin") {
+    if (BUILT_IN_ROLES.includes(id) && req.user!.role !== "super_admin") {
       return res.status(403).json({ error: "Only Super Admin can modify built-in role permissions." });
     }
 
@@ -578,7 +579,7 @@ router.put("/roles/:id", authenticateToken, async (req: any, res: any) => {
     
     let permsToSave: string | undefined = undefined;
     if (permissions !== undefined) {
-      const permCheck = sanitizeAndValidatePermissions(permissions, req.user.role);
+      const permCheck = sanitizeAndValidatePermissions(permissions, req.user!.role);
       if (!permCheck.valid) {
         return res.status(403).json({ error: permCheck.error });
       }
@@ -614,7 +615,7 @@ router.put("/roles/:id", authenticateToken, async (req: any, res: any) => {
 });
 
 // Delete custom role
-router.delete("/roles/:id", authenticateToken, async (req: any, res: any) => {
+router.delete("/roles/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const allowed = await canManageRoles(req.user);
     if (!allowed) {
@@ -644,7 +645,7 @@ router.delete("/roles/:id", authenticateToken, async (req: any, res: any) => {
 });
 
 // Get Settings
-router.get("/settings", authenticateToken, async (req: any, res: any) => {
+router.get("/settings", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const settings = await db.all("SELECT * FROM settings");
@@ -660,7 +661,7 @@ router.get("/settings", authenticateToken, async (req: any, res: any) => {
 });
 
 // Update Settings
-router.put("/settings", authenticateToken, async (req: any, res: any) => {
+router.put("/settings", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     if (!isAdminOrSuperAdmin(req.user)) {
       return res.status(403).json({ error: "Only admins can change settings." });

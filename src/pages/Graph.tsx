@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Task, User, Project } from '../types';
@@ -52,9 +53,9 @@ export default function Graph() {
     if (!isAuthenticated) return;
     try {
       const results = await Promise.all([
-        fetch('/api/tasks', { headers: { } }),
-        fetch('/api/users', { headers: { } }),
-        fetch('/api/projects', { headers: { } })
+        apiFetchRaw('/api/tasks', { headers: { } }),
+        apiFetchRaw('/api/users', { headers: { } }),
+        apiFetchRaw('/api/projects', { headers: { } })
       ]);
       
       const tasksData: Task[] = await results[0].json();
@@ -139,7 +140,7 @@ export default function Graph() {
     const method = isEdit ? 'PUT' : 'POST';
 
     try {
-      const res = await fetch(url, {
+      const res = await apiFetchRaw(url, {
         method,
         headers: { 
           'Content-Type': 'application/json' 
@@ -161,7 +162,7 @@ export default function Graph() {
 
   const handleUpdateTask = async (taskId: string, currentTask: Task, updates: Partial<Task>) => {
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await apiFetchRaw(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json' 
@@ -176,7 +177,7 @@ export default function Graph() {
 
   const handleDeleteTask = async (taskId: string) => {
 
-    await fetch(`/api/tasks/${taskId}`, {
+    await apiFetchRaw(`/api/tasks/${taskId}`, {
       method: 'DELETE',
       headers: { }
     });

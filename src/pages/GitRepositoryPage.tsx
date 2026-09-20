@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -62,7 +63,7 @@ export default function GitRepositoryPage() {
     if (!selectedProjectId) return;
     setSyncingPRs(true);
     try {
-      const res = await fetch(`/api/projects/${selectedProjectId}/git/pull-requests/sync`, {
+      const res = await apiFetchRaw(`/api/projects/${selectedProjectId}/git/pull-requests/sync`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -91,7 +92,7 @@ export default function GitRepositoryPage() {
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const res = await fetch('/api/projects', {
+        const res = await apiFetchRaw('/api/projects', {
           headers: { }
         });
         if (res.ok) {
@@ -137,7 +138,7 @@ export default function GitRepositoryPage() {
     if (!selectedProjectId) return;
     setGeneratingSecret(true);
     try {
-      const res = await fetch(`/api/projects/${selectedProjectId}/webhook-secret/generate`, {
+      const res = await apiFetchRaw(`/api/projects/${selectedProjectId}/webhook-secret/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -160,7 +161,7 @@ export default function GitRepositoryPage() {
     if (!selectedProjectId) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/projects/${selectedProjectId}/git/branches`, {
+      const res = await apiFetchRaw(`/api/projects/${selectedProjectId}/git/branches`, {
         headers: { }
       });
       if (res.ok) {
@@ -180,7 +181,7 @@ export default function GitRepositoryPage() {
   const fetchTasks = async () => {
     if (!selectedProjectId) return;
     try {
-      const res = await fetch(`/api/tasks?projectId=${selectedProjectId}`, {
+      const res = await apiFetchRaw(`/api/tasks?projectId=${selectedProjectId}`, {
         headers: { }
       });
       if (res.ok) {
@@ -212,7 +213,7 @@ export default function GitRepositoryPage() {
     }
     setSavingSettings(true);
     try {
-      const res = await fetch(`/api/projects/${selectedProjectId}/repo`, {
+      const res = await apiFetchRaw(`/api/projects/${selectedProjectId}/repo`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -259,7 +260,7 @@ export default function GitRepositoryPage() {
 
     setCreatingBranch(true);
     try {
-      const res = await fetch(`/api/projects/${selectedProjectId}/git/branches`, {
+      const res = await apiFetchRaw(`/api/projects/${selectedProjectId}/git/branches`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -302,7 +303,7 @@ export default function GitRepositoryPage() {
 
     setCreatingPR(true);
     try {
-      const res = await fetch(`/api/projects/${selectedProjectId}/git/pull-requests`, {
+      const res = await apiFetchRaw(`/api/projects/${selectedProjectId}/git/pull-requests`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

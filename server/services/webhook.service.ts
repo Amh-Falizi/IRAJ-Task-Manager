@@ -350,10 +350,6 @@ export class WebhookService {
     signatureHeader?: string,
     projectIdParam?: string
   ): Promise<{ success: boolean; message: string }> {
-    if (event === "ping") {
-      return { success: true, message: "PONG" };
-    }
-
     if (!signatureHeader) {
       throw new Error("Missing X-Hub-Signature-256 header");
     }
@@ -366,10 +362,18 @@ export class WebhookService {
       project = await db.get("SELECT * FROM projects WHERE id = ?", [projectIdParam]);
     } else if (repoFullName) {
       const [owner, name] = repoFullName.split("/");
-      project = await db.get(
-        "SELECT * FROM projects WHERE (repoOwner = ? AND repoName = ?) OR (repoUrl LIKE ?)",
-        [owner, name, `%${repoFullName}%`]
-      );
+      if (owner && name) {
+        project = await db.get(
+          "SELECT * FROM projects WHERE repoOwner = ? AND repoName = ?",
+          [owner, name]
+        );
+      }
+      if (!project) {
+        project = await db.get(
+          "SELECT * FROM projects WHERE repoUrl = ? OR repoUrl = ?",
+          [repoFullName, `https://github.com/${repoFullName}`]
+        );
+      }
     }
 
     if (!project) {
@@ -383,10 +387,6 @@ export class WebhookService {
     const secret = decryptSecret(project.webhookSecret);
     if (!secret) {
       throw new Error("Unable to decrypt project webhook secret");
-    }
-
-    if (!signatureHeader) {
-      throw new Error("Missing X-Hub-Signature-256 header");
     }
 
     const bodyBuffer = Buffer.isBuffer(rawBody)
@@ -405,6 +405,10 @@ export class WebhookService {
 
     if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
       throw new Error("Invalid GitHub webhook signature");
+    }
+
+    if (event === "ping") {
+      return { success: true, message: "PONG" };
     }
 
     if (event === "pull_request") {
@@ -515,10 +519,18 @@ export class WebhookService {
       const parts = projectPath.split("/");
       const name = parts.pop();
       const owner = parts.join("/");
-      project = await db.get(
-        "SELECT * FROM projects WHERE (repoOwner = ? AND repoName = ?) OR (repoUrl LIKE ?)",
-        [owner, name, `%${projectPath}%`]
-      );
+      if (owner && name) {
+        project = await db.get(
+          "SELECT * FROM projects WHERE repoOwner = ? AND repoName = ?",
+          [owner, name]
+        );
+      }
+      if (!project) {
+        project = await db.get(
+          "SELECT * FROM projects WHERE repoUrl = ? OR repoUrl = ?",
+          [projectPath, `https://gitlab.com/${projectPath}`]
+        );
+      }
     }
 
     if (!project) {

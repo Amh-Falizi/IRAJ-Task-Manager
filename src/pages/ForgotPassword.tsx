@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { LayoutDashboard } from 'lucide-react';
@@ -17,7 +18,7 @@ export default function ForgotPassword() {
       setDevTokenLink('');
       setLoading(true);
 
-      const res = await fetch('/api/auth/forgot-password', {
+      const res = await apiFetchRaw('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),

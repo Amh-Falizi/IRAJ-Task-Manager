@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -237,9 +238,9 @@ export default function Dashboard() {
   const fetchData = async () => {
     try {
       const [tasksRes, usersRes, projectsRes] = await Promise.all([
-        fetch('/api/tasks', { headers: { } }),
-        fetch('/api/users', { headers: { } }),
-        fetch('/api/projects', { headers: { } })
+        apiFetchRaw('/api/tasks', { headers: { } }),
+        apiFetchRaw('/api/users', { headers: { } }),
+        apiFetchRaw('/api/projects', { headers: { } })
       ]);
       const [tasksData, usersData, projectsData] = await Promise.all([
         tasksRes.json(),
@@ -273,7 +274,7 @@ export default function Dashboard() {
     const isEdit = !!selectedTask;
     const url = isEdit ? `/api/tasks/${selectedTask!.id}` : '/api/tasks';
     try {
-      const res = await fetch(url, {
+      const res = await apiFetchRaw(url, {
         method: isEdit ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -297,7 +298,7 @@ export default function Dashboard() {
 
   const handleUpdateTask = async (taskId: string, currentTask: Task, updates: Partial<Task>) => {
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await apiFetchRaw(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -318,7 +319,7 @@ export default function Dashboard() {
 
   const handleDeleteTask = async (taskId: string) => {
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await apiFetchRaw(`/api/tasks/${taskId}`, {
         method: 'DELETE',
         headers: { }
       });

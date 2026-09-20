@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect } from 'react';
 import { Project, GitBranch, Task } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -50,7 +51,7 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
     if (!project.id) return;
     setGeneratingSecret(true);
     try {
-      const res = await fetch(`/api/projects/${project.id}/webhook-secret/generate`, {
+      const res = await apiFetchRaw(`/api/projects/${project.id}/webhook-secret/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -72,7 +73,7 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
   const fetchBranches = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/projects/${project.id}/git/branches`, {
+      const res = await apiFetchRaw(`/api/projects/${project.id}/git/branches`, {
         headers: { }
       });
       if (res.ok) {
@@ -91,7 +92,7 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
 
   const fetchTasks = async () => {
     try {
-      const res = await fetch(`/api/tasks?projectId=${project.id}`, {
+      const res = await apiFetchRaw(`/api/tasks?projectId=${project.id}`, {
         headers: { }
       });
       if (res.ok) {
@@ -115,7 +116,7 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
     }
     setSavingSettings(true);
     try {
-      const res = await fetch(`/api/projects/${project.id}/repo`, {
+      const res = await apiFetchRaw(`/api/projects/${project.id}/repo`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -157,7 +158,7 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
 
     setCreatingBranch(true);
     try {
-      const res = await fetch(`/api/projects/${project.id}/git/branches`, {
+      const res = await apiFetchRaw(`/api/projects/${project.id}/git/branches`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -189,7 +190,7 @@ export default function ProjectGitModal({ project, onClose, onUpdateProject }: P
 
   const handleCreatePR = async (branchName: string, taskId?: string) => {
     try {
-      const res = await fetch(`/api/projects/${project.id}/git/pull-requests`, {
+      const res = await apiFetchRaw(`/api/projects/${project.id}/git/pull-requests`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

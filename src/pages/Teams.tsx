@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -21,11 +22,11 @@ export default function Teams() {
   // Data fetching
   const fetchTeams = async () => {
     try {
-      const pRes = await fetch('/api/projects', { headers: { }});
+      const pRes = await apiFetchRaw('/api/projects', { headers: { }});
       if (pRes.ok) {
         setProjects(await pRes.json());
       }
-      const res = await fetch('/api/teams', {
+      const res = await apiFetchRaw('/api/teams', {
         headers: { }
       });
       if (res.ok) {
@@ -114,7 +115,7 @@ export default function Teams() {
                               e.preventDefault();
 
                               try {
-                                const res = await fetch(`/api/teams/${team.id}`, {
+                                const res = await apiFetchRaw(`/api/teams/${team.id}`, {
                                   method: 'DELETE',
                                   headers: { }
                                 });
@@ -194,7 +195,7 @@ function CreateTeamModal({ team, onClose, onSuccess }: { team?: Team | null, onC
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetch('/api/projects', { headers: { } })
+    apiFetchRaw('/api/projects', { headers: { } })
       .then(r => r.json())
       .then(setProjects)
       .catch(console.error);
@@ -205,7 +206,7 @@ function CreateTeamModal({ team, onClose, onSuccess }: { team?: Team | null, onC
     if (!name.trim()) return;
     setSubmitting(true);
     try {
-      const res = await fetch(team ? `/api/teams/${team.id}` : '/api/teams', {
+      const res = await apiFetchRaw(team ? `/api/teams/${team.id}` : '/api/teams', {
         method: team ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, description, projectId: projectId || undefined })
@@ -343,10 +344,10 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
     setLoading(true);
     try {
       const [membersRes, usersRes, teamProjectsRes, allProjectsRes] = await Promise.all([
-        fetch(`/api/teams/${team.id}/members`, { headers: { } }),
-        fetch('/api/users', { headers: { } }),
-        fetch(`/api/teams/${team.id}/projects`, { headers: { } }),
-        fetch('/api/projects', { headers: { } })
+        apiFetchRaw(`/api/teams/${team.id}/members`, { headers: { } }),
+        apiFetchRaw('/api/users', { headers: { } }),
+        apiFetchRaw(`/api/teams/${team.id}/projects`, { headers: { } }),
+        apiFetchRaw('/api/projects', { headers: { } })
       ]);
       
       if (membersRes.ok && usersRes.ok && teamProjectsRes.ok && allProjectsRes.ok) {
@@ -371,7 +372,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
     if (!userToAdd) return;
     setAddingUser(true);
     try {
-      const res = await fetch(`/api/teams/${team.id}/members`, {
+      const res = await apiFetchRaw(`/api/teams/${team.id}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: userToAdd })
@@ -393,7 +394,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
   const handleRemoveMember = async (userId: string) => {
 
     try {
-      const res = await fetch(`/api/teams/${team.id}/members/${userId}`, {
+      const res = await apiFetchRaw(`/api/teams/${team.id}/members/${userId}`, {
         method: 'DELETE',
         headers: { }
       });
@@ -410,7 +411,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
     if (!projectToAdd) return;
     setAddingProject(true);
     try {
-      const res = await fetch(`/api/teams/${team.id}/projects`, {
+      const res = await apiFetchRaw(`/api/teams/${team.id}/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId: projectToAdd })
@@ -432,7 +433,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
   const handleRemoveProject = async (projectId: string) => {
 
     try {
-      const res = await fetch(`/api/teams/${team.id}/projects/${projectId}`, {
+      const res = await apiFetchRaw(`/api/teams/${team.id}/projects/${projectId}`, {
         method: 'DELETE',
         headers: { }
       });
@@ -447,7 +448,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
   const handleDeleteTeam = async () => {
 
     try {
-      const res = await fetch(`/api/teams/${team.id}`, {
+      const res = await apiFetchRaw(`/api/teams/${team.id}`, {
         method: 'DELETE',
         headers: { }
       });

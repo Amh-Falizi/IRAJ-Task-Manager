@@ -10,6 +10,7 @@ import ProjectActivityModal from '../components/ProjectActivityModal';
 import { Plus, MoreVertical, Calendar, ArrowUpDown, CornerDownRight, Search, Filter, AlertCircle, ChevronUp, Minus, ChevronDown, X, FolderKanban, Activity, CheckCircle2, Workflow, Clock, Pencil, Trash2, UserPlus, Download, GitBranch, GitPullRequest } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn, safeFormatDate } from '../lib/utils';
+import { apiFetchRaw } from '../lib/api';
 import { useSearchParams, Link, Navigate, useNavigate } from 'react-router';
 import TaskDiagram from '../components/TaskDiagram';
 import Markdown from 'react-markdown';
@@ -96,7 +97,7 @@ export default function Board() {
     const loadColumns = async () => {
       if (projectId && isAuthenticated) {
         try {
-          const res = await fetch(`/api/projects/${projectId}/columns`, {
+          const res = await apiFetchRaw(`/api/projects/${projectId}/columns`, {
             headers: { }
           });
           if (res.ok) {
@@ -135,7 +136,7 @@ export default function Board() {
       if (projectId && isAuthenticated) {
         // Debounced sync to server
         const timer = setTimeout(() => {
-          fetch(`/api/projects/${projectId}/columns`, {
+          apiFetchRaw(`/api/projects/${projectId}/columns`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json'
@@ -207,10 +208,10 @@ export default function Board() {
   const fetchData = async () => {
     try {
       const results = await Promise.all([
-        fetch('/api/tasks', { headers: { } }),
-        fetch('/api/users', { headers: { } }),
-        fetch('/api/projects', { headers: { } }),
-        fetch('/api/milestones', { headers: { } })
+        apiFetchRaw('/api/tasks', { headers: { } }),
+        apiFetchRaw('/api/users', { headers: { } }),
+        apiFetchRaw('/api/projects', { headers: { } }),
+        apiFetchRaw('/api/milestones', { headers: { } })
       ]);
       
       const tasksData: Task[] = await results[0].json();
@@ -423,7 +424,7 @@ export default function Board() {
     setTasks(tasks.map(t => t.id === taskId ? { ...t, status: targetStatus as any, orderIndex: newOrderIndex } : t));
     
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await apiFetchRaw(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json' 
@@ -456,7 +457,7 @@ export default function Board() {
     const method = isEdit ? 'PUT' : 'POST';
 
     try {
-      const res = await fetch(url, {
+      const res = await apiFetchRaw(url, {
         method,
         headers: { 
           'Content-Type': 'application/json' 
@@ -479,7 +480,7 @@ export default function Board() {
 
   const handleUpdateTask = async (taskId: string, currentTask: Task, updates: Partial<Task>) => {
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await apiFetchRaw(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json' 
@@ -515,7 +516,7 @@ export default function Board() {
     try {
       const selectedTasks = tasks.filter(t => selectedTaskIds.has(t.id));
       await Promise.all(selectedTasks.map(t => 
-        fetch(`/api/tasks/${t.id}`, {
+        apiFetchRaw(`/api/tasks/${t.id}`, {
           method: 'PUT',
           headers: { 
             'Content-Type': 'application/json' 
@@ -541,7 +542,7 @@ export default function Board() {
     if (!window.confirm(`Are you sure you want to delete ${selectedTaskIds.size} tasks?`)) return;
     try {
       await Promise.all(Array.from(selectedTaskIds).map(id => 
-        fetch(`/api/tasks/${id}`, {
+        apiFetchRaw(`/api/tasks/${id}`, {
           method: 'DELETE',
           headers: { }
         })
@@ -558,7 +559,7 @@ export default function Board() {
   const handleDeleteTask = async (taskId: string) => {
 
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await apiFetchRaw(`/api/tasks/${taskId}`, {
         method: 'DELETE',
         headers: { }
       });

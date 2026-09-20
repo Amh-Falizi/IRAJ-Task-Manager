@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { dbPromise } from "../db.js";
 import {
@@ -7,13 +7,14 @@ import {
   checkProjectAccess,
   checkProjectWriteAccess
 } from "../middleware/auth.js";
+import { AuthRequest } from "../types.js";
 
 export const documentsRouter = express.Router();
 const router = documentsRouter;
 
 // Documents APIs
 
-router.get("/projects/:projectId/documents", authenticateToken, async (req: any, res: any) => {
+router.get("/projects/:projectId/documents", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkProjectAccess(db, req.params.projectId, req.user))) {
@@ -30,7 +31,7 @@ router.get("/projects/:projectId/documents", authenticateToken, async (req: any,
   }
 });
 
-router.post("/projects/:projectId/documents", authenticateToken, async (req: any, res: any) => {
+router.post("/projects/:projectId/documents", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkProjectWriteAccess(db, req.params.projectId, req.user))) {
@@ -45,7 +46,7 @@ router.post("/projects/:projectId/documents", authenticateToken, async (req: any
 
     await db.run(
       "INSERT INTO documents (id, projectId, title, content, authorId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [id, req.params.projectId, title.trim(), content || "", req.user.id, now, now]
+      [id, req.params.projectId, title.trim(), content || "", req.user?.id, now, now]
     );
 
     const doc = await db.get("SELECT * FROM documents WHERE id = ?", id);
@@ -56,7 +57,7 @@ router.post("/projects/:projectId/documents", authenticateToken, async (req: any
   }
 });
 
-router.get("/documents/:id", authenticateToken, async (req: any, res: any) => {
+router.get("/documents/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const doc = await db.get("SELECT * FROM documents WHERE id = ?", req.params.id);
@@ -71,7 +72,7 @@ router.get("/documents/:id", authenticateToken, async (req: any, res: any) => {
   }
 });
 
-router.put("/documents/:id", authenticateToken, async (req: any, res: any) => {
+router.put("/documents/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const docCheck = await db.get("SELECT projectId FROM documents WHERE id = ?", req.params.id);
@@ -95,7 +96,7 @@ router.put("/documents/:id", authenticateToken, async (req: any, res: any) => {
   }
 });
 
-router.delete("/documents/:id", authenticateToken, async (req: any, res: any) => {
+router.delete("/documents/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const docCheck = await db.get("SELECT projectId FROM documents WHERE id = ?", req.params.id);
@@ -113,7 +114,7 @@ router.delete("/documents/:id", authenticateToken, async (req: any, res: any) =>
 
 // Milestones APIs
 
-router.get("/milestones", authenticateToken, async (req: any, res: any) => {
+router.get("/milestones", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     let milestones = [];
@@ -130,7 +131,7 @@ router.get("/milestones", authenticateToken, async (req: any, res: any) => {
         LEFT JOIN team_members tm ON tp.teamId = tm.teamId
         WHERE p.ownerId = ? OR pm.userId = ? OR tm.userId = ?
       `,
-        [req.user.id, req.user.id, req.user.id]
+        [req.user?.id, req.user?.id, req.user?.id]
       );
     }
     res.json(milestones);
@@ -140,7 +141,7 @@ router.get("/milestones", authenticateToken, async (req: any, res: any) => {
   }
 });
 
-router.get("/projects/:projectId/milestones", authenticateToken, async (req: any, res: any) => {
+router.get("/projects/:projectId/milestones", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkProjectAccess(db, req.params.projectId, req.user))) {
@@ -157,7 +158,7 @@ router.get("/projects/:projectId/milestones", authenticateToken, async (req: any
   }
 });
 
-router.post("/projects/:projectId/milestones", authenticateToken, async (req: any, res: any) => {
+router.post("/projects/:projectId/milestones", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkProjectWriteAccess(db, req.params.projectId, req.user))) {
@@ -192,7 +193,7 @@ router.post("/projects/:projectId/milestones", authenticateToken, async (req: an
   }
 });
 
-router.put("/milestones/:id", authenticateToken, async (req: any, res: any) => {
+router.put("/milestones/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const msCheck = await db.get("SELECT projectId FROM milestones WHERE id = ?", req.params.id);
@@ -215,7 +216,7 @@ router.put("/milestones/:id", authenticateToken, async (req: any, res: any) => {
   }
 });
 
-router.delete("/milestones/:id", authenticateToken, async (req: any, res: any) => {
+router.delete("/milestones/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const msCheck = await db.get("SELECT projectId FROM milestones WHERE id = ?", req.params.id);

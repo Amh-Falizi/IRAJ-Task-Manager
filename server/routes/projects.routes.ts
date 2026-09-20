@@ -1,8 +1,9 @@
-import express from "express";
+import express, { Response } from "express";
 import crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { dbPromise, extractTaskNumber } from "../db.js";
 import { encryptSecret, decryptSecret } from "../config.js";
+import { AuthRequest, AuthenticatedUser } from "../types.js";
 import {
   authenticateToken,
   isAdminOrSuperAdmin,
@@ -36,7 +37,7 @@ const sanitizeProject = (project: any) => {
 };
 
 // Projects APIs
-router.get("/projects/:id/workload", authenticateToken, async (req: any, res: any) => {
+router.get("/projects/:id/workload", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkProjectAccess(db, req.params.id, req.user))) {
@@ -89,7 +90,7 @@ router.get("/projects/:id/workload", authenticateToken, async (req: any, res: an
   }
 });
 
-router.get("/projects", authenticateToken, async (req: any, res: any) => {
+router.get("/projects", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const projects = await getAccessibleProjects(db, req.user);
@@ -100,7 +101,7 @@ router.get("/projects", authenticateToken, async (req: any, res: any) => {
   }
 });
 
-router.get("/projects/:id", authenticateToken, async (req: any, res: any) => {
+router.get("/projects/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
@@ -118,7 +119,7 @@ router.get("/projects/:id", authenticateToken, async (req: any, res: any) => {
   }
 });
 
-router.post("/projects", authenticateToken, async (req: any, res: any) => {
+router.post("/projects", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const canCreate = await hasPermission(req.user, "manage_projects") || isAdminOrSuperAdmin(req.user);
     if (!canCreate) {
@@ -149,20 +150,20 @@ router.post("/projects", authenticateToken, async (req: any, res: any) => {
     if (db.isPg) {
       await db.run(
         "INSERT INTO projects (id, name, description, ownerId, projectKey, taskCounter, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [projectId, name, description || "", req.user.id, projectKey, 0, new Date().toISOString()]
+        [projectId, name, description || "", req.user!.id, projectKey, 0, new Date().toISOString()]
       );
       await db.run(
         "INSERT INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, 'admin', ?) ON CONFLICT (projectId, userId) DO NOTHING",
-        [projectId, req.user.id, new Date().toISOString()]
+        [projectId, req.user!.id, new Date().toISOString()]
       );
     } else {
       await db.run(
         "INSERT INTO projects (id, name, description, ownerId, projectKey, taskCounter, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [projectId, name, description || "", req.user.id, projectKey, 0, new Date().toISOString()]
+        [projectId, name, description || "", req.user!.id, projectKey, 0, new Date().toISOString()]
       );
       await db.run(
         "INSERT INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, 'admin', ?)",
-        [projectId, req.user.id, new Date().toISOString()]
+        [projectId, req.user!.id, new Date().toISOString()]
       );
     }
     
@@ -175,7 +176,7 @@ router.post("/projects", authenticateToken, async (req: any, res: any) => {
 });
 
 // Get Project Activity
-router.get("/projects/:id/activity", authenticateToken, async (req: any, res: any) => {
+router.get("/projects/:id/activity", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkProjectAccess(db, req.params.id, req.user))) {
@@ -198,7 +199,7 @@ router.get("/projects/:id/activity", authenticateToken, async (req: any, res: an
   }
 });
 
-router.put("/projects/:id", authenticateToken, async (req: any, res: any) => {
+router.put("/projects/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkProjectAccess(db, req.params.id, req.user))) {
@@ -208,10 +209,10 @@ router.put("/projects/:id", authenticateToken, async (req: any, res: any) => {
     const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
     if (!project) return res.sendStatus(404);
 
-    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user!.id]);
     const isProjectAdmin = pm && pm.role === 'admin';
 
-    if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+    if (project.ownerId !== req.user!.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
       return res.status(403).json({ error: "Only project owners, project admins, or system administrators can edit project details." });
     }
 
@@ -230,7 +231,7 @@ router.put("/projects/:id", authenticateToken, async (req: any, res: any) => {
 });
 
 // Update Project Repository Settings
-router.put("/projects/:id/repo", authenticateToken, async (req: any, res: any) => {
+router.put("/projects/:id/repo", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkProjectAccess(db, req.params.id, req.user))) {
@@ -240,10 +241,10 @@ router.put("/projects/:id/repo", authenticateToken, async (req: any, res: any) =
     const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
     if (!project) return res.status(404).json({ error: "Project not found" });
 
-    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user!.id]);
     const isProjectAdmin = pm && pm.role === 'admin';
 
-    if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+    if (project.ownerId !== req.user!.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
       return res.status(403).json({ error: "Only project owners, project admins, or system administrators can configure repository settings." });
     }
 
@@ -317,16 +318,16 @@ router.put("/projects/:id/repo", authenticateToken, async (req: any, res: any) =
 });
 
 // Get Project Inbound Webhook Secret Status
-router.get("/projects/:id/webhook-secret", authenticateToken, async (req: any, res: any) => {
+router.get("/projects/:id/webhook-secret", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
     if (!project) return res.status(404).json({ error: "Project not found" });
 
-    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user!.id]);
     const isProjectAdmin = pm && pm.role === 'admin';
 
-    if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+    if (project.ownerId !== req.user!.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
       return res.status(403).json({ error: "Only project owners, admins, or managers can view webhook secrets." });
     }
 
@@ -341,16 +342,16 @@ router.get("/projects/:id/webhook-secret", authenticateToken, async (req: any, r
 });
 
 // Generate and store new Inbound Webhook Secret for Project
-router.post("/projects/:id/webhook-secret/generate", authenticateToken, async (req: any, res: any) => {
+router.post("/projects/:id/webhook-secret/generate", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
     if (!project) return res.status(404).json({ error: "Project not found" });
 
-    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user!.id]);
     const isProjectAdmin = pm && pm.role === 'admin';
 
-    if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+    if (project.ownerId !== req.user!.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
       return res.status(403).json({ error: "Only project owners, admins, or managers can generate webhook secrets." });
     }
 
@@ -371,16 +372,16 @@ router.post("/projects/:id/webhook-secret/generate", authenticateToken, async (r
 });
 
 // Update or delete Project Inbound Webhook Secret
-router.put("/projects/:id/webhook-secret", authenticateToken, async (req: any, res: any) => {
+router.put("/projects/:id/webhook-secret", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
     if (!project) return res.status(404).json({ error: "Project not found" });
 
-    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user!.id]);
     const isProjectAdmin = pm && pm.role === 'admin';
 
-    if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+    if (project.ownerId !== req.user!.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
       return res.status(403).json({ error: "Only project owners, admins, or managers can update webhook secrets." });
     }
 
@@ -403,7 +404,7 @@ router.put("/projects/:id/webhook-secret", authenticateToken, async (req: any, r
 });
 
 // Get Live Branches from GitHub or GitLab for a Project
-router.get("/projects/:id/git/branches", authenticateToken, async (req: any, res: any) => {
+router.get("/projects/:id/git/branches", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkProjectAccess(db, req.params.id, req.user))) {
@@ -544,7 +545,7 @@ router.get("/projects/:id/git/branches", authenticateToken, async (req: any, res
 });
 
 // Create Branch on Remote GitHub or GitLab Repository
-router.post("/projects/:id/git/branches", authenticateToken, async (req: any, res: any) => {
+router.post("/projects/:id/git/branches", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkProjectWriteAccess(db, req.params.id, req.user))) {
@@ -707,7 +708,7 @@ router.post("/projects/:id/git/branches", authenticateToken, async (req: any, re
 
       await db.run(
         "INSERT INTO task_activities (id, taskId, userId, action, createdAt) VALUES (?, ?, ?, ?, ?)",
-        [activityId, taskId, req.user.id, actionText, new Date().toISOString()]
+        [activityId, taskId, req.user!.id, actionText, new Date().toISOString()]
       );
     }
 
@@ -726,7 +727,7 @@ router.post("/projects/:id/git/branches", authenticateToken, async (req: any, re
 });
 
 // Create Pull Request / Merge Request for a Task
-router.post("/projects/:id/git/pull-requests", authenticateToken, async (req: any, res: any) => {
+router.post("/projects/:id/git/pull-requests", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkProjectWriteAccess(db, req.params.id, req.user))) {
@@ -850,7 +851,7 @@ router.post("/projects/:id/git/pull-requests", authenticateToken, async (req: an
       const activityId = uuidv4();
       await db.run(
         "INSERT INTO task_activities (id, taskId, userId, action, createdAt) VALUES (?, ?, ?, ?, ?)",
-        [activityId, taskId, req.user.id, `opened Pull Request on ${provider.toUpperCase()}`, new Date().toISOString()]
+        [activityId, taskId, req.user!.id, `opened Pull Request on ${provider.toUpperCase()}`, new Date().toISOString()]
       );
     }
 
@@ -862,7 +863,7 @@ router.post("/projects/:id/git/pull-requests", authenticateToken, async (req: an
 });
 
 // Project Custom Columns Management
-router.get("/projects/:id/columns", authenticateToken, async (req: any, res: any) => {
+router.get("/projects/:id/columns", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkProjectAccess(db, req.params.id, req.user))) {
@@ -884,7 +885,7 @@ router.get("/projects/:id/columns", authenticateToken, async (req: any, res: any
   }
 });
 
-router.put("/projects/:id/columns", authenticateToken, async (req: any, res: any) => {
+router.put("/projects/:id/columns", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkProjectAccess(db, req.params.id, req.user))) {
@@ -894,10 +895,10 @@ router.put("/projects/:id/columns", authenticateToken, async (req: any, res: any
     const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
     if (!project) return res.status(404).json({ error: "Project not found" });
 
-    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user!.id]);
     const isProjectAdmin = pm && (pm.role === 'admin' || pm.role === 'lead');
 
-    if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+    if (project.ownerId !== req.user!.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
       return res.status(403).json({ error: "Permission denied. Only project owners, project admins, or system administrators can modify board column structure." });
     }
 
@@ -933,7 +934,7 @@ router.put("/projects/:id/columns", authenticateToken, async (req: any, res: any
 });
 
 // Sync and Update Statuses of Pull/Merge Requests of a Project
-router.post("/projects/:id/git/pull-requests/sync", authenticateToken, async (req: any, res: any) => {
+router.post("/projects/:id/git/pull-requests/sync", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkProjectWriteAccess(db, req.params.id, req.user))) {
@@ -1039,7 +1040,7 @@ router.post("/projects/:id/git/pull-requests/sync", authenticateToken, async (re
           const activityId = uuidv4();
           await db.run(
             "INSERT INTO task_activities (id, taskId, userId, action, createdAt) VALUES (?, ?, ?, ?, ?)",
-            [activityId, task.id, req.user.id, `synchronized PR status: updated PR to '${remotePrStatus}' and Board Status to '${nextTaskStatus}'`, new Date().toISOString()]
+            [activityId, task.id, req.user!.id, `synchronized PR status: updated PR to '${remotePrStatus}' and Board Status to '${nextTaskStatus}'`, new Date().toISOString()]
           );
 
           updatedCount++;
@@ -1062,7 +1063,7 @@ router.post("/projects/:id/git/pull-requests/sync", authenticateToken, async (re
   }
 });
 
-router.delete("/projects/:id", authenticateToken, async (req: any, res: any) => {
+router.delete("/projects/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkProjectAccess(db, req.params.id, req.user))) {
@@ -1072,10 +1073,10 @@ router.delete("/projects/:id", authenticateToken, async (req: any, res: any) => 
     const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
     if (!project) return res.sendStatus(404);
 
-    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user.id]);
+    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user!.id]);
     const isProjectAdmin = pm && pm.role === 'admin';
 
-    if (project.ownerId !== req.user.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
+    if (project.ownerId !== req.user!.id && !isProjectAdmin && !isAdminOrSuperAdmin(req.user)) {
       return res.status(403).json({ error: "Only project owners, project admins, or system administrators can delete projects." });
     }
 
@@ -1103,7 +1104,7 @@ router.delete("/projects/:id", authenticateToken, async (req: any, res: any) => 
 });
 
 // Integration Connectivity Status API for GitHub & GitLab
-router.get("/integrations/status", authenticateToken, async (req: any, res: any) => {
+router.get("/integrations/status", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     let projects;
@@ -1121,7 +1122,7 @@ router.get("/integrations/status", authenticateToken, async (req: any, res: any)
            OR pm.userId = ? 
            OR tm.userId = ? 
            OR t.assigneeId = ?
-      `, [req.user.id, req.user.id, req.user.id, req.user.id]);
+      `, [req.user!.id, req.user!.id, req.user!.id, req.user!.id]);
     }
 
     const githubProjects = projects.filter(p => p.repoProvider === 'github' && p.repoOwner && p.repoName);
@@ -1210,7 +1211,7 @@ router.get("/integrations/status", authenticateToken, async (req: any, res: any)
 });
 
 // Project Members APIs
-router.get("/projects/:id/members", authenticateToken, async (req: any, res: any) => {
+router.get("/projects/:id/members", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkProjectAccess(db, req.params.id, req.user))) {
@@ -1229,7 +1230,7 @@ router.get("/projects/:id/members", authenticateToken, async (req: any, res: any
   }
 });
 
-router.post("/projects/:id/members", authenticateToken, async (req: any, res: any) => {
+router.post("/projects/:id/members", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const projectId = req.params.id;
@@ -1238,10 +1239,10 @@ router.post("/projects/:id/members", authenticateToken, async (req: any, res: an
     const project = await db.get("SELECT * FROM projects WHERE id = ?", projectId);
     if (!project) return res.sendStatus(404);
 
-    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [projectId, req.user.id]);
+    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [projectId, req.user!.id]);
     const isProjectAdmin = pm && pm.role === 'admin';
 
-    if (!isAdminOrSuperAdmin(req.user) && project.ownerId !== req.user.id && !isProjectAdmin) {
+    if (!isAdminOrSuperAdmin(req.user) && project.ownerId !== req.user!.id && !isProjectAdmin) {
       return res.status(403).json({ error: "Only admins, project owner or project admins can manage members." });
     }
 
@@ -1273,7 +1274,7 @@ router.post("/projects/:id/members", authenticateToken, async (req: any, res: an
   }
 });
 
-router.delete("/projects/:id/members/:userId", authenticateToken, async (req: any, res: any) => {
+router.delete("/projects/:id/members/:userId", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const projectId = req.params.id;
@@ -1281,10 +1282,10 @@ router.delete("/projects/:id/members/:userId", authenticateToken, async (req: an
     const project = await db.get("SELECT * FROM projects WHERE id = ?", projectId);
     if (!project) return res.sendStatus(404);
 
-    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [projectId, req.user.id]);
+    const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [projectId, req.user!.id]);
     const isProjectAdmin = pm && pm.role === 'admin';
 
-    if (!isAdminOrSuperAdmin(req.user) && project.ownerId !== req.user.id && !isProjectAdmin && req.user.id !== req.params.userId) {
+    if (!isAdminOrSuperAdmin(req.user) && project.ownerId !== req.user!.id && !isProjectAdmin && req.user!.id !== req.params.userId) {
       return res.status(403).json({ error: "Only admins, project owner or project admins can remove members." });
     }
 
@@ -1297,7 +1298,7 @@ router.delete("/projects/:id/members/:userId", authenticateToken, async (req: an
 });
 
 // Teams APIs
-router.get("/teams", authenticateToken, async (req: any, res: any) => {
+router.get("/teams", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     let teams;
@@ -1313,7 +1314,7 @@ router.get("/teams", authenticateToken, async (req: any, res: any) => {
         WHERE t.ownerId = ? 
            OR tm.userId = ? 
            OR (t.projectId IS NOT NULL AND (pm.userId = ? OR p.ownerId = ?))
-      `, [req.user.id, req.user.id, req.user.id, req.user.id]);
+      `, [req.user!.id, req.user!.id, req.user!.id, req.user!.id]);
     }
     res.json(teams);
   } catch (err: any) {
@@ -1322,7 +1323,7 @@ router.get("/teams", authenticateToken, async (req: any, res: any) => {
   }
 });
 
-router.post("/teams", authenticateToken, async (req: any, res: any) => {
+router.post("/teams", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
 
@@ -1330,9 +1331,9 @@ router.post("/teams", authenticateToken, async (req: any, res: any) => {
 
     if (projectId) {
       const project = await db.get("SELECT ownerId FROM projects WHERE id = ?", projectId);
-      const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [projectId, req.user.id]);
+      const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [projectId, req.user!.id]);
       const isProjectAdmin = pm && pm.role === 'admin';
-      if (!project || (!isAdminOrSuperAdmin(req.user) && project.ownerId !== req.user.id && !isProjectAdmin)) {
+      if (!project || (!isAdminOrSuperAdmin(req.user) && project.ownerId !== req.user!.id && !isProjectAdmin)) {
          return res.status(403).json({ error: "Only admins, project owner or project admins can create teams for this project." });
       }
     } else {
@@ -1345,12 +1346,12 @@ router.post("/teams", authenticateToken, async (req: any, res: any) => {
     const teamId = uuidv4();
     await db.run(
       "INSERT INTO teams (id, name, description, ownerId, createdAt, projectId) VALUES (?, ?, ?, ?, ?, ?)",
-      [teamId, name, description || "", req.user.id, new Date().toISOString(), projectId || null]
+      [teamId, name, description || "", req.user!.id, new Date().toISOString(), projectId || null]
     );
     // add owner to members
     await db.run(
       "INSERT INTO team_members (id, teamId, userId, joinedAt) VALUES (?, ?, ?, ?)",
-      [uuidv4(), teamId, req.user.id, new Date().toISOString()]
+      [uuidv4(), teamId, req.user!.id, new Date().toISOString()]
     );
     const newTeam = await db.get("SELECT * FROM teams WHERE id = ?", teamId);
     res.json(newTeam);
@@ -1360,8 +1361,9 @@ router.post("/teams", authenticateToken, async (req: any, res: any) => {
   }
 });
 
-const checkTeamAccess = async (db: any, teamId: string, user: any): Promise<boolean> => {
+const checkTeamAccess = async (db: any, teamId: string, user: AuthenticatedUser | undefined): Promise<boolean> => {
   if (isAdminOrSuperAdmin(user)) return true;
+  if (!user) return false;
   const team = await db.get("SELECT * FROM teams WHERE id = ?", teamId);
   if (!team) return false;
   if (team.ownerId === user.id) return true;
@@ -1373,7 +1375,7 @@ const checkTeamAccess = async (db: any, teamId: string, user: any): Promise<bool
   return false;
 };
 
-router.get("/teams/:id/members", authenticateToken, async (req: any, res: any) => {
+router.get("/teams/:id/members", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkTeamAccess(db, req.params.id, req.user))) {
@@ -1392,7 +1394,7 @@ router.get("/teams/:id/members", authenticateToken, async (req: any, res: any) =
   }
 });
 
-router.post("/teams/:id/members", authenticateToken, async (req: any, res: any) => {
+router.post("/teams/:id/members", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const { userId } = req.body;
@@ -1401,7 +1403,7 @@ router.post("/teams/:id/members", authenticateToken, async (req: any, res: any) 
     const team = await db.get("SELECT * FROM teams WHERE id = ?", teamId);
     if (!team) return res.sendStatus(404);
 
-    if (!isAdminOrSuperAdmin(req.user) && team.ownerId !== req.user.id) {
+    if (!isAdminOrSuperAdmin(req.user) && team.ownerId !== req.user!.id) {
       return res.status(403).json({ error: "Only admins or the team owner can add members." });
     }
 
@@ -1425,14 +1427,14 @@ router.post("/teams/:id/members", authenticateToken, async (req: any, res: any) 
   }
 });
 
-router.delete("/teams/:id/members/:userId", authenticateToken, async (req: any, res: any) => {
+router.delete("/teams/:id/members/:userId", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
 
     const team = await db.get("SELECT * FROM teams WHERE id = ?", req.params.id);
     if (!team) return res.sendStatus(404);
 
-    if (!isAdminOrSuperAdmin(req.user) && team.ownerId !== req.user.id && req.user.id !== req.params.userId) {
+    if (!isAdminOrSuperAdmin(req.user) && team.ownerId !== req.user!.id && req.user!.id !== req.params.userId) {
       return res.status(403).json({ error: "Only admins or the team owner can remove members." });
     }
 
@@ -1444,7 +1446,7 @@ router.delete("/teams/:id/members/:userId", authenticateToken, async (req: any, 
   }
 });
 
-router.get("/teams/:id/projects", authenticateToken, async (req: any, res: any) => {
+router.get("/teams/:id/projects", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     if (!(await checkTeamAccess(db, req.params.id, req.user))) {
@@ -1463,7 +1465,7 @@ router.get("/teams/:id/projects", authenticateToken, async (req: any, res: any) 
   }
 });
 
-router.post("/teams/:id/projects", authenticateToken, async (req: any, res: any) => {
+router.post("/teams/:id/projects", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
 
@@ -1471,13 +1473,13 @@ router.post("/teams/:id/projects", authenticateToken, async (req: any, res: any)
     if (!team) return res.sendStatus(404);
 
     if (!isAdminOrSuperAdmin(req.user)) {
-      if (team.ownerId !== req.user.id) {
+      if (team.ownerId !== req.user!.id) {
         return res.status(403).json({ error: "Only admins or the team owner can add projects." });
       }
       const project = await db.get("SELECT ownerId FROM projects WHERE id = ?", req.body.projectId);
       if (!project) return res.status(404).json({ error: "Project not found" });
-      const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.body.projectId, req.user.id]);
-      if (project.ownerId !== req.user.id && (!pm || pm.role !== 'admin')) {
+      const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.body.projectId, req.user!.id]);
+      if (project.ownerId !== req.user!.id && (!pm || pm.role !== 'admin')) {
         return res.status(403).json({ error: "You must be a project admin or owner to link this project to a team." });
       }
     }
@@ -1501,14 +1503,14 @@ router.post("/teams/:id/projects", authenticateToken, async (req: any, res: any)
   }
 });
 
-router.delete("/teams/:id/projects/:projectId", authenticateToken, async (req: any, res: any) => {
+router.delete("/teams/:id/projects/:projectId", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
 
     const team = await db.get("SELECT * FROM teams WHERE id = ?", req.params.id);
     if (!team) return res.sendStatus(404);
 
-    if (!isAdminOrSuperAdmin(req.user) && team.ownerId !== req.user.id) {
+    if (!isAdminOrSuperAdmin(req.user) && team.ownerId !== req.user!.id) {
       return res.status(403).json({ error: "Only admins or the team owner can remove projects." });
     }
 
@@ -1520,14 +1522,14 @@ router.delete("/teams/:id/projects/:projectId", authenticateToken, async (req: a
   }
 });
 
-router.put("/teams/:id", authenticateToken, async (req: any, res: any) => {
+router.put("/teams/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const team = await db.get("SELECT * FROM teams WHERE id = ?", req.params.id);
     if (!team) return res.sendStatus(404);
 
     const canManageTeams = await hasPermission(req.user, "manage_teams");
-    if (!canManageTeams && team.ownerId !== req.user.id) {
+    if (!canManageTeams && team.ownerId !== req.user!.id) {
       return res.status(403).json({ error: "Only team owners, admins, or authorized roles can edit this team." });
     }
 
@@ -1553,14 +1555,14 @@ router.put("/teams/:id", authenticateToken, async (req: any, res: any) => {
   }
 });
 
-router.delete("/teams/:id", authenticateToken, async (req: any, res: any) => {
+router.delete("/teams/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const team = await db.get("SELECT * FROM teams WHERE id = ?", req.params.id);
     if (!team) return res.sendStatus(404);
     
     const canManageTeams = await hasPermission(req.user, "manage_teams");
-    if (!canManageTeams && team.ownerId !== req.user.id) {
+    if (!canManageTeams && team.ownerId !== req.user!.id) {
       return res.status(403).json({ error: "Only team owners, admins, or authorized roles can delete this team." });
     }
 

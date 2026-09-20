@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router';
 import { LayoutDashboard, Eye, EyeOff } from 'lucide-react';
@@ -25,7 +26,7 @@ export default function ResetPassword() {
       setError('');
       setLoading(true);
 
-      const res = await fetch('/api/auth/reset-password', {
+      const res = await apiFetchRaw('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, newPassword: password }),

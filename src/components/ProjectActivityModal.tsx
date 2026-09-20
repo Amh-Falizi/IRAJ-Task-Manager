@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { User } from '../types';
@@ -17,7 +18,7 @@ export default function ProjectActivityModal({ projectId, projectName, users, on
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`/api/projects/${projectId}/activity`, {
+    apiFetchRaw(`/api/projects/${projectId}/activity`, {
        headers: { }
     })
     .then(res => res.json())

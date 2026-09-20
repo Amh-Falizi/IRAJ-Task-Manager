@@ -1,3 +1,5 @@
+import { Request, Response, NextFunction } from "express";
+
 export interface DatabaseWrapper {
   isPg: boolean;
   exec(sql: string): Promise<void>;
@@ -8,17 +10,26 @@ export interface DatabaseWrapper {
   close?(): Promise<void>;
 }
 
-export interface User {
+export interface AuthenticatedUser {
   id: string;
   name: string;
   email: string;
-  passwordHash: string;
-  role: "super_admin" | "admin" | "manager" | "developer" | string;
+  role: "super_admin" | "admin" | "manager" | "developer" | "viewer" | string;
   skills?: string;
   rolePrefix?: string;
   status?: string;
   emailVerified?: boolean | number;
   tokenVersion?: number;
+}
+
+export interface AuthRequest<P = any, ResBody = any, ReqBody = any, ReqQuery = any>
+  extends Request<P, ResBody, ReqBody, ReqQuery> {
+  user?: AuthenticatedUser;
+  rawBody?: Buffer;
+}
+
+export interface User extends AuthenticatedUser {
+  passwordHash: string;
 }
 
 export interface Task {

@@ -1,7 +1,7 @@
-import express from "express";
+import express, { Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { dbPromise, extractTaskNumber } from "../db.js";
-import { Task } from "../types.js";
+import { Task, AuthRequest } from "../types.js";
 import { eventsService } from "../services/events.service.js";
 import { webhookService } from "../services/webhook.service.js";
 import {
@@ -17,12 +17,12 @@ export const tasksRouter = express.Router();
 const router = tasksRouter;
 
 // Get Tasks
-router.get("/", authenticateToken, async (req: any, res: any) => {
+router.get("/", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     
     if (req.query.projectId) {
-      const hasAccess = await checkProjectAccess(db, req.query.projectId, req.user);
+      const hasAccess = await checkProjectAccess(db, req.query.projectId as string, req.user);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to project tasks." });
       }
@@ -45,7 +45,7 @@ router.get("/", authenticateToken, async (req: any, res: any) => {
         // Project access already verified above
       } else {
         conditions.push(`(p.ownerId = ? OR pm.userId = ? OR tm.userId = ? OR ((t.projectId IS NULL OR t.projectId = '') AND (t.assigneeId = ? OR t.creatorId = ?)))`);
-        queryParams.push(req.user.id, req.user.id, req.user.id, req.user.id, req.user.id);
+        queryParams.push(req.user!.id, req.user!.id, req.user!.id, req.user!.id, req.user!.id);
       }
     }
     
@@ -90,7 +90,7 @@ async function logActivity(db: any, taskId: string, userId: string, action: stri
 }
 
 // Get Task Details (Comments and Activities)
-router.get("/:id/details", authenticateToken, async (req: any, res: any) => {
+router.get("/:id/details", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const taskId = req.params.id;
@@ -109,7 +109,7 @@ router.get("/:id/details", authenticateToken, async (req: any, res: any) => {
 });
 
 // Create Comment
-router.post("/:id/comments", authenticateToken, async (req: any, res: any) => {
+router.post("/:id/comments", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const taskId = req.params.id;
@@ -126,9 +126,9 @@ router.post("/:id/comments", authenticateToken, async (req: any, res: any) => {
     const createdAt = new Date().toISOString();
     await db.run(
       "INSERT INTO task_comments (id, taskId, userId, content, createdAt) VALUES (?, ?, ?, ?, ?)",
-      [commentId, taskId, req.user.id, req.body.content, createdAt]
+      [commentId, taskId, req.user!.id, req.body.content, createdAt]
     );
-    await logActivity(db, taskId, req.user.id, `commented: ${req.body.content.substring(0, 50)}...`);
+    await logActivity(db, taskId, req.user!.id, `commented: ${req.body.content.substring(0, 50)}...`);
     const comment = await db.get("SELECT * FROM task_comments WHERE id = ?", commentId);
 
     // Fetch task to get title, projectId, and assignee
@@ -136,7 +136,7 @@ router.post("/:id/comments", authenticateToken, async (req: any, res: any) => {
 
     if (task) {
       const notifiedUserIds = new Set<string>();
-      notifiedUserIds.add(req.user.id); // Don't notify commenter
+      notifiedUserIds.add(req.user!.id); // Don't notify commenter
 
       // Parse @mentions (e.g. @john or @alex.smith)
       const mentionMatches = req.body.content.match(/@([a-zA-Z0-9._-]+)/g);
@@ -172,7 +172,7 @@ router.post("/:id/comments", authenticateToken, async (req: any, res: any) => {
             await eventsService.notifyUser(matched.id, {
               type: "mention",
               title: "Mentioned in comment",
-              message: `${req.user.name} mentioned you in "${task.title}": "${req.body.content.slice(0, 100)}"`,
+              message: `${req.user!.name} mentioned you in "${task.title}": "${req.body.content.slice(0, 100)}"`,
               link: `/board?taskId=${task.id}`
             });
           }
@@ -185,7 +185,7 @@ router.post("/:id/comments", authenticateToken, async (req: any, res: any) => {
         await eventsService.notifyUser(task.assigneeId, {
           type: "system",
           title: "New comment on assigned task",
-          message: `${req.user.name} commented on "${task.title}": "${req.body.content.slice(0, 100)}"`,
+          message: `${req.user!.name} commented on "${task.title}": "${req.body.content.slice(0, 100)}"`,
           link: `/board?taskId=${task.id}`
         });
       }
@@ -207,7 +207,7 @@ router.post("/:id/comments", authenticateToken, async (req: any, res: any) => {
         webhookService.dispatchProjectEvent(task.projectId, "task.comment", {
           task,
           comment,
-          author: { id: req.user.id, name: req.user.name }
+          author: { id: req.user!.id, name: req.user!.name }
         });
       }
     }
@@ -220,7 +220,7 @@ router.post("/:id/comments", authenticateToken, async (req: any, res: any) => {
 });
 
 // Edit Comment
-router.put("/:taskId/comments/:commentId", authenticateToken, async (req: any, res: any) => {
+router.put("/:taskId/comments/:commentId", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const { taskId, commentId } = req.params;
@@ -233,7 +233,7 @@ router.put("/:taskId/comments/:commentId", authenticateToken, async (req: any, r
 
     const comment = await db.get("SELECT * FROM task_comments WHERE id = ? AND taskId = ?", [commentId, taskId]);
     if (!comment) return res.status(404).json({ error: "Comment not found" });
-    if (comment.userId !== req.user.id && !isAdminOrSuperAdmin(req.user)) {
+    if (comment.userId !== req.user!.id && !isAdminOrSuperAdmin(req.user)) {
       return res.status(403).json({ error: "Unauthorized to edit this comment" });
     }
 
@@ -247,7 +247,7 @@ router.put("/:taskId/comments/:commentId", authenticateToken, async (req: any, r
 });
 
 // Delete Comment
-router.delete("/:taskId/comments/:commentId", authenticateToken, async (req: any, res: any) => {
+router.delete("/:taskId/comments/:commentId", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const { taskId, commentId } = req.params;
@@ -259,7 +259,7 @@ router.delete("/:taskId/comments/:commentId", authenticateToken, async (req: any
 
     const comment = await db.get("SELECT * FROM task_comments WHERE id = ? AND taskId = ?", [commentId, taskId]);
     if (!comment) return res.status(404).json({ error: "Comment not found" });
-    if (comment.userId !== req.user.id && !isAdminOrSuperAdmin(req.user)) {
+    if (comment.userId !== req.user!.id && !isAdminOrSuperAdmin(req.user)) {
       return res.status(403).json({ error: "Unauthorized to delete this comment" });
     }
 
@@ -272,7 +272,7 @@ router.delete("/:taskId/comments/:commentId", authenticateToken, async (req: any
 });
 
 // Create Task
-router.post("/", authenticateToken, async (req: any, res: any) => {
+router.post("/", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const isAllowed = await hasPermission(req.user, "create_tasks");
     if (!isAllowed) {
@@ -357,7 +357,7 @@ router.post("/", authenticateToken, async (req: any, res: any) => {
       priority: req.body.priority || "medium",
       deadline: req.body.deadline || new Date().toISOString(),
       assigneeId: req.body.assigneeId || null,
-      creatorId: req.user.id,
+      creatorId: req.user!.id,
       branchName: branchName || null,
       parentId: req.body.parentId || null,
       projectId: req.body.projectId || null,
@@ -396,14 +396,14 @@ router.post("/", authenticateToken, async (req: any, res: any) => {
       }
     }
 
-    await logActivity(db, newTask.id, req.user.id, "created task");
+    await logActivity(db, newTask.id, req.user!.id, "created task");
 
     // Notify assignee if not the creator
-    if (newTask.assigneeId && newTask.assigneeId !== req.user.id) {
+    if (newTask.assigneeId && newTask.assigneeId !== req.user!.id) {
       await eventsService.notifyUser(newTask.assigneeId, {
         type: "assignment",
         title: "New task assigned to you",
-        message: `${req.user.name} assigned you to "${newTask.title}"`,
+        message: `${req.user!.name} assigned you to "${newTask.title}"`,
         link: `/board?taskId=${newTask.id}`
       });
     }
@@ -430,7 +430,7 @@ router.post("/", authenticateToken, async (req: any, res: any) => {
     if (newTask.projectId) {
       webhookService.dispatchProjectEvent(newTask.projectId, "task.created", {
         task: newTask,
-        creator: { id: req.user.id, name: req.user.name }
+        creator: { id: req.user!.id, name: req.user!.name }
       });
     }
 
@@ -442,7 +442,7 @@ router.post("/", authenticateToken, async (req: any, res: any) => {
 });
 
 // Update Task
-router.put("/:id", authenticateToken, async (req: any, res: any) => {
+router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     if (req.body.title !== undefined && (typeof req.body.title !== 'string' || req.body.title.trim() === '')) {
       return res.status(400).json({ error: "Task title cannot be empty" });
@@ -463,7 +463,7 @@ router.put("/:id", authenticateToken, async (req: any, res: any) => {
     if (task.projectId) {
       canManageTask = await isProjectAdminOrOwner(db, task.projectId, req.user);
       if (!canManageTask) {
-        const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [task.projectId, req.user.id]);
+        const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [task.projectId, req.user!.id]);
         if (pm && pm.role !== 'viewer') {
           canManageTask = await hasPermission(req.user, "edit_all_tasks");
         }
@@ -473,7 +473,7 @@ router.put("/:id", authenticateToken, async (req: any, res: any) => {
     }
 
     if (!canManageTask) {
-      if (task.assigneeId !== req.user.id && task.creatorId !== req.user.id) {
+      if (task.assigneeId !== req.user!.id && task.creatorId !== req.user!.id) {
         return res.status(403).json({ error: "Only admins, managers, the assigned contributor, or the task creator can update this task." });
       }
 
@@ -523,7 +523,7 @@ router.put("/:id", authenticateToken, async (req: any, res: any) => {
       }
     }
 
-    if (!canManageTask && task.creatorId !== req.user.id && task.assigneeId !== req.user.id) {
+    if (!canManageTask && task.creatorId !== req.user!.id && task.assigneeId !== req.user!.id) {
       return res.status(403).json({ error: "Only authorized roles, task creators, or assignees can edit tasks." });
     }
 
@@ -685,33 +685,33 @@ router.put("/:id", authenticateToken, async (req: any, res: any) => {
     if (changes.length > 0) {
       actionStr = `Updated ${changes.join(', ')}`;
     }
-    await logActivity(db, updated.id, req.user.id, actionStr);
+    await logActivity(db, updated.id, req.user!.id, actionStr);
 
     // Notify new assignee if changed
-    if (updated.assigneeId && updated.assigneeId !== task.assigneeId && updated.assigneeId !== req.user.id) {
+    if (updated.assigneeId && updated.assigneeId !== task.assigneeId && updated.assigneeId !== req.user!.id) {
       await eventsService.notifyUser(updated.assigneeId, {
         type: "assignment",
         title: "Task assigned to you",
-        message: `${req.user.name} assigned you to "${updated.title}"`,
+        message: `${req.user!.name} assigned you to "${updated.title}"`,
         link: `/board?taskId=${updated.id}`
       });
     }
 
     // Notify on status change
     if (task.status !== updated.status) {
-      if (task.assigneeId && task.assigneeId !== req.user.id) {
+      if (task.assigneeId && task.assigneeId !== req.user!.id) {
         await eventsService.notifyUser(task.assigneeId, {
           type: "status_change",
           title: "Task status changed",
-          message: `${req.user.name} changed status of "${updated.title}" to ${updated.status}`,
+          message: `${req.user!.name} changed status of "${updated.title}" to ${updated.status}`,
           link: `/board?taskId=${updated.id}`
         });
       }
-      if (task.creatorId && task.creatorId !== req.user.id && task.creatorId !== task.assigneeId) {
+      if (task.creatorId && task.creatorId !== req.user!.id && task.creatorId !== task.assigneeId) {
         await eventsService.notifyUser(task.creatorId, {
           type: "status_change",
           title: "Task status changed",
-          message: `${req.user.name} changed status of "${updated.title}" to ${updated.status}`,
+          message: `${req.user!.name} changed status of "${updated.title}" to ${updated.status}`,
           link: `/board?taskId=${updated.id}`
         });
       }
@@ -744,7 +744,7 @@ router.put("/:id", authenticateToken, async (req: any, res: any) => {
           assigneeId: task.assigneeId,
           priority: task.priority
         },
-        updatedBy: { id: req.user.id, name: req.user.name }
+        updatedBy: { id: req.user!.id, name: req.user!.name }
       });
     }
 
@@ -756,7 +756,7 @@ router.put("/:id", authenticateToken, async (req: any, res: any) => {
 });
 
 // Delete Task
-router.delete("/:id", authenticateToken, async (req: any, res: any) => {
+router.delete("/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const task = await db.get("SELECT * FROM tasks WHERE id = ?", req.params.id);
@@ -773,7 +773,7 @@ router.delete("/:id", authenticateToken, async (req: any, res: any) => {
     if (task.projectId) {
       canManageTask = await isProjectAdminOrOwner(db, task.projectId, req.user);
       if (!canManageTask) {
-        const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [task.projectId, req.user.id]);
+        const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [task.projectId, req.user!.id]);
         if (pm && pm.role !== 'viewer') {
           canManageTask = await hasPermission(req.user, "delete_tasks");
         }
@@ -782,7 +782,7 @@ router.delete("/:id", authenticateToken, async (req: any, res: any) => {
       canManageTask = isAdminOrSuperAdmin(req.user);
     }
 
-    if (!canManageTask && task.creatorId !== req.user.id) {
+    if (!canManageTask && task.creatorId !== req.user!.id) {
       return res.status(403).json({ error: "Only project admins, owners, or the task creator can delete this task." });
     }
 
@@ -826,7 +826,7 @@ router.delete("/:id", authenticateToken, async (req: any, res: any) => {
       webhookService.dispatchProjectEvent(task.projectId, "task.deleted", {
         taskId: task.id,
         title: task.title,
-        deletedBy: { id: req.user.id, name: req.user.name }
+        deletedBy: { id: req.user!.id, name: req.user!.name }
       });
     }
 
@@ -838,7 +838,7 @@ router.delete("/:id", authenticateToken, async (req: any, res: any) => {
 });
 
 // Generate Branch Name
-router.post("/branch", authenticateToken, async (req: any, res: any) => {
+router.post("/branch", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { title, type, projectId } = req.body;
     let projectKey = "";

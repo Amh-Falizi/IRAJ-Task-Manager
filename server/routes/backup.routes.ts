@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Response } from "express";
 import fs from "fs";
 import { dbPromise, activeSqlitePath, PgWrapper } from "../db.js";
 import {
@@ -6,6 +6,7 @@ import {
   requireAdmin,
   requireSuperAdmin
 } from "../middleware/auth.js";
+import { AuthRequest } from "../types.js";
 
 export const backupRouter = express.Router();
 const router = backupRouter;
@@ -16,7 +17,7 @@ const router = backupRouter;
  * and row count statistics across core workspace tables (Users, Tasks, Projects, Teams, Documents).
  * Requires authorization token.
  */
-router.get("/info", authenticateToken, requireAdmin, async (req: any, res: any) => {
+router.get("/info", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const isSqlite = !(db instanceof PgWrapper);
@@ -57,7 +58,7 @@ router.get("/info", authenticateToken, requireAdmin, async (req: any, res: any) 
  * This provides engine-independent database persistence, allowing transfers between SQLite and Postgres.
  * Requires authorization token.
  */
-router.get("/export-json", authenticateToken, requireSuperAdmin, async (req: any, res: any) => {
+router.get("/export-json", authenticateToken, requireSuperAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const backupData: Record<string, any[]> = {};
@@ -113,7 +114,7 @@ export function hasMaskedPlaceholders(obj: any): boolean {
  * Purges all active data in target tables and inserts rows from JSON payload.
  * Requires authorization token.
  */
-router.post("/restore-json", authenticateToken, requireSuperAdmin, async (req: any, res: any) => {
+router.post("/restore-json", authenticateToken, requireSuperAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const backupData = req.body;

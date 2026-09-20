@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { X, Save, ChevronDown } from 'lucide-react';
@@ -28,7 +29,7 @@ export default function UserModal({ user, onClose, onSave }: UserModalProps) {
   useEffect(() => {
     const fetchRoles = async () => {
       try {
-        const res = await fetch('/api/roles', {
+        const res = await apiFetchRaw('/api/roles', {
           headers: { }
         });
         if (res.ok) {
@@ -56,7 +57,7 @@ export default function UserModal({ user, onClose, onSave }: UserModalProps) {
         delete payload.password; // Don't send empty password on edit
       }
 
-      const res = await fetch(url, {
+      const res = await apiFetchRaw(url, {
         method,
         headers: {
           'Content-Type': 'application/json'

@@ -1,8 +1,10 @@
+import { Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { AUTH_COOKIE_NAME, SECRET_KEY } from "../config.js";
 import { dbPromise } from "../db.js";
+import { AuthRequest, AuthenticatedUser } from "../types.js";
 
-export const authenticateToken = (req: any, res: any, next: any) => {
+export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
   const token =
     req.cookies?.[AUTH_COOKIE_NAME] ||
     (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")
@@ -238,7 +240,7 @@ export const canManageRoles = async (user: any): Promise<boolean> => {
   return await hasPermission(user, "manage_roles");
 };
 
-export const requireAdmin = (req: any, res: any, next: any) => {
+export const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
   if (req.user && (isAdminOrSuperAdmin(req.user) || req.user.role === "super_admin")) {
     next();
   } else {
@@ -246,7 +248,7 @@ export const requireAdmin = (req: any, res: any, next: any) => {
   }
 };
 
-export const requireSuperAdmin = (req: any, res: any, next: any) => {
+export const requireSuperAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
   if (req.user && req.user.role === "super_admin") {
     next();
   } else {

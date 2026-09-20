@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -54,13 +55,13 @@ export default function Projects() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch('/api/projects', {
+      const res = await apiFetchRaw('/api/projects', {
         headers: { }
       });
       if (res.ok) {
         setProjects(await res.json());
       }
-      const usersRes = await fetch('/api/users', {
+      const usersRes = await apiFetchRaw('/api/users', {
         headers: { }
       });
       if (usersRes.ok) {
@@ -188,7 +189,7 @@ export default function Projects() {
                           e.preventDefault();
 
                           try {
-                            const res = await fetch(`/api/projects/${project.id}`, {
+                            const res = await apiFetchRaw(`/api/projects/${project.id}`, {
                               method: 'DELETE',
                               headers: { }
                             });
@@ -394,7 +395,7 @@ function CreateProjectModal({ project, onClose, onSuccess }: { project?: Project
     setError(null);
     setSubmitting(true);
     try {
-      const res = await fetch(project ? `/api/projects/${project.id}` : '/api/projects', {
+      const res = await apiFetchRaw(project ? `/api/projects/${project.id}` : '/api/projects', {
         method: project ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json'

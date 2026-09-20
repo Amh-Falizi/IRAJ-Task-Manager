@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -51,7 +52,7 @@ export default function Planning() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users', { headers: { } });
+      const res = await apiFetchRaw('/api/users', { headers: { } });
       if (res.ok) {
         setUsers(await res.json());
       }
@@ -62,7 +63,7 @@ export default function Planning() {
 
   const fetchTasks = async () => {
     try {
-      const res = await fetch('/api/tasks', { headers: { } });
+      const res = await apiFetchRaw('/api/tasks', { headers: { } });
       if (res.ok) {
         let allTasks = await res.json();
         // filter by project
@@ -110,7 +111,7 @@ export default function Planning() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch('/api/projects', {
+      const res = await apiFetchRaw('/api/projects', {
         headers: { }
       });
       if (res.ok) {
@@ -129,7 +130,7 @@ export default function Planning() {
 
   const fetchMilestones = async () => {
     try {
-      const res = await fetch(`/api/projects/${projectId}/milestones`, {
+      const res = await apiFetchRaw(`/api/projects/${projectId}/milestones`, {
         headers: { }
       });
       if (res.ok) {
@@ -150,7 +151,7 @@ export default function Planning() {
         ? `/api/milestones/${editMilestone.id}` 
         : `/api/projects/${projectId}/milestones`;
 
-      const res = await fetch(url, {
+      const res = await apiFetchRaw(url, {
         method,
         headers: {
           'Content-Type': 'application/json'
@@ -170,7 +171,7 @@ export default function Planning() {
   const handleDelete = async (id: string) => {
 
     try {
-      const res = await fetch(`/api/milestones/${id}`, {
+      const res = await apiFetchRaw(`/api/milestones/${id}`, {
         method: 'DELETE',
         headers: { }
       });
@@ -214,7 +215,7 @@ export default function Planning() {
   const handleSaveTask = async (updatedTask: Partial<Task>) => {
     if (!editingTask) return;
     try {
-      const res = await fetch(`/api/tasks/${editingTask.id}`, {
+      const res = await apiFetchRaw(`/api/tasks/${editingTask.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'

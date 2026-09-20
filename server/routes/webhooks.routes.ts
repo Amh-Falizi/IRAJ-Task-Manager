@@ -1,10 +1,11 @@
-import express, { Router } from "express";
+import express, { Router, Response } from "express";
 import crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { authenticateToken, isProjectAdminOrOwner } from "../middleware/auth.js";
 import { dbPromise } from "../db.js";
 import { webhookService, isSafeWebhookUrl } from "../services/webhook.service.js";
 import { encryptSecret } from "../config.js";
+import { AuthRequest } from "../types.js";
 
 export const webhooksRouter = Router();
 
@@ -13,14 +14,14 @@ webhooksRouter.use(
   "/webhooks",
   express.json({
     limit: "5mb",
-    verify: (req: any, _res, buf) => {
+    verify: (req: AuthRequest, _res, buf) => {
       req.rawBody = buf;
     }
   })
 );
 
 // Inbound GitHub webhook endpoint
-webhooksRouter.post("/webhooks/github", async (req: any, res: any) => {
+webhooksRouter.post("/webhooks/github", async (req: AuthRequest, res: Response) => {
   const event = req.headers["x-github-event"] as string;
   const signature = req.headers["x-hub-signature-256"] as string;
   const projectId = req.query.projectId as string | undefined;
@@ -53,7 +54,7 @@ webhooksRouter.post("/webhooks/github", async (req: any, res: any) => {
 });
 
 // Inbound GitLab webhook endpoint
-webhooksRouter.post("/webhooks/gitlab", async (req: any, res: any) => {
+webhooksRouter.post("/webhooks/gitlab", async (req: AuthRequest, res: Response) => {
   const event = req.headers["x-gitlab-event"] as string;
   const token = req.headers["x-gitlab-token"] as string;
   const projectId = req.query.projectId as string | undefined;
@@ -85,7 +86,7 @@ webhooksRouter.post("/webhooks/gitlab", async (req: any, res: any) => {
 });
 
 // List outbound webhooks for a project
-webhooksRouter.get("/projects/:projectId/webhooks", authenticateToken, async (req: any, res: any) => {
+webhooksRouter.get("/projects/:projectId/webhooks", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const { projectId } = req.params;
@@ -124,7 +125,7 @@ webhooksRouter.get("/projects/:projectId/webhooks", authenticateToken, async (re
 });
 
 // Create outbound webhook for a project
-webhooksRouter.post("/projects/:projectId/webhooks", authenticateToken, async (req: any, res: any) => {
+webhooksRouter.post("/projects/:projectId/webhooks", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const { projectId } = req.params;
@@ -169,7 +170,7 @@ webhooksRouter.post("/projects/:projectId/webhooks", authenticateToken, async (r
 });
 
 // Delete outbound webhook
-webhooksRouter.delete("/projects/:projectId/webhooks/:webhookId", authenticateToken, async (req: any, res: any) => {
+webhooksRouter.delete("/projects/:projectId/webhooks/:webhookId", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const { projectId, webhookId } = req.params;
@@ -190,7 +191,7 @@ webhooksRouter.delete("/projects/:projectId/webhooks/:webhookId", authenticateTo
 });
 
 // Test trigger an outbound webhook
-webhooksRouter.post("/projects/:projectId/webhooks/:webhookId/test", authenticateToken, async (req: any, res: any) => {
+webhooksRouter.post("/projects/:projectId/webhooks/:webhookId/test", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const { projectId, webhookId } = req.params;
@@ -214,9 +215,9 @@ webhooksRouter.post("/projects/:projectId/webhooks/:webhookId/test", authenticat
       test: true,
       message: "This is a test delivery from DevTeam Task Manager",
       triggeredBy: {
-        id: req.user.id,
-        name: req.user.name,
-        email: req.user.email
+        id: req.user!.id,
+        name: req.user!.name,
+        email: req.user!.email
       }
     });
 
@@ -228,7 +229,7 @@ webhooksRouter.post("/projects/:projectId/webhooks/:webhookId/test", authenticat
 });
 
 // List recent deliveries for a webhook
-webhooksRouter.get("/projects/:projectId/webhooks/:webhookId/deliveries", authenticateToken, async (req: any, res: any) => {
+webhooksRouter.get("/projects/:projectId/webhooks/:webhookId/deliveries", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
     const { projectId, webhookId } = req.params;

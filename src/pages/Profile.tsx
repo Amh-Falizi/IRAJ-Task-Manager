@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
@@ -146,7 +147,7 @@ export default function Profile() {
   useEffect(() => {
     const fetchIntegrationsStatus = async () => {
       try {
-        const res = await fetch("/api/integrations/status", {
+        const res = await apiFetchRaw("/api/integrations/status", {
           headers: { }
         });
         if (res.ok) {
@@ -176,7 +177,7 @@ export default function Profile() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await fetch("/api/users/me/stats", {
+        const res = await apiFetchRaw("/api/users/me/stats", {
           headers: { }
         });
         if (res.ok) {
@@ -198,7 +199,7 @@ export default function Profile() {
   const fetchDbInfo = async () => {
     setLoadingInfo(true);
     try {
-      const res = await fetch("/api/backup/info", {
+      const res = await apiFetchRaw("/api/backup/info", {
         headers: { }
       });
       if (res.ok) {
@@ -227,7 +228,7 @@ export default function Profile() {
    */
   const handleJsonDownload = async () => {
     try {
-      const res = await fetch("/api/backup/export-json", {
+      const res = await apiFetchRaw("/api/backup/export-json", {
         headers: { }
       });
       if (res.ok) {
@@ -267,7 +268,7 @@ export default function Profile() {
       const text = await file.text();
       const jsonData = JSON.parse(text);
       
-      const res = await fetch("/api/backup/restore-json", {
+      const res = await apiFetchRaw("/api/backup/restore-json", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -294,7 +295,7 @@ export default function Profile() {
   const saveSkills = async (newSkillsList: { id: string, name: string }[]) => {
     try {
       const stringSkills = newSkillsList.map(s => s.name);
-      const res = await fetch("/api/users/me", {
+      const res = await apiFetchRaw("/api/users/me", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -332,7 +333,7 @@ export default function Profile() {
 
     setPasswordSaving(true);
     try {
-      const res = await fetch("/api/users/me/password", {
+      const res = await apiFetchRaw("/api/users/me/password", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -380,7 +381,7 @@ export default function Profile() {
 
     setSaving(true);
     try {
-      const res = await fetch("/api/users/me", {
+      const res = await apiFetchRaw("/api/users/me", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

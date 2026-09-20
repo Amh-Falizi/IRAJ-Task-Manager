@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Navigate, Link } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
@@ -42,9 +43,9 @@ export default function CalendarView() {
   const fetchData = async () => {
     try {
       const [tasksRes, usersRes, projectsRes] = await Promise.all([
-        fetch('/api/tasks', { headers: { } }),
-        fetch('/api/users', { headers: { } }),
-        fetch('/api/projects', { headers: { } })
+        apiFetchRaw('/api/tasks', { headers: { } }),
+        apiFetchRaw('/api/users', { headers: { } }),
+        apiFetchRaw('/api/projects', { headers: { } })
       ]);
       const tasksData = await tasksRes.json();
       const usersData = await usersRes.json();
@@ -73,7 +74,7 @@ export default function CalendarView() {
 
   const handleUpdateTask = async (taskId: string, currentTask: Task, updates: Partial<Task>) => {
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await apiFetchRaw(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json' 
@@ -92,7 +93,7 @@ export default function CalendarView() {
     const method = isEdit ? 'PUT' : 'POST';
 
     try {
-      const res = await fetch(url, {
+      const res = await apiFetchRaw(url, {
         method,
         headers: {
           'Content-Type': 'application/json'
@@ -117,7 +118,7 @@ export default function CalendarView() {
   const handleDeleteTask = async (taskId: string) => {
 
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await apiFetchRaw(`/api/tasks/${taskId}`, {
         method: 'DELETE',
         headers: { }
       });

@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSearchParams, Link, Navigate } from 'react-router';
@@ -36,7 +37,7 @@ export default function Documents() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch('/api/projects', {
+      const res = await apiFetchRaw('/api/projects', {
         headers: { }
       });
       if (res.ok) {
@@ -55,7 +56,7 @@ export default function Documents() {
 
   const fetchDocuments = async () => {
     try {
-      const res = await fetch(`/api/projects/${projectId}/documents`, {
+      const res = await apiFetchRaw(`/api/projects/${projectId}/documents`, {
         headers: { }
       });
       if (res.ok) {
@@ -110,7 +111,7 @@ export default function Documents() {
         ? `/api/documents/${documentId}` 
         : `/api/projects/${projectId}/documents`;
         
-      const res = await fetch(url, {
+      const res = await apiFetchRaw(url, {
         method,
         headers: {
           'Content-Type': 'application/json'
@@ -136,7 +137,7 @@ export default function Documents() {
     e.preventDefault();
     e.stopPropagation();
     try {
-      const res = await fetch(`/api/documents/${id}`, {
+      const res = await apiFetchRaw(`/api/documents/${id}`, {
         method: 'DELETE',
         headers: { }
       });

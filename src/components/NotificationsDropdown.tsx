@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Bell,
@@ -54,7 +55,7 @@ export default function NotificationsDropdown({ expanded, compact }: { expanded?
 
     try {
       // 1. Fetch persistent server notifications
-      const notifRes = await fetch('/api/notifications', { signal });
+      const notifRes = await apiFetchRaw('/api/notifications', { signal });
       let serverNotifs: AppNotification[] = [];
       if (notifRes.ok) {
         const notifData = await notifRes.json();
@@ -70,7 +71,7 @@ export default function NotificationsDropdown({ expanded, compact }: { expanded?
       }
 
       // 2. Fetch deadline-based notifications
-      const tasksRes = await fetch('/api/tasks', {
+      const tasksRes = await apiFetchRaw('/api/tasks', {
         headers: { 'X-Silent-Fetch': 'true' },
         signal
       });
@@ -181,7 +182,7 @@ export default function NotificationsDropdown({ expanded, compact }: { expanded?
       localStorage.setItem(`notifications_${user.id}`, JSON.stringify(readState));
     } else {
       try {
-        await fetch(`/api/notifications/${notif.id}/read`, { method: 'PATCH' });
+        await apiFetchRaw(`/api/notifications/${notif.id}/read`, { method: 'PATCH' });
       } catch (err) {
         console.warn('Failed marking notification as read on server:', err);
       }
@@ -206,7 +207,7 @@ export default function NotificationsDropdown({ expanded, compact }: { expanded?
 
     // Update server
     try {
-      await fetch('/api/notifications/read-all', { method: 'POST' });
+      await apiFetchRaw('/api/notifications/read-all', { method: 'POST' });
     } catch (err) {
       console.warn('Failed marking all as read on server:', err);
     }

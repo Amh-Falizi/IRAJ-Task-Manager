@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
@@ -15,6 +15,7 @@ import {
   clearAuthCookie
 } from "../config.js";
 import { authenticateToken } from "../middleware/auth.js";
+import { AuthRequest } from "../types.js";
 
 export const authRouter = express.Router();
 const router = authRouter;
@@ -147,7 +148,7 @@ router.post("/login", async (req, res) => {
 });
 
 // Logout
-router.post("/logout", async (req: any, res: any) => {
+router.post("/logout", async (req: AuthRequest, res: Response) => {
   try {
     const authHeader = req.headers["authorization"];
     const rawBearer = authHeader && authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
@@ -792,9 +793,9 @@ router.get(["/github/callback", "/github/callback/"], async (req: any, res: any)
 });
 
 // Get Me
-router.get("/me", authenticateToken, async (req: any, res: any) => {
+router.get("/me", authenticateToken, async (req: AuthRequest, res: Response) => {
   const db = await dbPromise;
-  const user = await db.get("SELECT id, name, email, role, skills, rolePrefix, status FROM users WHERE id = ?", req.user.id);
+  const user = await db.get("SELECT id, name, email, role, skills, rolePrefix, status FROM users WHERE id = ?", req.user!.id);
   if (!user) return res.sendStatus(404);
 
   const permissions = await getUserPermissions(db, user.role);

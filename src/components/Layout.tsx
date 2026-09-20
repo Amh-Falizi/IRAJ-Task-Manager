@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
@@ -47,7 +48,7 @@ export default function Layout() {
   React.useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const res = await fetch('/api/integrations/status', {
+        const res = await apiFetchRaw('/api/integrations/status', {
           headers: { }
         });
         if (res.ok) {

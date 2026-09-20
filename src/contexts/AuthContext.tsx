@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { User } from "../types";
-import { onUnauthorized } from "../lib/api";
+import { apiFetchRaw, onUnauthorized } from "../lib/api";
 
 interface AuthContextType {
   user: User | null;
@@ -39,7 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshSettings = useCallback(async () => {
     try {
-      const res = await fetch('/api/settings');
+      const res = await apiFetchRaw('/api/settings');
       if (res.ok) {
         const data = await res.json();
         setSettings(prev => ({ ...prev, ...data }));
@@ -50,7 +50,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const updateSettings = async (newSettings: Record<string, string>) => {
-    const res = await fetch('/api/settings', {
+    const res = await apiFetchRaw('/api/settings', {
       method: "PUT",
       headers: {
         "Content-Type": "application/json"
@@ -68,7 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refetchUser = useCallback(async (): Promise<User | null> => {
     try {
-      const res = await fetch('/api/auth/me', {
+      const res = await apiFetchRaw('/api/auth/me', {
         headers: { 
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache',
@@ -120,7 +120,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     cleanupLocalStorage();
     setUser(null);
-    fetch('/api/auth/logout', { method: 'POST' }).catch((err) => console.error("Logout request error:", err));
+    apiFetchRaw('/api/auth/logout', { method: 'POST' }).catch((err) => console.error("Logout request error:", err));
   };
 
   const updateUser = (updatedUser: User) => {

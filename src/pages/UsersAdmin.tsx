@@ -1,3 +1,4 @@
+import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -42,7 +43,7 @@ export default function UsersAdmin() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users', {
+      const res = await apiFetchRaw('/api/users', {
         headers: { }
       });
       if (res.ok) {
@@ -55,7 +56,7 @@ export default function UsersAdmin() {
 
   const fetchRoles = async () => {
     try {
-      const res = await fetch('/api/roles', {
+      const res = await apiFetchRaw('/api/roles', {
         headers: { }
       });
       if (res.ok) {
@@ -83,7 +84,7 @@ export default function UsersAdmin() {
       return;
     }
     try {
-      const res = await fetch(`/api/users/${userToDelete.id}`, {
+      const res = await apiFetchRaw(`/api/users/${userToDelete.id}`, {
         method: 'DELETE',
         headers: { }
       });
@@ -112,7 +113,7 @@ export default function UsersAdmin() {
       const url = isEdit ? `/api/roles/${editingRole.id}` : '/api/roles';
       const method = isEdit ? 'PUT' : 'POST';
 
-      const res = await fetch(url, {
+      const res = await apiFetchRaw(url, {
         method,
         headers: {
           'Content-Type': 'application/json'
@@ -137,7 +138,7 @@ export default function UsersAdmin() {
       return;
     }
     try {
-      const res = await fetch(`/api/roles/${roleId}`, {
+      const res = await apiFetchRaw(`/api/roles/${roleId}`, {
         method: 'DELETE',
         headers: { }
       });
@@ -183,7 +184,7 @@ export default function UsersAdmin() {
 
     setUpdatingBulk(true);
     try {
-      const res = await fetch('/api/users/bulk/role', {
+      const res = await apiFetchRaw('/api/users/bulk/role', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
