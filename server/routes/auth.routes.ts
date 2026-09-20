@@ -128,26 +128,7 @@ router.post("/login", async (req, res) => {
     const token = jwt.sign({ id: user.id, role: user.role, tokenVersion }, SECRET_KEY, { expiresIn: "7d" });
     setAuthCookie(res, token);
     
-    let permissions: Record<string, boolean> = {};
-    if (user.role === "super_admin") {
-      permissions = {
-        create_tasks: true,
-        edit_all_tasks: true,
-        delete_tasks: true,
-        manage_projects: true,
-        manage_teams: true,
-        manage_users: true,
-        manage_roles: true,
-        reset_database: true
-      };
-    } else {
-      const roleRow = await db.get("SELECT permissions FROM roles WHERE id = ?", user.role);
-      if (roleRow?.permissions) {
-        try {
-          permissions = typeof roleRow.permissions === 'string' ? JSON.parse(roleRow.permissions) : roleRow.permissions;
-        } catch (e) {}
-      }
-    }
+    const permissions = await getUserPermissions(db, user.role);
 
     res.json({
       user: {
@@ -327,6 +308,28 @@ const verifyOAuthState = async (db: any, req: any, provider: string, state: any)
   }
 };
 
+export const getUserPermissions = async (db: any, role: string): Promise<Record<string, boolean>> => {
+  if (role === "super_admin") {
+    return {
+      create_tasks: true,
+      edit_all_tasks: true,
+      delete_tasks: true,
+      manage_projects: true,
+      manage_teams: true,
+      manage_users: true,
+      manage_roles: true,
+      reset_database: true
+    };
+  }
+  const roleRow = await db.get("SELECT permissions FROM roles WHERE id = ?", role);
+  if (roleRow?.permissions) {
+    try {
+      return typeof roleRow.permissions === 'string' ? JSON.parse(roleRow.permissions) : roleRow.permissions;
+    } catch (e) {}
+  }
+  return {};
+};
+
 const validateAndGetOAuthRole = async (db: any, email: string): Promise<string> => {
   const userCount = await db.get("SELECT COUNT(*) as count FROM users");
   const count = Number(userCount?.count || 0);
@@ -344,8 +347,18 @@ const validateAndGetOAuthRole = async (db: any, email: string): Promise<string> 
     }
   }
 
-  if (process.env.OAUTH_AUTO_REGISTER === "false") {
-    throw new Error("Self-registration via OAuth is disabled. Please contact your administrator.");
+  const isProd = process.env.NODE_ENV === "production";
+  const isAutoRegisterExplicitlyEnabled = process.env.OAUTH_AUTO_REGISTER === "true";
+  const isAutoRegisterExplicitlyDisabled = process.env.OAUTH_AUTO_REGISTER === "false";
+
+  // In production, default OAuth registration to disabled unless explicitly enabled.
+  // In development, allow auto-registration unless explicitly disabled.
+  const isAutoRegisterAllowed = isProd 
+    ? isAutoRegisterExplicitlyEnabled 
+    : !isAutoRegisterExplicitlyDisabled;
+
+  if (!isAutoRegisterAllowed) {
+    throw new Error("Self-registration via OAuth is disabled in production. An invitation or administrator setup is required.");
   }
 
   return "developer";
@@ -494,7 +507,8 @@ router.get("/gitlab/callback", async (req: any, res: any) => {
     const tokenVersion = user.tokenVersion || 1;
     const token = jwt.sign({ id: user.id, role: user.role, tokenVersion }, SECRET_KEY, { expiresIn: "7d" });
     setAuthCookie(res, token);
-    const userPayload = safeJsonForScriptTag({ id: user.id, name: user.name, email: user.email, role: user.role });
+    const permissions = await getUserPermissions(db, user.role);
+    const userPayload = safeJsonForScriptTag({ id: user.id, name: user.name, email: user.email, role: user.role, permissions });
 
     res.send(`
       <!DOCTYPE html>
@@ -606,7 +620,8 @@ router.get(["/google/callback", "/google/callback/"], async (req: any, res: any)
     const tokenVersion = user.tokenVersion || 1;
     const token = jwt.sign({ id: user.id, role: user.role, tokenVersion }, SECRET_KEY, { expiresIn: "7d" });
     setAuthCookie(res, token);
-    const userPayload = safeJsonForScriptTag({ id: user.id, name: user.name, email: user.email, role: user.role });
+    const permissions = await getUserPermissions(db, user.role);
+    const userPayload = safeJsonForScriptTag({ id: user.id, name: user.name, email: user.email, role: user.role, permissions });
 
     res.send(`
       <!DOCTYPE html>
@@ -740,7 +755,8 @@ router.get(["/github/callback", "/github/callback/"], async (req: any, res: any)
     const tokenVersion = user.tokenVersion || 1;
     const token = jwt.sign({ id: user.id, role: user.role, tokenVersion }, SECRET_KEY, { expiresIn: "7d" });
     setAuthCookie(res, token);
-    const userPayload = safeJsonForScriptTag({ id: user.id, name: user.name, email: user.email, role: user.role });
+    const permissions = await getUserPermissions(db, user.role);
+    const userPayload = safeJsonForScriptTag({ id: user.id, name: user.name, email: user.email, role: user.role, permissions });
 
     res.send(`
       <!DOCTYPE html>
@@ -781,26 +797,7 @@ router.get("/me", authenticateToken, async (req: any, res: any) => {
   const user = await db.get("SELECT id, name, email, role, skills, rolePrefix, status FROM users WHERE id = ?", req.user.id);
   if (!user) return res.sendStatus(404);
 
-  let permissions: Record<string, boolean> = {};
-  if (user.role === "super_admin") {
-    permissions = {
-      create_tasks: true,
-      edit_all_tasks: true,
-      delete_tasks: true,
-      manage_projects: true,
-      manage_teams: true,
-      manage_users: true,
-      manage_roles: true,
-      reset_database: true
-    };
-  } else {
-    const roleRow = await db.get("SELECT permissions FROM roles WHERE id = ?", user.role);
-    if (roleRow?.permissions) {
-      try {
-        permissions = typeof roleRow.permissions === 'string' ? JSON.parse(roleRow.permissions) : roleRow.permissions;
-      } catch (e) {}
-    }
-  }
+  const permissions = await getUserPermissions(db, user.role);
 
   res.json({
     id: user.id,

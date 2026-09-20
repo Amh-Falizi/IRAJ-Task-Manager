@@ -111,6 +111,8 @@ export const checkProjectWriteAccess = async (
   projectId: string,
   user: any
 ): Promise<boolean> => {
+  if (!user) return false;
+  if (user.role === "viewer") return false;
   if (isAdminOrSuperAdmin(user)) return true;
 
   const project = await db.get("SELECT ownerId FROM projects WHERE id = ?", projectId);
@@ -130,7 +132,19 @@ export const checkProjectWriteAccess = async (
     "SELECT 1 FROM team_projects tp JOIN team_members tm ON tp.teamId = tm.teamId WHERE tp.projectId = ? AND tm.userId = ?",
     [projectId, user.id]
   );
-  if (tm) return true;
+  if (tm) {
+    // Verify user role does not have write permissions disabled
+    const roleRow = await db.get("SELECT permissions FROM roles WHERE id = ?", user.role);
+    if (roleRow?.permissions) {
+      try {
+        const perms = typeof roleRow.permissions === 'string' ? JSON.parse(roleRow.permissions) : roleRow.permissions;
+        if (perms.create_tasks === false && perms.edit_all_tasks === false) {
+          return false;
+        }
+      } catch (e) {}
+    }
+    return true;
+  }
 
   return false;
 };

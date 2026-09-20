@@ -10,6 +10,7 @@
     "start": "cross-env NODE_ENV=production node dist/server.cjs",
     "clean": "node -e \"try { fs.rmSync('dist', { recursive: true, force: true }); } catch (e) {}\"",
     "lint": "tsc --noEmit",
+    "test": "tsx --test tests/**/*.test.ts",
     "db-cli": "tsx scripts/db-cli.ts"
   },
   "dependencies": {

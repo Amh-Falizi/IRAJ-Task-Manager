@@ -70,26 +70,7 @@ router.get("/export-json", authenticateToken, requireSuperAdmin, async (req: any
 
     for (const table of tables) {
       try {
-        let rows = await db.all(`SELECT * FROM ${table}`);
-        if (table === 'projects') {
-          rows = rows.map((p: any) => ({
-            ...p,
-            repoToken: p.repoToken ? '••••••••' : null,
-            webhookSecret: p.webhookSecret ? '••••••••' : null
-          }));
-        }
-        if (table === 'webhooks') {
-          rows = rows.map((w: any) => ({
-            ...w,
-            secret: w.secret ? '••••••••' : null
-          }));
-        }
-        if (table === 'users') {
-          rows = rows.map((u: any) => ({
-            ...u,
-            passwordHash: '••••••••'
-          }));
-        }
+        const rows = await db.all(`SELECT * FROM ${table}`);
         backupData[table] = rows;
       } catch (e) {
         backupData[table] = [];

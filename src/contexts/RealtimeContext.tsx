@@ -24,6 +24,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const { user, isAuthenticated } = useAuth();
   const { info } = useToast();
   const [isConnected, setIsConnected] = useState(false);
+  const isConnectedRef = useRef(false);
   const [lastEvent, setLastEvent] = useState<RealtimeEvent | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef(0);
@@ -44,12 +45,14 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
       eventSource.onopen = () => {
         if (!isCancelledRef.current) {
+          isConnectedRef.current = true;
           setIsConnected(true);
           retryCountRef.current = 0; // Reset retry counter on successful open
         }
       };
 
       eventSource.addEventListener('connected', () => {
+        isConnectedRef.current = true;
         setIsConnected(true);
         retryCountRef.current = 0;
       });
@@ -119,6 +122,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       });
 
       eventSource.onerror = () => {
+        isConnectedRef.current = false;
         setIsConnected(false);
         if (eventSourceRef.current) {
           eventSourceRef.current.close();
@@ -154,6 +158,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     isCancelledRef.current = false;
 
     if (!isAuthenticated || !user) {
+      isConnectedRef.current = false;
       setIsConnected(false);
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -165,7 +170,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     connect();
 
     const handleFocus = () => {
-      if (!isConnected && isAuthenticated && !isCancelledRef.current) {
+      if (!isConnectedRef.current && isAuthenticated && !isCancelledRef.current) {
         retryCountRef.current = 0;
         connect();
       }
@@ -183,9 +188,10 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
       }
+      isConnectedRef.current = false;
       setIsConnected(false);
     };
-  }, [isAuthenticated, user, connect, isConnected]);
+  }, [isAuthenticated, user?.id, connect]);
 
   const handleManualReconnect = useCallback(() => {
     retryCountRef.current = 0;

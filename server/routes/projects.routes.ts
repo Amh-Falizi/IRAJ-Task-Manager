@@ -8,6 +8,7 @@ import {
   isAdminOrSuperAdmin,
   isProjectAdminOrOwner,
   checkProjectAccess,
+  checkProjectWriteAccess,
   checkTaskAccess,
   hasPermission,
   getAccessibleProjects
@@ -546,8 +547,8 @@ router.get("/projects/:id/git/branches", authenticateToken, async (req: any, res
 router.post("/projects/:id/git/branches", authenticateToken, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
-    if (!(await checkProjectAccess(db, req.params.id, req.user))) {
-      return res.status(403).json({ error: "Access denied to project git branches." });
+    if (!(await checkProjectWriteAccess(db, req.params.id, req.user))) {
+      return res.status(403).json({ error: "Access denied. Write access to project is required to create branches." });
     }
     const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
     if (!project) return res.status(404).json({ error: "Project not found" });
@@ -728,8 +729,8 @@ router.post("/projects/:id/git/branches", authenticateToken, async (req: any, re
 router.post("/projects/:id/git/pull-requests", authenticateToken, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
-    if (!(await checkProjectAccess(db, req.params.id, req.user))) {
-      return res.status(403).json({ error: "Access denied to project git pull requests." });
+    if (!(await checkProjectWriteAccess(db, req.params.id, req.user))) {
+      return res.status(403).json({ error: "Access denied. Write access to project is required to create pull requests." });
     }
     const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
     if (!project) return res.status(404).json({ error: "Project not found" });
@@ -935,8 +936,8 @@ router.put("/projects/:id/columns", authenticateToken, async (req: any, res: any
 router.post("/projects/:id/git/pull-requests/sync", authenticateToken, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
-    if (!(await checkProjectAccess(db, req.params.id, req.user))) {
-      return res.status(403).json({ error: "Access denied to project git pull requests." });
+    if (!(await checkProjectWriteAccess(db, req.params.id, req.user))) {
+      return res.status(403).json({ error: "Access denied. Write access to project is required to sync pull requests." });
     }
     const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
     if (!project) return res.status(404).json({ error: "Project not found" });

@@ -33,10 +33,16 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
   const { success, error, info } = useToast();
   const { gitEnabled } = useGitFeature();
   const isEdit = !!task;
-  const isDeveloper = user?.role === 'developer';
-  const canEdit = isDeveloper 
-    ? (isEdit && user?.id === task?.assigneeId)
-    : (user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'manager' || user?.id === task?.creatorId || user?.id === task?.assigneeId);
+  const isSuperAdmin = user?.role === 'super_admin';
+  const canEditAllTasks = isSuperAdmin || user?.permissions?.edit_all_tasks === true || user?.role === 'admin' || user?.role === 'manager';
+  const canDeleteTasks = isSuperAdmin || user?.permissions?.delete_tasks === true || user?.role === 'admin' || user?.role === 'manager';
+  const canCreateTasks = isSuperAdmin || user?.permissions?.create_tasks !== false;
+  // Developers or non-managers editing existing tasks can update progress and comments but not administrative task metadata
+  const isDeveloper = !canEditAllTasks && isEdit;
+
+  const canEdit = !isEdit
+    ? canCreateTasks
+    : (canEditAllTasks || user?.id === task?.creatorId || user?.id === task?.assigneeId);
   const [isViewMode, setIsViewMode] = useState(isEdit);
 
   const getStatusTitle = (id: string) => columns?.find(c => c.id === id)?.title || id.replace('_', ' ');
@@ -346,7 +352,7 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
               </div>
             </div>
             <div className="flex items-center space-x-2 shrink-0">
-              {onDeleteTask && !isDeveloper && (user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'manager' || user?.id === task.creatorId) && (
+              {onDeleteTask && (canDeleteTasks || user?.id === task.creatorId) && (
                 <button
                   onClick={() => {
                     onDeleteTask(task.id);
