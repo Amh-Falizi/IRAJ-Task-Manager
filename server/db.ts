@@ -231,18 +231,23 @@ export async function purgeStaleUnverifiedUsers(db: any) {
 
 export async function initDb(): Promise<DatabaseWrapper> {
   let db: DatabaseWrapper;
-  const isDefaultPg = !process.env.DATABASE_URL || process.env.DATABASE_URL === "postgres://user:password@localhost:5432/dbname";
+  const rawUrl = process.env.DATABASE_URL ? process.env.DATABASE_URL.trim() : "";
+  const isPgConfigured = /^postgres(ql)?:\/\//i.test(rawUrl) && rawUrl !== "postgres://user:password@localhost:5432/dbname";
   
   let usePg = false;
-  if (!isDefaultPg) {
+  if (isPgConfigured) {
     try {
-      const pgTest = new PgWrapper(DATABASE_URL);
+      const pgTest = new PgWrapper(rawUrl);
       await pgTest.testConnection();
       db = pgTest;
       usePg = true;
       console.log("Connected to PostgreSQL successfully");
     } catch (e: any) {
-      console.warn("PostgreSQL connection failed, falling back to SQLite:", e.message);
+      if (process.env.NODE_ENV === "production" || process.env.FAIL_ON_DB_CONNECT_ERROR === "true") {
+        console.error("FATAL: Configured PostgreSQL connection failed in production mode:", e.message);
+        throw new Error(`Configured PostgreSQL connection failed: ${e.message}`);
+      }
+      console.warn("PostgreSQL connection failed in development, falling back to SQLite:", e.message);
     }
   } else {
     console.log("Using SQLite database engine");
@@ -640,34 +645,9 @@ async function runMigrations(db: DatabaseWrapper) {
   try {
     await runMigrations(db);
     await purgeStaleUnverifiedUsers(db);
-
-    const JSON_DB_FILE = path.join(process.cwd(), "db.json");
-    if (fs.existsSync(JSON_DB_FILE)) {
-      try {
-        const data = JSON.parse(fs.readFileSync(JSON_DB_FILE, "utf-8"));
-        const userCount = await db.get("SELECT COUNT(*) as count FROM users");
-        if (Number(userCount.count) === 0 && data.users && data.users.length > 0) {
-          for (const u of data.users) {
-            await db.run(
-              "INSERT INTO users (id, name, email, passwordHash, role) VALUES (?, ?, ?, ?, ?)",
-              [u.id, u.name, u.email, u.passwordHash, u.role]
-            );
-          }
-          for (const t of data.tasks) {
-            await db.run(
-              "INSERT INTO tasks (id, title, description, status, priority, deadline, assigneeId, creatorId, branchName, parentId, projectId, milestoneId, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-              [t.id, t.title, t.description, t.status, t.priority, t.deadline, t.assigneeId, t.creatorId, t.branchName, t.parentId || null, t.projectId || null, t.milestoneId || null, t.createdAt]
-            );
-          }
-          console.log("Migrated data from db.json to database.sqlite");
-        }
-        fs.renameSync(JSON_DB_FILE, JSON_DB_FILE + ".bak");
-      } catch (e) {
-        console.error("Migration error", e);
-      }
-    }
   } catch (error) {
-    console.warn("DB Migration Error:", error);
+    console.error("FATAL DB Migration Error:", error);
+    throw error;
   }
 
   return db;

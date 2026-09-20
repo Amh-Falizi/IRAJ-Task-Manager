@@ -7,14 +7,13 @@ export const authenticateToken = (req: any, res: any, next: any) => {
     req.cookies?.[AUTH_COOKIE_NAME] ||
     (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")
       ? req.headers.authorization.slice(7)
-      : null) ||
-    req.query?.token;
+      : null);
 
   if (!token) return res.sendStatus(401);
 
   let decodedUser: any = null;
   try {
-    decodedUser = jwt.verify(token, SECRET_KEY);
+    decodedUser = jwt.verify(token, SECRET_KEY, { algorithms: ["HS256"] });
   } catch (err) {
     return res.sendStatus(403);
   }
@@ -93,6 +92,39 @@ export const checkProjectAccess = async (
     [projectId, user.id]
   );
   if (pm) return true;
+
+  const tm = await db.get(
+    "SELECT 1 FROM team_projects tp JOIN team_members tm ON tp.teamId = tm.teamId WHERE tp.projectId = ? AND tm.userId = ?",
+    [projectId, user.id]
+  );
+  if (tm) return true;
+
+  return false;
+};
+
+/**
+ * Validates that the user has write/mutation access to the project.
+ * Viewers (role === 'viewer') have read-only access and are denied write access.
+ */
+export const checkProjectWriteAccess = async (
+  db: any,
+  projectId: string,
+  user: any
+): Promise<boolean> => {
+  if (isAdminOrSuperAdmin(user)) return true;
+
+  const project = await db.get("SELECT ownerId FROM projects WHERE id = ?", projectId);
+  if (!project) return false;
+  if (project.ownerId === user.id) return true;
+
+  const pm = await db.get(
+    "SELECT role FROM project_members WHERE projectId = ? AND userId = ?",
+    [projectId, user.id]
+  );
+  if (pm) {
+    if (pm.role === "viewer") return false;
+    return true;
+  }
 
   const tm = await db.get(
     "SELECT 1 FROM team_projects tp JOIN team_members tm ON tp.teamId = tm.teamId WHERE tp.projectId = ? AND tm.userId = ?",

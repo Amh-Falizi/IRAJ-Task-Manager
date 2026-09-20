@@ -127,7 +127,38 @@ router.post("/login", async (req, res) => {
     const tokenVersion = user.tokenVersion || 1;
     const token = jwt.sign({ id: user.id, role: user.role, tokenVersion }, SECRET_KEY, { expiresIn: "7d" });
     setAuthCookie(res, token);
-    res.json({ user: { id: user.id, name: user.name, email: user.email, role: user.role, rolePrefix: user.rolePrefix || "" } });
+    
+    let permissions: Record<string, boolean> = {};
+    if (user.role === "super_admin") {
+      permissions = {
+        create_tasks: true,
+        edit_all_tasks: true,
+        delete_tasks: true,
+        manage_projects: true,
+        manage_teams: true,
+        manage_users: true,
+        manage_roles: true,
+        reset_database: true
+      };
+    } else {
+      const roleRow = await db.get("SELECT permissions FROM roles WHERE id = ?", user.role);
+      if (roleRow?.permissions) {
+        try {
+          permissions = typeof roleRow.permissions === 'string' ? JSON.parse(roleRow.permissions) : roleRow.permissions;
+        } catch (e) {}
+      }
+    }
+
+    res.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        permissions,
+        rolePrefix: user.rolePrefix || ""
+      }
+    });
   } catch (e: any) {
     console.error("LOGIN ERROR:", e);
     res.status(500).json({ error: "An unexpected error occurred during login." });
@@ -144,7 +175,7 @@ router.post("/logout", async (req: any, res: any) => {
 
     if (token) {
       try {
-        const decoded: any = jwt.verify(token, SECRET_KEY);
+        const decoded: any = jwt.verify(token, SECRET_KEY, { algorithms: ["HS256"] });
         if (decoded?.id) {
           const db = await dbPromise;
           await db.run("UPDATE users SET tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?", decoded.id);
@@ -296,6 +327,30 @@ const verifyOAuthState = async (db: any, req: any, provider: string, state: any)
   }
 };
 
+const validateAndGetOAuthRole = async (db: any, email: string): Promise<string> => {
+  const userCount = await db.get("SELECT COUNT(*) as count FROM users");
+  const count = Number(userCount?.count || 0);
+  if (count === 0) {
+    return "super_admin";
+  }
+
+  const allowedDomains = process.env.OAUTH_ALLOWED_DOMAINS
+    ? process.env.OAUTH_ALLOWED_DOMAINS.split(",").map((d: string) => d.trim().toLowerCase()).filter(Boolean)
+    : [];
+  if (allowedDomains.length > 0) {
+    const userDomain = email.split("@")[1];
+    if (!userDomain || !allowedDomains.includes(userDomain)) {
+      throw new Error(`Email domain @${userDomain} is not authorized for OAuth sign-in.`);
+    }
+  }
+
+  if (process.env.OAUTH_AUTO_REGISTER === "false") {
+    throw new Error("Self-registration via OAuth is disabled. Please contact your administrator.");
+  }
+
+  return "developer";
+};
+
 // GitLab OAuth
 const getSafeOAuthRedirectUri = (req: any, provider: string) => {
   const defaultBase = getAppUrl(req);
@@ -415,8 +470,8 @@ router.get("/gitlab/callback", async (req: any, res: any) => {
     let user = await db.get("SELECT * FROM users WHERE email = ? ", email);
 
     if (!user) {
+      const role = await validateAndGetOAuthRole(db, email);
       const id = uuidv4();
-      const role = "developer";
       const randomPassword = crypto.randomBytes(32).toString('hex');
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(randomPassword, salt);
@@ -527,8 +582,8 @@ router.get(["/google/callback", "/google/callback/"], async (req: any, res: any)
     let user = await db.get("SELECT * FROM users WHERE email = ? ", email);
 
     if (!user) {
+      const role = await validateAndGetOAuthRole(db, email);
       const id = uuidv4();
-      const role = "developer";
       const randomPassword = crypto.randomBytes(32).toString('hex');
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(randomPassword, salt);
@@ -661,8 +716,8 @@ router.get(["/github/callback", "/github/callback/"], async (req: any, res: any)
     let user = await db.get("SELECT * FROM users WHERE email = ? ", email);
 
     if (!user) {
+      const role = await validateAndGetOAuthRole(db, email);
       const id = uuidv4();
-      const role = "developer";
       const randomPassword = crypto.randomBytes(32).toString('hex');
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(randomPassword, salt);
@@ -725,5 +780,36 @@ router.get("/me", authenticateToken, async (req: any, res: any) => {
   const db = await dbPromise;
   const user = await db.get("SELECT id, name, email, role, skills, rolePrefix, status FROM users WHERE id = ?", req.user.id);
   if (!user) return res.sendStatus(404);
-  res.json({ id: user.id, name: user.name, email: user.email, role: user.role, skills: user.skills ? JSON.parse(user.skills) : [], rolePrefix: user.rolePrefix || "", status: user.status || "Available" });
+
+  let permissions: Record<string, boolean> = {};
+  if (user.role === "super_admin") {
+    permissions = {
+      create_tasks: true,
+      edit_all_tasks: true,
+      delete_tasks: true,
+      manage_projects: true,
+      manage_teams: true,
+      manage_users: true,
+      manage_roles: true,
+      reset_database: true
+    };
+  } else {
+    const roleRow = await db.get("SELECT permissions FROM roles WHERE id = ?", user.role);
+    if (roleRow?.permissions) {
+      try {
+        permissions = typeof roleRow.permissions === 'string' ? JSON.parse(roleRow.permissions) : roleRow.permissions;
+      } catch (e) {}
+    }
+  }
+
+  res.json({
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    permissions,
+    skills: user.skills ? (typeof user.skills === 'string' ? JSON.parse(user.skills) : user.skills) : [],
+    rolePrefix: user.rolePrefix || "",
+    status: user.status || "Available"
+  });
 });

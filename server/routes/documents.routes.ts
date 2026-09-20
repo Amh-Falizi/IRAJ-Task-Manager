@@ -4,7 +4,8 @@ import { dbPromise } from "../db.js";
 import {
   authenticateToken,
   isAdminOrSuperAdmin,
-  checkProjectAccess
+  checkProjectAccess,
+  checkProjectWriteAccess
 } from "../middleware/auth.js";
 
 export const documentsRouter = express.Router();
@@ -32,8 +33,8 @@ router.get("/projects/:projectId/documents", authenticateToken, async (req: any,
 router.post("/projects/:projectId/documents", authenticateToken, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
-    if (!(await checkProjectAccess(db, req.params.projectId, req.user))) {
-      return res.status(403).json({ error: "Access denied" });
+    if (!(await checkProjectWriteAccess(db, req.params.projectId, req.user))) {
+      return res.status(403).json({ error: "Access denied. Viewers have read-only access to this project." });
     }
     const { title, content } = req.body;
     if (!title || typeof title !== "string" || !title.trim()) {
@@ -75,8 +76,8 @@ router.put("/documents/:id", authenticateToken, async (req: any, res: any) => {
     const db = await dbPromise;
     const docCheck = await db.get("SELECT projectId FROM documents WHERE id = ?", req.params.id);
     if (!docCheck) return res.status(404).json({ error: "Document not found" });
-    if (!(await checkProjectAccess(db, docCheck.projectId, req.user))) {
-      return res.status(403).json({ error: "Access denied" });
+    if (!(await checkProjectWriteAccess(db, docCheck.projectId, req.user))) {
+      return res.status(403).json({ error: "Access denied. Viewers have read-only access to this project." });
     }
     const { title, content } = req.body;
     const now = new Date().toISOString();
@@ -99,8 +100,8 @@ router.delete("/documents/:id", authenticateToken, async (req: any, res: any) =>
     const db = await dbPromise;
     const docCheck = await db.get("SELECT projectId FROM documents WHERE id = ?", req.params.id);
     if (!docCheck) return res.status(404).json({ error: "Document not found" });
-    if (!(await checkProjectAccess(db, docCheck.projectId, req.user))) {
-      return res.status(403).json({ error: "Access denied" });
+    if (!(await checkProjectWriteAccess(db, docCheck.projectId, req.user))) {
+      return res.status(403).json({ error: "Access denied. Viewers have read-only access to this project." });
     }
     await db.run("DELETE FROM documents WHERE id = ?", req.params.id);
     res.json({ success: true });
@@ -159,8 +160,8 @@ router.get("/projects/:projectId/milestones", authenticateToken, async (req: any
 router.post("/projects/:projectId/milestones", authenticateToken, async (req: any, res: any) => {
   try {
     const db = await dbPromise;
-    if (!(await checkProjectAccess(db, req.params.projectId, req.user))) {
-      return res.status(403).json({ error: "Access denied" });
+    if (!(await checkProjectWriteAccess(db, req.params.projectId, req.user))) {
+      return res.status(403).json({ error: "Access denied. Viewers have read-only access to this project." });
     }
     const { name, description, startDate, endDate, status } = req.body;
     if (!name || typeof name !== "string" || !name.trim()) {
@@ -196,8 +197,8 @@ router.put("/milestones/:id", authenticateToken, async (req: any, res: any) => {
     const db = await dbPromise;
     const msCheck = await db.get("SELECT projectId FROM milestones WHERE id = ?", req.params.id);
     if (!msCheck) return res.status(404).json({ error: "Milestone not found" });
-    if (!(await checkProjectAccess(db, msCheck.projectId, req.user))) {
-      return res.status(403).json({ error: "Access denied" });
+    if (!(await checkProjectWriteAccess(db, msCheck.projectId, req.user))) {
+      return res.status(403).json({ error: "Access denied. Viewers have read-only access to this project." });
     }
     const { name, description, startDate, endDate, status } = req.body;
 
@@ -219,8 +220,8 @@ router.delete("/milestones/:id", authenticateToken, async (req: any, res: any) =
     const db = await dbPromise;
     const msCheck = await db.get("SELECT projectId FROM milestones WHERE id = ?", req.params.id);
     if (!msCheck) return res.status(404).json({ error: "Milestone not found" });
-    if (!(await checkProjectAccess(db, msCheck.projectId, req.user))) {
-      return res.status(403).json({ error: "Access denied" });
+    if (!(await checkProjectWriteAccess(db, msCheck.projectId, req.user))) {
+      return res.status(403).json({ error: "Access denied. Viewers have read-only access to this project." });
     }
     await db.run("DELETE FROM milestones WHERE id = ?", req.params.id);
     res.json({ success: true });

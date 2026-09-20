@@ -248,8 +248,8 @@ router.post("/users", authenticateToken, async (req: any, res: any) => {
     }
     if (email) email = email.toLowerCase().trim();
 
-    if (role === "super_admin" && req.user.role !== "super_admin") {
-      return res.status(403).json({ error: "Only Super Admin can assign the Super Admin role." });
+    if ((role === "super_admin" || role === "admin") && req.user.role !== "super_admin") {
+      return res.status(403).json({ error: "Only Super Admin can assign Admin or Super Admin roles." });
     }
     
     const db = await dbPromise;
@@ -291,17 +291,17 @@ router.put("/users/bulk/role", authenticateToken, async (req: any, res: any) => 
       return res.status(400).json({ error: "Role is required." });
     }
 
-    if (role === "super_admin" && req.user.role !== "super_admin") {
-      return res.status(403).json({ error: "Only Super Admin can assign the Super Admin role." });
+    if ((role === "super_admin" || role === "admin") && req.user.role !== "super_admin") {
+      return res.status(403).json({ error: "Only Super Admin can assign Admin or Super Admin roles." });
     }
 
     const db = await dbPromise;
     
-    // Check if any target user is super_admin
+    // Check if any target user is admin or super_admin
     const placeholders = userIds.map(() => "?").join(",");
-    const targetSuperAdmins = await db.all(`SELECT id FROM users WHERE role = 'super_admin' AND id IN (${placeholders})`, userIds);
-    if (targetSuperAdmins.length > 0 && req.user.role !== "super_admin") {
-      return res.status(403).json({ error: "Only Super Admin can modify Super Admin accounts." });
+    const targetPrivileged = await db.all(`SELECT id FROM users WHERE (role = 'super_admin' OR role = 'admin') AND id IN (${placeholders})`, userIds);
+    if (targetPrivileged.length > 0 && req.user.role !== "super_admin") {
+      return res.status(403).json({ error: "Only Super Admin can modify Admin or Super Admin accounts." });
     }
 
     const roleExists = await db.get("SELECT * FROM roles WHERE id = ?", role);
@@ -332,11 +332,11 @@ router.put("/users/:id", authenticateToken, async (req: any, res: any) => {
     const targetUser = await db.get("SELECT * FROM users WHERE id = ?", req.params.id);
     if (!targetUser) return res.status(404).json({ error: "User not found." });
 
-    if (targetUser.role === "super_admin" && req.user.role !== "super_admin") {
-      return res.status(403).json({ error: "Only Super Admin can edit Super Admin accounts." });
+    if ((targetUser.role === "super_admin" || targetUser.role === "admin") && req.user.role !== "super_admin") {
+      return res.status(403).json({ error: "Only Super Admin can edit Admin or Super Admin accounts." });
     }
-    if (role === "super_admin" && req.user.role !== "super_admin") {
-      return res.status(403).json({ error: "Only Super Admin can assign the Super Admin role." });
+    if ((role === "super_admin" || role === "admin") && req.user.role !== "super_admin") {
+      return res.status(403).json({ error: "Only Super Admin can assign Admin or Super Admin roles." });
     }
 
     const existing = await db.get("SELECT * FROM users WHERE email = ? AND id != ?", [email, req.params.id]);
@@ -426,16 +426,16 @@ router.put("/users/:id/role", authenticateToken, async (req: any, res: any) => {
       return res.status(400).json({ error: "Role is required." });
     }
 
-    if (role === "super_admin" && req.user.role !== "super_admin") {
-      return res.status(403).json({ error: "Only Super Admin can assign the Super Admin role." });
+    if ((role === "super_admin" || role === "admin") && req.user.role !== "super_admin") {
+      return res.status(403).json({ error: "Only Super Admin can assign Admin or Super Admin roles." });
     }
 
     const db = await dbPromise;
     const targetUser = await db.get("SELECT * FROM users WHERE id = ?", req.params.id);
     if (!targetUser) return res.status(404).json({ error: "User not found." });
 
-    if (targetUser.role === "super_admin" && req.user.role !== "super_admin") {
-      return res.status(403).json({ error: "Only Super Admin can edit Super Admin accounts." });
+    if ((targetUser.role === "super_admin" || targetUser.role === "admin") && req.user.role !== "super_admin") {
+      return res.status(403).json({ error: "Only Super Admin can edit Admin or Super Admin accounts." });
     }
 
     const roleExists = await db.get("SELECT * FROM roles WHERE id = ?", role);
@@ -443,7 +443,10 @@ router.put("/users/:id/role", authenticateToken, async (req: any, res: any) => {
       return res.status(400).json({ error: "Invalid role. Role does not exist in definitions." });
     }
 
-    await db.run("UPDATE users SET role = ? WHERE id = ?", [role, req.params.id]);
+    await db.run(
+      "UPDATE users SET role = ?, tokenVersion = COALESCE(tokenVersion, 1) + 1 WHERE id = ?",
+      [role, req.params.id]
+    );
     const updatedUser = await db.get("SELECT id, name, email, role FROM users WHERE id = ?", req.params.id);
     res.json(updatedUser);
   } catch (err: any) {

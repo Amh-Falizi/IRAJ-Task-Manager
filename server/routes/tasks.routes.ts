@@ -141,10 +141,28 @@ router.post("/:id/comments", authenticateToken, async (req: any, res: any) => {
       // Parse @mentions (e.g. @john or @alex.smith)
       const mentionMatches = req.body.content.match(/@([a-zA-Z0-9._-]+)/g);
       if (mentionMatches) {
-        const allUsers = await db.all("SELECT id, name, email FROM users");
+        let candidateUsers: any[] = [];
+        if (task.projectId) {
+          candidateUsers = await db.all(`
+            SELECT DISTINCT u.id, u.name, u.email
+            FROM users u
+            WHERE u.id IN (
+              SELECT userId FROM project_members WHERE projectId = ?
+              UNION
+              SELECT ownerId FROM projects WHERE id = ?
+              UNION
+              SELECT tm.userId FROM team_projects tp JOIN team_members tm ON tp.teamId = tm.teamId WHERE tp.projectId = ?
+            )
+          `, [task.projectId, task.projectId, task.projectId]);
+        } else {
+          candidateUsers = await db.all(
+            "SELECT id, name, email FROM users WHERE id = ? OR id = ?",
+            [task.creatorId, task.assigneeId || ""]
+          );
+        }
         for (const m of mentionMatches) {
           const queryName = m.substring(1).toLowerCase();
-          const matched = allUsers.find(
+          const matched = candidateUsers.find(
             (u: any) =>
               u.name.toLowerCase().replace(/\s+/g, "").includes(queryName) ||
               u.email.toLowerCase().split("@")[0] === queryName

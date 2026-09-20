@@ -65,7 +65,7 @@ router.get("/export-json", authenticateToken, requireSuperAdmin, async (req: any
       "users", "tasks", "teams", "projects", "project_members",
       "documents", "milestones", "team_members", "team_projects",
       "task_dependencies", "task_comments", "task_activities", "settings", "roles",
-      "project_columns"
+      "project_columns", "webhooks", "notifications"
     ];
 
     for (const table of tables) {
@@ -74,7 +74,14 @@ router.get("/export-json", authenticateToken, requireSuperAdmin, async (req: any
         if (table === 'projects') {
           rows = rows.map((p: any) => ({
             ...p,
-            repoToken: p.repoToken ? '••••••••' : null
+            repoToken: p.repoToken ? '••••••••' : null,
+            webhookSecret: p.webhookSecret ? '••••••••' : null
+          }));
+        }
+        if (table === 'webhooks') {
+          rows = rows.map((w: any) => ({
+            ...w,
+            secret: w.secret ? '••••••••' : null
           }));
         }
         if (table === 'users') {
@@ -118,10 +125,10 @@ router.post("/restore-json", authenticateToken, requireSuperAdmin, async (req: a
     }
 
     const ALLOWED_TABLE_COLUMNS: Record<string, string[]> = {
-      users: ["id", "name", "email", "passwordHash", "role", "skills", "rolePrefix", "status"],
+      users: ["id", "name", "email", "passwordHash", "role", "skills", "rolePrefix", "status", "tokenVersion", "authProvider", "emailVerified", "createdAt"],
       tasks: ["id", "title", "description", "status", "priority", "deadline", "assigneeId", "creatorId", "branchName", "parentId", "projectId", "milestoneId", "createdAt", "orderIndex", "prUrl", "prStatus"],
       teams: ["id", "name", "description", "ownerId", "createdAt", "projectId"],
-      projects: ["id", "name", "description", "ownerId", "projectKey", "taskCounter", "createdAt", "repoProvider", "repoOwner", "repoName", "repoUrl", "repoToken", "defaultBranch"],
+      projects: ["id", "name", "description", "ownerId", "projectKey", "taskCounter", "createdAt", "repoProvider", "repoOwner", "repoName", "repoUrl", "repoToken", "defaultBranch", "webhookSecret"],
       project_members: ["projectId", "userId", "role", "joinedAt"],
       documents: ["id", "projectId", "title", "content", "authorId", "createdAt", "updatedAt"],
       milestones: ["id", "projectId", "name", "description", "startDate", "endDate", "status", "createdAt"],
@@ -132,7 +139,9 @@ router.post("/restore-json", authenticateToken, requireSuperAdmin, async (req: a
       task_activities: ["id", "taskId", "userId", "action", "createdAt"],
       settings: ["key", "value"],
       roles: ["id", "name", "description", "is_custom", "permissions"],
-      project_columns: ["id", "projectId", "columnsJson", "updatedAt"]
+      project_columns: ["id", "projectId", "columnsJson", "updatedAt"],
+      webhooks: ["id", "projectId", "name", "url", "secret", "events", "isActive", "createdAt"],
+      notifications: ["id", "userId", "type", "title", "message", "link", "read", "createdAt"]
     };
 
     const executingAdmin = await db.get("SELECT id, email, passwordHash FROM users WHERE id = ?", req.user.id);
@@ -173,7 +182,10 @@ router.post("/restore-json", authenticateToken, requireSuperAdmin, async (req: a
           const placeholders = presentCols.map(() => "?").join(", ");
           const insertSql = `INSERT INTO ${table} (${presentCols.join(", ")}) VALUES (${placeholders})`;
           const params = presentCols.map(col => {
-            if (table === "projects" && col === "repoToken" && row[col] === "••••••••") {
+            if (table === "projects" && (col === "repoToken" || col === "webhookSecret") && row[col] === "••••••••") {
+              return null;
+            }
+            if (table === "webhooks" && col === "secret" && row[col] === "••••••••") {
               return null;
             }
             if (table === "users" && col === "passwordHash" && row[col] === "••••••••") {
