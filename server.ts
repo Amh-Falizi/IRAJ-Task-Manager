@@ -1,6 +1,7 @@
 // AI Studio Editor Sync
 // Modular Architecture - Express Backend
 import "dotenv/config";
+import { isIP } from "node:net";
 import express from "express";
 import path from "path";
 import crypto from "crypto";
@@ -24,8 +25,15 @@ import { webhooksRouter } from "./server/routes/webhooks.routes.js";
 import { startBackgroundJobs } from "./server/services/sync.service.js";
 
 const app = express();
-// Safely trust reverse proxy hops from private subnets/loopbacks
-app.set("trust proxy", "loopback, linklocal, uniquelocal");
+// Safely configure reverse proxy trust.
+// Default to "loopback" to prevent peer containers on private Docker/VPC networks from spoofing X-Forwarded-For headers.
+// In production behind specific reverse proxies, configure TRUST_PROXY (e.g. "1", CIDR, or specific IP).
+const trustProxyConfig = process.env.TRUST_PROXY
+  ? isNaN(Number(process.env.TRUST_PROXY))
+    ? process.env.TRUST_PROXY
+    : Number(process.env.TRUST_PROXY)
+  : "loopback";
+app.set("trust proxy", trustProxyConfig);
 
 // Request logging
 app.use(morgan("dev"));
@@ -93,8 +101,14 @@ app.use(
 app.use(compression());
 
 const getSafeClientIp = (req: any): string => {
-  const rawIp = req.ip || req.socket?.remoteAddress || "127.0.0.1";
-  return ipKeyGenerator(rawIp, 64);
+  let clientIp = typeof req.ip === "string" ? req.ip.trim() : "";
+  // If req.ip is absent or malformed (e.g. octal prefixes like 010.1.1.1 or CIDR notation like 203.0.113.7/24),
+  // fall back to the actual peer socket address
+  if (!clientIp || isIP(clientIp) === 0) {
+    const socketAddr = req.socket?.remoteAddress;
+    clientIp = typeof socketAddr === "string" && isIP(socketAddr) !== 0 ? socketAddr : "127.0.0.1";
+  }
+  return ipKeyGenerator(clientIp, 64);
 };
 
 // General API Rate Limiter (runs before body parsers to reject floods without buffering large payloads)
@@ -173,8 +187,15 @@ app.use(
 );
 
 /* --- MODULAR API ROUTERS --- */
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok" });
+app.get("/api/health", async (_req, res) => {
+  try {
+    const db = await dbPromise;
+    await db.get("SELECT 1");
+    res.json({ status: "ok", database: "connected" });
+  } catch (err: any) {
+    console.error("Health readiness check failed:", err);
+    res.status(503).json({ status: "error", error: "Database unreachable" });
+  }
 });
 
 app.use("/api/auth", authRouter);

@@ -7,15 +7,22 @@ export const eventsRouter = Router();
 
 // Server-Sent Events stream
 eventsRouter.get("/events", authenticateToken, (req: any, res: any) => {
-  const userId = req.user.id;
-  const userRole = req.user.role;
-  const projectId = req.query.projectId as string | undefined;
+  try {
+    const userId = req.user.id;
+    const userRole = req.user.role;
+    const projectId = req.query.projectId as string | undefined;
 
-  const clientId = eventsService.registerClient(userId, userRole, res, projectId);
+    const clientId = eventsService.registerClient(userId, userRole, res, projectId);
 
-  req.on("close", () => {
-    eventsService.unregisterClient(clientId);
-  });
+    req.on("close", () => {
+      eventsService.unregisterClient(clientId);
+    });
+  } catch (err: any) {
+    console.error("Error registering SSE client:", err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to establish events stream" });
+    }
+  }
 });
 
 // Get user notifications
