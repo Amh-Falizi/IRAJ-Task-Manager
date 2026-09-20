@@ -7,7 +7,7 @@ import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import helmet from "helmet";
 import compression from "compression";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
 
@@ -93,7 +93,8 @@ app.use(
 app.use(compression());
 
 const getSafeClientIp = (req: any): string => {
-  return req.ip || req.socket?.remoteAddress || "127.0.0.1";
+  const rawIp = req.ip || req.socket?.remoteAddress || "127.0.0.1";
+  return ipKeyGenerator(rawIp, 64);
 };
 
 // General API Rate Limiter (runs before body parsers to reject floods without buffering large payloads)
@@ -172,6 +173,10 @@ app.use(
 );
 
 /* --- MODULAR API ROUTERS --- */
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok" });
+});
+
 app.use("/api/auth", authRouter);
 app.use("/api", usersRouter);
 app.use("/api/tasks", tasksRouter);
