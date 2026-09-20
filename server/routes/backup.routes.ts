@@ -1,6 +1,6 @@
 import express, { Response } from "express";
 import fs from "fs";
-import { dbPromise, activeSqlitePath, PgWrapper } from "../db.js";
+import { getDb, activeSqlitePath, PgWrapper } from "../db.js";
 import {
   authenticateToken,
   requireAdmin,
@@ -19,7 +19,7 @@ const router = backupRouter;
  */
 router.get("/info", authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    const db = await dbPromise;
+    const db = await getDb();
     const isSqlite = !(db instanceof PgWrapper);
 
     let sqliteSize = 0;
@@ -60,7 +60,7 @@ router.get("/info", authenticateToken, requireAdmin, async (req: AuthRequest, re
  */
 router.get("/export-json", authenticateToken, requireSuperAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    const db = await dbPromise;
+    const db = await getDb();
     const backupData: Record<string, any[]> = {};
     const tables = [
       "users", "tasks", "teams", "projects", "project_members",
@@ -116,7 +116,7 @@ export function hasMaskedPlaceholders(obj: any): boolean {
  */
 router.post("/restore-json", authenticateToken, requireSuperAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    const db = await dbPromise;
+    const db = await getDb();
     const backupData = req.body;
 
     if (!backupData || typeof backupData !== "object") {

@@ -4,8 +4,8 @@ export interface DatabaseWrapper {
   isPg: boolean;
   exec(sql: string): Promise<void>;
   run(sql: string, params?: any | any[]): Promise<void>;
-  get(sql: string, params?: any | any[]): Promise<any>;
-  all(sql: string, params?: any | any[]): Promise<any[]>;
+  get<T = any>(sql: string, params?: any | any[]): Promise<T | undefined>;
+  all<T = any>(sql: string, params?: any | any[]): Promise<T[]>;
   transaction<T>(callback: (tx: DatabaseWrapper) => Promise<T>): Promise<T>;
   close?(): Promise<void>;
 }

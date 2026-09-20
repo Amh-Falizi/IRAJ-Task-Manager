@@ -1,12 +1,17 @@
-import { test, describe } from "node:test";
+import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
 import jwt from "jsonwebtoken";
+import sqlite3 from "sqlite3";
+import { open } from "sqlite";
 import { encryptSecret, decryptSecret, SECRET_KEY } from "../server/config.js";
 import { backupRouter, hasMaskedPlaceholders } from "../server/routes/backup.routes.js";
-import { dbPromise } from "../server/db.js";
+import { setCustomDb, SqliteWrapper } from "../server/db.js";
 
 describe("Backup Export and Restore Security Tests", () => {
+  after(() => {
+    setCustomDb(undefined);
+  });
   test("Exported secrets are encrypted opaque blobs and decrypted correctly", () => {
     const rawSecret = "glpat-super-secret-gitlab-token-12345";
     const encrypted = encryptSecret(rawSecret);
@@ -53,7 +58,38 @@ describe("Backup Export and Restore Security Tests", () => {
   });
 
   test("HTTP restore route rejects payloads containing masked placeholders", async () => {
-    const db = await dbPromise;
+    const sqliteDb = await open({
+      filename: ":memory:",
+      driver: sqlite3.Database
+    });
+    const db = new SqliteWrapper(sqliteDb);
+    await db.exec(`
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        email TEXT UNIQUE,
+        passwordHash TEXT,
+        role TEXT,
+        rolePrefix TEXT,
+        status TEXT DEFAULT 'Available',
+        tokenVersion INTEGER DEFAULT 1,
+        authProvider TEXT DEFAULT 'local',
+        emailVerified INTEGER DEFAULT 1,
+        createdAt TEXT
+      );
+      CREATE TABLE projects (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        repoToken TEXT
+      );
+      CREATE TABLE password_resets (
+        token TEXT PRIMARY KEY,
+        userId TEXT,
+        expiresAt INTEGER
+      );
+    `);
+    setCustomDb(db);
+
     const testAdminId = "backup-test-superadmin-999";
 
     // Setup super_admin user in DB for authenticateToken DB lookup
@@ -94,7 +130,8 @@ describe("Backup Export and Restore Security Tests", () => {
       assert.ok(data.error.includes("Backup contains masked credentials"));
     } finally {
       server.close();
-      await db.run("DELETE FROM users WHERE id = ?", [testAdminId]);
+      setCustomDb(undefined);
+      await db.close();
     }
   });
 

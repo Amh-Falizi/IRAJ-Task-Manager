@@ -1,4 +1,5 @@
 import { apiFetchRaw } from "../lib/api";
+import { saveTask } from "../lib/taskService";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -214,24 +215,15 @@ export default function Planning() {
 
   const handleSaveTask = async (updatedTask: Partial<Task>) => {
     if (!editingTask) return;
-    try {
-      const res = await apiFetchRaw(`/api/tasks/${editingTask.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(updatedTask)
-      });
-      if (res.ok) {
+    await saveTask({
+      taskData: updatedTask,
+      editingTaskId: editingTask.id,
+      onSuccess: () => {
         setIsTaskModalOpen(false);
         setEditingTask(null);
         fetchTasks();
-      } else {
-        alert("Failed to save task.");
       }
-    } catch (err) {
-      console.error(err);
-    }
+    });
   };
 
   if (loading) return <div className="p-8 text-primary">Loading planning mode...</div>;

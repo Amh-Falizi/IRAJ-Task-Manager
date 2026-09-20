@@ -1,4 +1,5 @@
 import { apiFetchRaw } from "../lib/api";
+import { saveTask } from "../lib/taskService";
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Navigate, Link } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
@@ -88,31 +89,16 @@ export default function CalendarView() {
   };
 
   const handleSaveTask = async (taskData: Partial<Task>) => {
-    const isEdit = !!selectedTask;
-    const url = isEdit ? `/api/tasks/${selectedTask!.id}` : '/api/tasks';
-    const method = isEdit ? 'PUT' : 'POST';
-
-    try {
-      const res = await apiFetchRaw(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(taskData)
-      });
-      if (res.ok) {
+    await saveTask({
+      taskData,
+      editingTaskId: selectedTask?.id,
+      onSuccess: () => {
         setIsModalOpen(false);
         setSelectedTask(null);
         setSelectedDateForNewTask(null);
         fetchData();
-      } else {
-        const errData = await res.text();
-        alert(`Failed to save task: ${errData}`);
       }
-    } catch (err: any) {
-      console.error(err);
-      alert(`Error saving task: ${err.message}`);
-    }
+    });
   };
 
   const handleDeleteTask = async (taskId: string) => {

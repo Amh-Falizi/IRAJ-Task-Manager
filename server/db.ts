@@ -97,13 +97,13 @@ export class PgWrapper implements DatabaseWrapper {
     const converted = this.convertSql(sql);
     await this.pool.query(converted, this.mapParams(params));
   }
-  async get(sql: string, params: any | any[] = []) {
+  async get<T = any>(sql: string, params: any | any[] = []): Promise<T | undefined> {
     if (!Array.isArray(params)) params = [params];
     const converted = this.convertSql(sql);
     const result = await this.pool.query(converted, this.mapParams(params));
     return normalizePgRow(result.rows[0]);
   }
-  async all(sql: string, params: any[] = []) {
+  async all<T = any>(sql: string, params: any[] = []): Promise<T[]> {
     if (!Array.isArray(params)) params = [params];
     const converted = this.convertSql(sql);
     const result = await this.pool.query(converted, this.mapParams(params));
@@ -177,11 +177,11 @@ export class SqliteWrapper implements DatabaseWrapper {
     if (!Array.isArray(params)) params = [params];
     await this.db.run(sql, ...params);
   }
-  async get(sql: string, params: any | any[] = []) {
+  async get<T = any>(sql: string, params: any | any[] = []): Promise<T | undefined> {
     if (!Array.isArray(params)) params = [params];
     return await this.db.get(sql, ...params);
   }
-  async all(sql: string, params: any[] = []) {
+  async all<T = any>(sql: string, params: any[] = []): Promise<T[]> {
     if (!Array.isArray(params)) params = [params];
     return await this.db.all(sql, ...params);
   }
@@ -665,8 +665,15 @@ async function runMigrations(db: DatabaseWrapper) {
   return db;
 }
 
+let customDb: DatabaseWrapper | undefined;
+
+export function setCustomDb(db: DatabaseWrapper | undefined) {
+  customDb = db;
+}
+
 export let dbPromise: Promise<DatabaseWrapper> = initDb();
 
 export async function getDb(): Promise<DatabaseWrapper> {
+  if (customDb) return customDb;
   return await dbPromise;
 }

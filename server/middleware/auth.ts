@@ -1,7 +1,7 @@
 import { Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { AUTH_COOKIE_NAME, SECRET_KEY } from "../config.js";
-import { dbPromise } from "../db.js";
+import { getDb } from "../db.js";
 import { AuthRequest, AuthenticatedUser } from "../types.js";
 
 export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -24,7 +24,7 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
 
   (async () => {
     try {
-      const db = await dbPromise;
+      const db = await getDb();
       const user = await db.get(
         "SELECT id, name, email, role, rolePrefix, status, tokenVersion, emailVerified FROM users WHERE id = ?",
         decodedUser.id
@@ -215,7 +215,7 @@ export const hasPermission = async (user: any, permission: string): Promise<bool
   if (user.role === "super_admin") return true;
 
   try {
-    const db = await dbPromise;
+    const db = await getDb();
     const roleRow = await db.get("SELECT permissions FROM roles WHERE id = ?", user.role);
     if (!roleRow) {
       return false;

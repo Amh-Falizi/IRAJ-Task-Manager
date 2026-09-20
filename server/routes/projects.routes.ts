@@ -49,7 +49,7 @@ router.get("/projects", authenticateToken, async (req: AuthRequest, res: Respons
 router.get("/projects/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const db = await dbPromise;
-    const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+    const project = await projectService.getProjectById(db, req.params.id);
     if (!project) return res.status(404).json({ error: "Project not found" });
 
     const hasAccess = await checkProjectAccess(db, req.params.id, req.user);
@@ -128,15 +128,7 @@ router.get("/projects/:id/activity", authenticateToken, async (req: AuthRequest,
       return res.status(403).json({ error: "Access denied to project activity." });
     }
     
-    const activities = await db.all(`
-      SELECT a.*, t.title as taskTitle
-      FROM task_activities a
-      JOIN tasks t ON a.taskId = t.id
-      WHERE t.projectId = ?
-      ORDER BY a.createdAt DESC
-      LIMIT 50
-    `, req.params.id);
-    
+    const activities = await projectService.getProjectActivity(db, req.params.id);
     res.json(activities);
   } catch (err: any) {
     console.error("Error fetching project activity:", err);
@@ -151,7 +143,7 @@ router.put("/projects/:id", authenticateToken, async (req: AuthRequest, res: Res
       return res.status(403).json({ error: "Access denied: user is not a member of this project." });
     }
 
-    const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+    const project = await projectService.getProjectById(db, req.params.id);
     if (!project) return res.sendStatus(404);
 
     const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user!.id]);
@@ -162,13 +154,8 @@ router.put("/projects/:id", authenticateToken, async (req: AuthRequest, res: Res
     }
 
     const { name, description } = req.body;
-    await db.run(
-      "UPDATE projects SET name = ?, description = ? WHERE id = ?",
-      [name, description, req.params.id]
-    );
-    
-    const updatedProject = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
-    res.json(sanitizeProject(updatedProject));
+    const updatedProject = await projectService.updateProject(db, req.params.id, name, description);
+    res.json(updatedProject);
   } catch (err: any) {
     console.error("Error updating project:", err);
     res.status(500).json({ error: "Failed to update project" });

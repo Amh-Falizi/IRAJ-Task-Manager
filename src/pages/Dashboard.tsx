@@ -1,4 +1,5 @@
 import { apiFetchRaw } from "../lib/api";
+import { saveTask } from "../lib/taskService";
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -271,29 +272,16 @@ export default function Dashboard() {
   }, []);
 
   const handleSaveTask = async (taskData: Partial<Task>) => {
-    const isEdit = !!selectedTask;
-    const url = isEdit ? `/api/tasks/${selectedTask!.id}` : '/api/tasks';
-    try {
-      const res = await apiFetchRaw(url, {
-        method: isEdit ? 'PUT' : 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(taskData)
-      });
-      if (res.ok) {
+    await saveTask({
+      taskData,
+      editingTaskId: selectedTask?.id,
+      onSuccess: () => {
         setSelectedTask(null);
         setIsModalOpen(false);
         fetchData();
-        success(isEdit ? 'Task updated' : 'Task created');
-      } else {
-        const errData = await res.text();
-        error(`Failed to save task: ${errData}`);
-      }
-    } catch (err: any) {
-      console.error(err);
-      error(`Error saving task: ${err.message}`);
-    }
+      },
+      toast: { success, error }
+    });
   };
 
   const handleUpdateTask = async (taskId: string, currentTask: Task, updates: Partial<Task>) => {

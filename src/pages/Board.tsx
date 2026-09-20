@@ -11,6 +11,7 @@ import { Plus, MoreVertical, Calendar, ArrowUpDown, CornerDownRight, Search, Fil
 import { format } from 'date-fns';
 import { cn, safeFormatDate } from '../lib/utils';
 import { apiFetchRaw } from '../lib/api';
+import { saveTask } from '../lib/taskService';
 import { useSearchParams, Link, Navigate, useNavigate } from 'react-router';
 import TaskDiagram from '../components/TaskDiagram';
 import Markdown from 'react-markdown';
@@ -452,30 +453,15 @@ export default function Board() {
   };
 
   const handleSaveTask = async (taskData: Partial<Task>) => {
-    const isEdit = !!editingTask;
-    const url = isEdit ? `/api/tasks/${editingTask!.id}` : '/api/tasks';
-    const method = isEdit ? 'PUT' : 'POST';
-
-    try {
-      const res = await apiFetchRaw(url, {
-        method,
-        headers: { 
-          'Content-Type': 'application/json' 
-        },
-        body: JSON.stringify(taskData)
-      });
-      if (res.ok) {
+    await saveTask({
+      taskData,
+      editingTaskId: editingTask?.id,
+      onSuccess: () => {
         setIsModalOpen(false);
         fetchData();
-        success(editingTask ? 'Task updated' : 'Task created');
-      } else {
-        const errData = await res.text();
-        error(`Failed to save task: ${errData}`);
-      }
-    } catch (err: any) {
-      console.error(err);
-      error(`Error saving task: ${err.message}`);
-    }
+      },
+      toast: { success, error }
+    });
   };
 
   const handleUpdateTask = async (taskId: string, currentTask: Task, updates: Partial<Task>) => {

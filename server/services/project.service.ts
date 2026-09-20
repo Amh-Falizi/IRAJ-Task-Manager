@@ -62,6 +62,30 @@ export class ProjectService {
     }).sort((a: any, b: any) => b.total - a.total);
   }
 
+  async getProjectById(db: DatabaseWrapper, id: string) {
+    return await db.get("SELECT * FROM projects WHERE id = ?", id);
+  }
+
+  async getProjectActivity(db: DatabaseWrapper, projectId: string) {
+    return await db.all(`
+      SELECT a.*, t.title as taskTitle
+      FROM task_activities a
+      JOIN tasks t ON a.taskId = t.id
+      WHERE t.projectId = ?
+      ORDER BY a.createdAt DESC
+      LIMIT 50
+    `, projectId);
+  }
+
+  async updateProject(db: DatabaseWrapper, id: string, name: string, description: string) {
+    await db.run(
+      "UPDATE projects SET name = ?, description = ? WHERE id = ?",
+      [name, description, id]
+    );
+    const updated = await db.get("SELECT * FROM projects WHERE id = ?", id);
+    return sanitizeProject(updated);
+  }
+
   async updateRepoSettings(db: DatabaseWrapper, projectId: string, existingProject: any, repoData: any) {
     const { repoProvider, repoOwner, repoName, repoUrl, repoToken, defaultBranch, webhookSecret } = repoData;
 

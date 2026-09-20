@@ -1,4 +1,5 @@
 import { apiFetchRaw } from "../lib/api";
+import { saveTask } from "../lib/taskService";
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Task, User, Project } from '../types';
@@ -135,29 +136,14 @@ export default function Graph() {
   };
 
   const handleSaveTask = async (taskData: Partial<Task>) => {
-    const isEdit = !!editingTask;
-    const url = isEdit ? `/api/tasks/${editingTask!.id}` : '/api/tasks';
-    const method = isEdit ? 'PUT' : 'POST';
-
-    try {
-      const res = await apiFetchRaw(url, {
-        method,
-        headers: { 
-          'Content-Type': 'application/json' 
-        },
-        body: JSON.stringify(taskData)
-      });
-      if (res.ok) {
+    await saveTask({
+      taskData,
+      editingTaskId: editingTask?.id,
+      onSuccess: () => {
         setIsModalOpen(false);
         fetchData();
-      } else {
-        const errData = await res.text();
-        alert(`Failed to save task: ${errData}`);
       }
-    } catch (err: any) {
-      console.error(err);
-      alert(`Error saving task: ${err.message}`);
-    }
+    });
   };
 
   const handleUpdateTask = async (taskId: string, currentTask: Task, updates: Partial<Task>) => {
