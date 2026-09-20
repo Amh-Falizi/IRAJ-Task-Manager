@@ -8,24 +8,29 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const { login } = useAuth();
+  const { login, refetchUser } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
+    const handleMessage = async (event: MessageEvent) => {
       // Validate origin is from an expected host (run.app or localhost)
       const origin = event.origin;
       if (origin !== window.location.origin) {
         return;
       }
       if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
-        login(undefined, event.data.user);
+        const fetchedUser = await refetchUser();
+        if (fetchedUser) {
+          login(undefined, fetchedUser);
+        } else if (event.data.user) {
+          login(undefined, event.data.user);
+        }
         navigate('/');
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [login, navigate]);
+  }, [login, refetchUser, navigate]);
 
   const handleGitLabLogin = async () => {
     try {

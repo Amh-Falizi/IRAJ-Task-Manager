@@ -34,10 +34,11 @@ export default function TaskModal({ task, users, tasks = [], columns, onClose, o
   const { gitEnabled } = useGitFeature();
   const isEdit = !!task;
   const isSuperAdmin = user?.role === 'super_admin';
-  const canEditAllTasks = isSuperAdmin || user?.permissions?.edit_all_tasks === true || user?.role === 'admin' || user?.role === 'manager';
-  const canDeleteTasks = isSuperAdmin || user?.permissions?.delete_tasks === true || user?.role === 'admin' || user?.role === 'manager';
-  const canCreateTasks = isSuperAdmin || user?.permissions?.create_tasks !== false;
-  // Developers or non-managers editing existing tasks can update progress and comments but not administrative task metadata
+  const hasPerms = !!user?.permissions;
+  const canEditAllTasks = isSuperAdmin || (hasPerms ? !!user?.permissions?.edit_all_tasks : (user?.role === 'admin' || user?.role === 'manager'));
+  const canDeleteTasks = isSuperAdmin || (hasPerms ? !!user?.permissions?.delete_tasks : (user?.role === 'admin' || user?.role === 'manager'));
+  const canCreateTasks = isSuperAdmin || (hasPerms ? !!user?.permissions?.create_tasks : user?.role !== 'viewer');
+  // Contributors editing existing tasks can update progress and comments but not administrative task metadata unless permitted
   const isDeveloper = !canEditAllTasks && isEdit;
 
   const canEdit = !isEdit

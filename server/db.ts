@@ -268,7 +268,11 @@ export async function initDb(): Promise<DatabaseWrapper> {
       await sqliteDb.run("DELETE FROM _sqlite_write_test;");
     } catch (e: any) {
       if (e.message && e.message.includes("READONLY")) {
-        console.warn("Database is read-only. Falling back to /tmp/database.sqlite");
+        if (process.env.NODE_ENV === "production" || process.env.FAIL_ON_DB_CONNECT_ERROR === "true") {
+          console.error("FATAL: SQLite database file is read-only in production mode. Aborting to prevent data loss.");
+          throw new Error("SQLite database file is read-only in production.");
+        }
+        console.warn("Database is read-only in development. Falling back to /tmp/database.sqlite");
         sqliteDb.close();
         const TMP_DB_FILE = "/tmp/database.sqlite";
         if (fs.existsSync(DB_FILE) && !fs.existsSync(TMP_DB_FILE)) {
@@ -301,6 +305,18 @@ interface Migration {
   id: number;
   name: string;
   up: (db: DatabaseWrapper) => Promise<void>;
+}
+
+async function safeAddColumn(db: DatabaseWrapper, table: string, column: string, typeDef: string) {
+  try {
+    await db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${typeDef};`);
+  } catch (err: any) {
+    const msg = (err.message || "").toLowerCase();
+    if (msg.includes("duplicate column") || msg.includes("already exists") || msg.includes("duplicate")) {
+      return;
+    }
+    console.warn(`[Migration] safeAddColumn warning on ${table}.${column}:`, err.message);
+  }
 }
 
 const migrations: Migration[] = [
@@ -424,19 +440,19 @@ const migrations: Migration[] = [
     id: 2,
     name: "002_columns_and_defaults",
     up: async (db) => {
-      try { await db.exec('ALTER TABLE tasks ADD COLUMN milestoneId TEXT;'); } catch(err) {}
-      try { await db.exec('ALTER TABLE tasks ADD COLUMN orderIndex REAL DEFAULT 0;'); } catch(err) {}
-      try { await db.exec("ALTER TABLE tasks ADD COLUMN projectId TEXT;"); } catch (e) {}
-      try { await db.exec("ALTER TABLE projects ADD COLUMN projectKey TEXT;"); } catch (e) {}
-      try { await db.exec("ALTER TABLE projects ADD COLUMN taskCounter INTEGER DEFAULT 0;"); } catch(e) {}
-      try { await db.exec("ALTER TABLE teams ADD COLUMN projectId TEXT;"); } catch (e) {}
-      try { await db.exec("ALTER TABLE users ADD COLUMN skills TEXT DEFAULT '[]';"); } catch (e) {}
-      try { await db.exec("ALTER TABLE users ADD COLUMN rolePrefix TEXT;"); } catch (e) {}
-      try { await db.exec("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'Available';"); } catch (e) {}
-      try { await db.exec("ALTER TABLE users ADD COLUMN tokenVersion INTEGER DEFAULT 1;"); } catch (e) {}
-      try { await db.exec("ALTER TABLE users ADD COLUMN authProvider TEXT DEFAULT 'local';"); } catch (e) {}
-      try { await db.exec("ALTER TABLE users ADD COLUMN emailVerified INTEGER DEFAULT 0;"); } catch (e) {}
-      try { await db.exec("ALTER TABLE users ADD COLUMN createdAt TEXT;"); } catch (e) {}
+      await safeAddColumn(db, "tasks", "milestoneId", "TEXT");
+      await safeAddColumn(db, "tasks", "orderIndex", "REAL DEFAULT 0");
+      await safeAddColumn(db, "tasks", "projectId", "TEXT");
+      await safeAddColumn(db, "projects", "projectKey", "TEXT");
+      await safeAddColumn(db, "projects", "taskCounter", "INTEGER DEFAULT 0");
+      await safeAddColumn(db, "teams", "projectId", "TEXT");
+      await safeAddColumn(db, "users", "skills", "TEXT DEFAULT '[]'");
+      await safeAddColumn(db, "users", "rolePrefix", "TEXT");
+      await safeAddColumn(db, "users", "status", "TEXT DEFAULT 'Available'");
+      await safeAddColumn(db, "users", "tokenVersion", "INTEGER DEFAULT 1");
+      await safeAddColumn(db, "users", "authProvider", "TEXT DEFAULT 'local'");
+      await safeAddColumn(db, "users", "emailVerified", "INTEGER DEFAULT 0");
+      await safeAddColumn(db, "users", "createdAt", "TEXT");
 
       try {
         await db.exec("UPDATE users SET tokenVersion = 1 WHERE tokenVersion IS NULL;");
@@ -464,14 +480,14 @@ const migrations: Migration[] = [
           updatedAt TEXT NOT NULL
         );
       `);
-      try { await db.exec("ALTER TABLE projects ADD COLUMN repoProvider TEXT;"); } catch (e) {}
-      try { await db.exec("ALTER TABLE projects ADD COLUMN repoOwner TEXT;"); } catch (e) {}
-      try { await db.exec("ALTER TABLE projects ADD COLUMN repoName TEXT;"); } catch (e) {}
-      try { await db.exec("ALTER TABLE projects ADD COLUMN repoUrl TEXT;"); } catch (e) {}
-      try { await db.exec("ALTER TABLE projects ADD COLUMN repoToken TEXT;"); } catch (e) {}
-      try { await db.exec("ALTER TABLE projects ADD COLUMN defaultBranch TEXT DEFAULT 'main';"); } catch (e) {}
-      try { await db.exec("ALTER TABLE tasks ADD COLUMN prUrl TEXT;"); } catch (e) {}
-      try { await db.exec("ALTER TABLE tasks ADD COLUMN prStatus TEXT;"); } catch (e) {}
+      await safeAddColumn(db, "projects", "repoProvider", "TEXT");
+      await safeAddColumn(db, "projects", "repoOwner", "TEXT");
+      await safeAddColumn(db, "projects", "repoName", "TEXT");
+      await safeAddColumn(db, "projects", "repoUrl", "TEXT");
+      await safeAddColumn(db, "projects", "repoToken", "TEXT");
+      await safeAddColumn(db, "projects", "defaultBranch", "TEXT DEFAULT 'main'");
+      await safeAddColumn(db, "tasks", "prUrl", "TEXT");
+      await safeAddColumn(db, "tasks", "prStatus", "TEXT");
     }
   },
   {
@@ -501,9 +517,7 @@ const migrations: Migration[] = [
           permissions TEXT
         );
       `);
-      try {
-        await db.exec("ALTER TABLE roles ADD COLUMN permissions TEXT;");
-      } catch (alterError) {}
+      await safeAddColumn(db, "roles", "permissions", "TEXT");
 
       const defaultRoles = [
         { id: "super_admin", name: "Super Admin", description: "Full uninhibited system control", is_custom: 0, permissions: '{"create_tasks":true,"edit_all_tasks":true,"delete_tasks":true,"manage_projects":true,"manage_teams":true,"manage_users":true,"manage_roles":true,"reset_database":true}' },
@@ -582,9 +596,7 @@ const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_notifications_userId ON notifications(userId);
         CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
       `);
-      try {
-        await db.exec("ALTER TABLE projects ADD COLUMN webhookSecret TEXT;");
-      } catch (e) {}
+      await safeAddColumn(db, "projects", "webhookSecret", "TEXT");
     }
   },
   {

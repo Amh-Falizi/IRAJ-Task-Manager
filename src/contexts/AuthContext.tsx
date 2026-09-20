@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { User } from "../types";
+import { onUnauthorized } from "../lib/api";
 
 interface AuthContextType {
   user: User | null;
@@ -8,6 +9,7 @@ interface AuthContextType {
   login: (userOrToken?: any, maybeUser?: User) => void;
   logout: () => void;
   updateUser: (user: User) => void;
+  refetchUser: () => Promise<User | null>;
   loading: boolean;
   settings: Record<string, string>;
   refreshSettings: () => Promise<void>;
@@ -35,7 +37,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const refreshSettings = async () => {
+  const refreshSettings = useCallback(async () => {
     try {
       const res = await fetch('/api/settings');
       if (res.ok) {
@@ -45,7 +47,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err) {
       console.error("Failed to load settings:", err);
     }
-  };
+  }, []);
 
   const updateSettings = async (newSettings: Record<string, string>) => {
     const res = await fetch('/api/settings', {
@@ -64,36 +66,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const refetchUser = useCallback(async (): Promise<User | null> => {
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: { 
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        },
+      });
+      if (res.ok) {
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const data = await res.json();
+          setUser(data);
+          refreshSettings();
+          return data;
+        }
+      }
+      setUser(null);
+      return null;
+    } catch {
+      setUser(null);
+      return null;
+    }
+  }, [refreshSettings]);
+
+  // Handle global 401 Unauthorized by logging out
+  useEffect(() => {
+    const unsubscribe = onUnauthorized(() => {
+      cleanupLocalStorage();
+      setUser(null);
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Fetch current user using httpOnly cookie on mount
   useEffect(() => {
     cleanupLocalStorage();
     setLoading(true);
-    fetch('/api/auth/me', {
-      headers: { 
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      },
-    })
-      .then(async (res) => {
-        if (res.ok) {
-          const contentType = res.headers.get("content-type");
-          if (!contentType || !contentType.includes("application/json")) {
-            throw new Error("Invalid session");
-          }
-          return res.json();
-        }
-        throw new Error("Unauthenticated");
-      })
-      .then((data) => {
-        setUser(data);
-        refreshSettings();
-      })
-      .catch(() => {
-        setUser(null);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+    refetchUser().finally(() => setLoading(false));
+  }, [refetchUser]);
 
   const login = (userOrToken?: any, maybeUser?: User) => {
     cleanupLocalStorage();
@@ -119,7 +132,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const token = user ? "cookie_authenticated" : null;
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, token, login, logout, updateUser, loading, settings, refreshSettings, updateSettings }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, token, login, logout, updateUser, refetchUser, loading, settings, refreshSettings, updateSettings }}>
       {children}
     </AuthContext.Provider>
   );

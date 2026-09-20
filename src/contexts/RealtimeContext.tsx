@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, ReactNode, useRe
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
 
-interface RealtimeEvent {
+export interface RealtimeEvent {
   type: string;
   data: any;
   timestamp: string;
@@ -23,6 +23,9 @@ const RealtimeContext = createContext<RealtimeContextType>({
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const { user, isAuthenticated } = useAuth();
   const { info } = useToast();
+  const infoRef = useRef(info);
+  infoRef.current = info;
+
   const [isConnected, setIsConnected] = useState(false);
   const isConnectedRef = useRef(false);
   const [lastEvent, setLastEvent] = useState<RealtimeEvent | null>(null);
@@ -113,8 +116,8 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
           setLastEvent(eventObj);
           window.dispatchEvent(new CustomEvent('realtime:notification-new', { detail: data }));
 
-          if (data.title && data.message) {
-            info(`${data.title}: ${data.message}`);
+          if (data.title && data.message && infoRef.current) {
+            infoRef.current(`${data.title}: ${data.message}`);
           }
         } catch (err) {
           console.error('[Realtime] Parse error:', err);
@@ -152,7 +155,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         reconnectTimeoutRef.current = setTimeout(connect, delayMs);
       }
     }
-  }, [isAuthenticated, user, info]);
+  }, [isAuthenticated, user?.id]);
 
   useEffect(() => {
     isCancelledRef.current = false;
