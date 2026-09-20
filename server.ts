@@ -38,6 +38,17 @@ const trustProxyConfig: boolean | number | string = !rawTrust
   : rawTrust.toLowerCase() === "false"
   ? false
   : rawTrust;
+
+if (trustProxyConfig === true) {
+  console.warn(
+    "[SECURITY WARNING] TRUST_PROXY is set to 'true'. This blindly trusts all upstream hops and allows client IP spoofing via X-Forwarded-For. In production, configure an exact hop count (e.g. '1') or trusted proxy CIDR."
+  );
+} else if (typeof trustProxyConfig === "number" && trustProxyConfig > 10) {
+  console.warn(
+    `[SECURITY WARNING] TRUST_PROXY hop count (${trustProxyConfig}) is unusually high (>10). Excessive hop counts allow upstream peers to spoof X-Forwarded-For.`
+  );
+}
+
 app.set("trust proxy", trustProxyConfig);
 
 // Request logging
