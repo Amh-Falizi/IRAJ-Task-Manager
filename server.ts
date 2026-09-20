@@ -28,11 +28,16 @@ const app = express();
 // Safely configure reverse proxy trust.
 // Default to "loopback" to prevent peer containers on private Docker/VPC networks from spoofing X-Forwarded-For headers.
 // In production behind specific reverse proxies, configure TRUST_PROXY (e.g. "1", CIDR, or specific IP).
-const trustProxyConfig = process.env.TRUST_PROXY
-  ? isNaN(Number(process.env.TRUST_PROXY))
-    ? process.env.TRUST_PROXY
-    : Number(process.env.TRUST_PROXY)
-  : "loopback";
+const rawTrust = process.env.TRUST_PROXY?.trim();
+const trustProxyConfig: boolean | number | string = !rawTrust
+  ? "loopback"
+  : /^\d+$/.test(rawTrust)
+  ? parseInt(rawTrust, 10)
+  : rawTrust.toLowerCase() === "true"
+  ? true
+  : rawTrust.toLowerCase() === "false"
+  ? false
+  : rawTrust;
 app.set("trust proxy", trustProxyConfig);
 
 // Request logging
