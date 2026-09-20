@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import { dbPromise, extractTaskNumber } from "../db.js";
 import { encryptSecret, decryptSecret } from "../config.js";
 import { AuthRequest, AuthenticatedUser } from "../types.js";
+import { projectService, sanitizeProject } from "../services/project.service.js";
 import {
   authenticateToken,
   isAdminOrSuperAdmin,
@@ -18,24 +19,6 @@ import {
 export const projectsRouter = express.Router();
 const router = projectsRouter;
 
-const sanitizeProject = (project: any) => {
-  if (!project) return project;
-  const sanitized = { ...project };
-  if (sanitized.repoToken && sanitized.repoToken.trim() !== '') {
-    sanitized.repoToken = '••••••••';
-  } else {
-    sanitized.repoToken = '';
-  }
-  if (sanitized.webhookSecret && sanitized.webhookSecret.trim() !== '') {
-    sanitized.hasWebhookSecret = true;
-    sanitized.webhookSecret = '••••••••';
-  } else {
-    sanitized.hasWebhookSecret = false;
-    sanitized.webhookSecret = '';
-  }
-  return sanitized;
-};
-
 // Projects APIs
 router.get("/projects/:id/workload", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -43,46 +26,8 @@ router.get("/projects/:id/workload", authenticateToken, async (req: AuthRequest,
     if (!(await checkProjectAccess(db, req.params.id, req.user))) {
       return res.status(403).json({ error: "Access denied to project workload." });
     }
-    const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
-    if (!project) return res.sendStatus(404);
-
-    const tasks = await db.all("SELECT id, status, assigneeId FROM tasks WHERE projectId = ?", req.params.id);
-    const assigneeIds = Array.from(new Set(tasks.map((t: any) => t.assigneeId).filter(Boolean)));
-    let users: any[] = [];
-    if (assigneeIds.length > 0) {
-      const placeholders = assigneeIds.map(() => '?').join(',');
-      users = await db.all(`SELECT id, name, email FROM users WHERE id IN (${placeholders})`, assigneeIds);
-    }
-
-    const workload: Record<string, any> = {};
-    
-    tasks.forEach((task: any) => {
-      if (!task.assigneeId) return; 
-      if (!workload[task.assigneeId]) {
-        const user = users.find(u => u.id === task.assigneeId);
-        workload[task.assigneeId] = {
-          user: user || { id: task.assigneeId, name: 'Unknown User', email: '' },
-          total: 0,
-          statuses: {}
-        };
-      }
-      workload[task.assigneeId].total++;
-      const s = task.status || 'todo';
-      if (!workload[task.assigneeId].statuses[s]) {
-        workload[task.assigneeId].statuses[s] = 0;
-      }
-      workload[task.assigneeId].statuses[s]++;
-    });
-
-    const result = Object.values(workload).map((w: any) => {
-      // For legacy 'done' logic calculation where custom boards might use something else, we take 'done' if present, otherwise 0
-      const doneCount = w.statuses['done'] || 0;
-      return {
-        ...w,
-        completionPercentage: w.total > 0 ? Math.round((doneCount / w.total) * 100) : 0
-      };
-    }).sort((a: any, b: any) => b.total - a.total);
-
+    const result = await projectService.getWorkload(db, req.params.id);
+    if (!result) return res.sendStatus(404);
     res.json(result);
   } catch (err: any) {
     console.error("Error fetching project workload:", err);
@@ -248,69 +193,8 @@ router.put("/projects/:id/repo", authenticateToken, async (req: AuthRequest, res
       return res.status(403).json({ error: "Only project owners, project admins, or system administrators can configure repository settings." });
     }
 
-    const { repoProvider, repoOwner, repoName, repoUrl, repoToken, defaultBranch, webhookSecret } = req.body;
-
-    let owner = repoOwner || '';
-    let name = repoName || '';
-    if (repoUrl && (!owner || !name)) {
-      try {
-        const parsed = new URL(repoUrl);
-        const parts = parsed.pathname.replace(/^\//, '').replace(/\.git$/, '').split('/');
-        if (parts.length >= 2) {
-          owner = owner || parts[0];
-          name = name || parts.slice(1).join('/');
-        }
-      } catch (e) {}
-    }
-
-    // Preserve storedToken safely without destroying if decrypt fails or masked token was sent
-    let storedToken = project.repoToken || null;
-    if (repoToken !== undefined) {
-      if (repoToken === '••••••••') {
-        storedToken = project.repoToken;
-      } else if (typeof repoToken === 'string' && repoToken.trim() !== '') {
-        storedToken = encryptSecret(repoToken.trim());
-      } else if (repoToken === '' || repoToken === null) {
-        storedToken = null;
-      }
-    }
-
-    // Preserve or update webhookSecret safely
-    let storedWebhookSecret = project.webhookSecret || null;
-    if (webhookSecret !== undefined) {
-      if (webhookSecret === '••••••••') {
-        storedWebhookSecret = project.webhookSecret;
-      } else if (typeof webhookSecret === 'string' && webhookSecret.trim() !== '') {
-        storedWebhookSecret = encryptSecret(webhookSecret.trim());
-      } else if (webhookSecret === '' || webhookSecret === null) {
-        storedWebhookSecret = null;
-      }
-    }
-
-    await db.run(
-      `UPDATE projects SET 
-        repoProvider = ?, 
-        repoOwner = ?, 
-        repoName = ?, 
-        repoUrl = ?, 
-        repoToken = ?, 
-        webhookSecret = ?,
-        defaultBranch = ? 
-       WHERE id = ?`,
-      [
-        repoProvider || 'github',
-        owner,
-        name,
-        repoUrl || '',
-        storedToken,
-        storedWebhookSecret,
-        defaultBranch || 'main',
-        req.params.id
-      ]
-    );
-
-    const updated = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
-    res.json(sanitizeProject(updated));
+    const updated = await projectService.updateRepoSettings(db, req.params.id, project, req.body);
+    res.json(updated);
   } catch (err: any) {
     console.error("Error updating project repo settings:", err);
     res.status(500).json({ error: "Failed to update project repository settings" });
@@ -355,10 +239,7 @@ router.post("/projects/:id/webhook-secret/generate", authenticateToken, async (r
       return res.status(403).json({ error: "Only project owners, admins, or managers can generate webhook secrets." });
     }
 
-    const generatedSecret = crypto.randomBytes(24).toString("hex");
-    const encrypted = encryptSecret(generatedSecret);
-
-    await db.run("UPDATE projects SET webhookSecret = ? WHERE id = ?", [encrypted, req.params.id]);
+    const generatedSecret = await projectService.generateWebhookSecret(db, req.params.id);
 
     res.json({
       success: true,
@@ -386,16 +267,11 @@ router.put("/projects/:id/webhook-secret", authenticateToken, async (req: AuthRe
     }
 
     const { secret } = req.body;
-    let encryptedSecret: string | null = null;
-    if (typeof secret === 'string' && secret.trim()) {
-      encryptedSecret = encryptSecret(secret.trim());
-    }
-
-    await db.run("UPDATE projects SET webhookSecret = ? WHERE id = ?", [encryptedSecret, req.params.id]);
+    const hasSecret = await projectService.updateWebhookSecret(db, req.params.id, secret);
 
     res.json({
       success: true,
-      hasWebhookSecret: Boolean(encryptedSecret)
+      hasWebhookSecret: hasSecret
     });
   } catch (err: any) {
     console.error("Error updating webhook secret:", err);

@@ -4,6 +4,7 @@ import net from "net";
 import { Agent, fetch } from "undici";
 import { v4 as uuidv4 } from "uuid";
 import { dbPromise } from "../db.js";
+import { DatabaseWrapper } from "../types.js";
 import { decryptSecret } from "../config.js";
 import { eventsService } from "./events.service.js";
 
@@ -164,6 +165,17 @@ export async function validateAndResolveSafeDestination(urlStr: string): Promise
 }
 
 export class WebhookService {
+  private customDb?: DatabaseWrapper;
+
+  public setDb(db: DatabaseWrapper | undefined) {
+    this.customDb = db;
+  }
+
+  private async getDb(): Promise<DatabaseWrapper> {
+    if (this.customDb) return this.customDb;
+    return await dbPromise;
+  }
+
   /**
    * Dispatch an event to all configured outbound webhooks for a project
    */
@@ -173,7 +185,7 @@ export class WebhookService {
     payload: any
   ): Promise<void> {
     try {
-      const db = await dbPromise;
+      const db = await this.getDb();
       const webhooks = await db.all(
         "SELECT * FROM webhooks WHERE projectId = ? AND active = 1",
         [projectId]
@@ -223,7 +235,7 @@ export class WebhookService {
     payloadString: string,
     attempt: number = 1
   ): Promise<void> {
-    const db = await dbPromise;
+    const db = await this.getDb();
     const deliveryId = uuidv4();
 
     let currentUrl = webhook.url;
@@ -354,7 +366,7 @@ export class WebhookService {
       throw new Error("Missing X-Hub-Signature-256 header");
     }
 
-    const db = await dbPromise;
+    const db = await this.getDb();
     const repoFullName = payload.repository?.full_name; // e.g. owner/repo
     let project: any = null;
 
@@ -509,7 +521,7 @@ export class WebhookService {
       throw new Error("Missing X-Gitlab-Token header");
     }
 
-    const db = await dbPromise;
+    const db = await this.getDb();
     const projectPath = payload.project?.path_with_namespace;
     let project: any = null;
 

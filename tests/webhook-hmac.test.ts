@@ -1,8 +1,10 @@
-import { test, describe } from "node:test";
+import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "crypto";
+import sqlite3 from "sqlite3";
+import { open } from "sqlite";
 import { webhookService } from "../server/services/webhook.service.js";
-import { dbPromise } from "../server/db.js";
+import { SqliteWrapper } from "../server/db.js";
 import { encryptSecret } from "../server/config.js";
 
 describe("Webhook Cryptographic HMAC and Token Verification Tests", () => {
@@ -27,13 +29,68 @@ describe("Webhook Cryptographic HMAC and Token Verification Tests", () => {
     repository: { full_name: "testorg/testrepo" }
   });
 
-  test("Setup test database project with encrypted webhook secret", async () => {
-    const db = await dbPromise;
-    await db.run("DELETE FROM projects WHERE id = ? OR (repoOwner = ? AND repoName = ?)", [projectId, "testorg", "testrepo"]);
+  const gitlabPayload = {
+    object_kind: "merge_request",
+    project: { path_with_namespace: "testorg/testrepo" },
+    object_attributes: {
+      id: 99,
+      iid: 12,
+      source_branch: "feature/auth-hardening",
+      target_branch: "main",
+      state: "opened",
+      url: "https://gitlab.com/testorg/testrepo/-/merge_requests/12"
+    }
+  };
+
+  after(() => {
+    webhookService.setDb(undefined);
+  });
+
+  test("Setup in-memory test database with encrypted webhook secret", async () => {
+    const sqliteDb = await open({
+      filename: ":memory:",
+      driver: sqlite3.Database
+    });
+    const db = new SqliteWrapper(sqliteDb);
+
+    await db.exec(`
+      CREATE TABLE projects (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        ownerId TEXT,
+        repoOwner TEXT,
+        repoName TEXT,
+        repoUrl TEXT,
+        webhookSecret TEXT,
+        createdAt TEXT,
+        updatedAt TEXT
+      );
+      CREATE TABLE tasks (
+        id TEXT PRIMARY KEY,
+        projectId TEXT,
+        title TEXT,
+        status TEXT,
+        branchName TEXT,
+        prUrl TEXT,
+        prStatus TEXT,
+        assigneeId TEXT,
+        creatorId TEXT
+      );
+      CREATE TABLE task_activities (
+        id TEXT PRIMARY KEY,
+        taskId TEXT,
+        userId TEXT,
+        action TEXT,
+        createdAt TEXT
+      );
+    `);
+
     await db.run(
       "INSERT INTO projects (id, name, ownerId, repoOwner, repoName, webhookSecret, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       [projectId, "Webhook Test Proj", "user-test-owner", "testorg", "testrepo", encryptedSecret, new Date().toISOString(), new Date().toISOString()]
     );
+
+    webhookService.setDb(db);
   });
 
   test("GitHub sha256 HMAC calculates matching signature", () => {
@@ -125,19 +182,32 @@ describe("Webhook Cryptographic HMAC and Token Verification Tests", () => {
     );
   });
 
-  test("GitLab secret token verification using timing-safe comparison", () => {
-    const configuredToken = "gl-webhook-token-xyz-123";
-    const headerToken = "gl-webhook-token-xyz-123";
-    const invalidToken = "gl-webhook-token-wrong-999";
+  test("handleGitLabWebhook verifies valid secret token and rejects invalid token", async () => {
+    const res = await webhookService.handleGitLabWebhook(
+      "Merge Request Hook",
+      gitlabPayload,
+      secret
+    );
+    assert.equal(res.success, true);
 
-    const verifyGitLabToken = (received: string, expected: string) => {
-      const recBuf = Buffer.from(received);
-      const expBuf = Buffer.from(expected);
-      if (recBuf.length !== expBuf.length) return false;
-      return crypto.timingSafeEqual(recBuf, expBuf);
-    };
+    await assert.rejects(
+      () =>
+        webhookService.handleGitLabWebhook(
+          "Merge Request Hook",
+          gitlabPayload,
+          "wrong-gitlab-token"
+        ),
+      (err: any) => err.message === "Invalid GitLab webhook token"
+    );
 
-    assert.equal(verifyGitLabToken(headerToken, configuredToken), true);
-    assert.equal(verifyGitLabToken(invalidToken, configuredToken), false);
+    await assert.rejects(
+      () =>
+        webhookService.handleGitLabWebhook(
+          "Merge Request Hook",
+          gitlabPayload,
+          undefined
+        ),
+      (err: any) => err.message === "Missing X-Gitlab-Token header"
+    );
   });
 });
