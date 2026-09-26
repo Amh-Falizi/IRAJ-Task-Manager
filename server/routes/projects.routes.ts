@@ -71,49 +71,20 @@ router.post("/projects", authenticateToken, async (req: AuthRequest, res: Respon
       return res.status(403).json({ error: "You do not have permission to create projects." });
     }
 
-    const db = await dbPromise;
-
-    const { name, description, projectKey: customProjectKey } = req.body;
+    const { name, description, projectKey } = req.body;
     if (!name || typeof name !== 'string' || name.trim() === '') {
       return res.status(400).json({ error: "Project name is required" });
     }
 
-    const projectId = uuidv4();
-    
-    let projectKey = customProjectKey ? customProjectKey.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase() : null;
-    
-    if (!projectKey) {
-      if (name) {
-        projectKey = name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 3).toUpperCase();
-      }
-      if (!projectKey || projectKey.length < 2) {
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        projectKey = Array.from({length: 3}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-      }
-    }
+    const db = await dbPromise;
+    const newProject = await projectService.createProject(db, {
+      name: name.trim(),
+      description: description || "",
+      ownerId: req.user!.id,
+      projectKey
+    });
 
-    if (db.isPg) {
-      await db.run(
-        "INSERT INTO projects (id, name, description, ownerId, projectKey, taskCounter, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [projectId, name, description || "", req.user!.id, projectKey, 0, new Date().toISOString()]
-      );
-      await db.run(
-        "INSERT INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, 'admin', ?) ON CONFLICT (projectId, userId) DO NOTHING",
-        [projectId, req.user!.id, new Date().toISOString()]
-      );
-    } else {
-      await db.run(
-        "INSERT INTO projects (id, name, description, ownerId, projectKey, taskCounter, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [projectId, name, description || "", req.user!.id, projectKey, 0, new Date().toISOString()]
-      );
-      await db.run(
-        "INSERT INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, 'admin', ?)",
-        [projectId, req.user!.id, new Date().toISOString()]
-      );
-    }
-    
-    const newProject = await db.get("SELECT * FROM projects WHERE id = ?", projectId);
-    res.json(sanitizeProject(newProject));
+    res.json(newProject);
   } catch (err: any) {
     console.error("Error creating project:", err);
     res.status(500).json({ error: err?.message || "Failed to create project" });
@@ -732,16 +703,8 @@ router.get("/projects/:id/columns", authenticateToken, async (req: AuthRequest, 
     if (!(await checkProjectAccess(db, req.params.id, req.user))) {
       return res.status(403).json({ error: "Access denied to project." });
     }
-    const row = await db.get("SELECT columnsJson FROM project_columns WHERE projectId = ?", req.params.id);
-    if (!row) {
-      return res.json({ columns: null });
-    }
-    try {
-      const columns = JSON.parse(row.columnsJson);
-      return res.json({ columns });
-    } catch (e) {
-      return res.json({ columns: null });
-    }
+    const columns = await projectService.getColumns(db, req.params.id);
+    return res.json({ columns });
   } catch (err: any) {
     console.error("Error fetching project columns:", err);
     res.status(500).json({ error: "Failed to fetch project columns" });
@@ -755,7 +718,7 @@ router.put("/projects/:id/columns", authenticateToken, async (req: AuthRequest, 
       return res.status(403).json({ error: "Access denied: user is not a member of this project." });
     }
 
-    const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+    const project = await projectService.getProjectById(db, req.params.id);
     if (!project) return res.status(404).json({ error: "Project not found" });
 
     const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user!.id]);
@@ -771,23 +734,7 @@ router.put("/projects/:id/columns", authenticateToken, async (req: AuthRequest, 
     }
 
     const columnsJson = JSON.stringify(columns);
-    const id = uuidv4();
-    const now = new Date().toISOString();
-
-    if (db.isPg) {
-      await db.run(`
-        INSERT INTO project_columns (id, projectId, columnsJson, updatedAt)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT (projectId) DO UPDATE SET columnsJson = EXCLUDED.columnsJson, updatedAt = EXCLUDED.updatedAt
-      `, [id, req.params.id, columnsJson, now]);
-    } else {
-      const existing = await db.get("SELECT id FROM project_columns WHERE projectId = ?", req.params.id);
-      if (existing) {
-        await db.run("UPDATE project_columns SET columnsJson = ?, updatedAt = ? WHERE projectId = ?", [columnsJson, now, req.params.id]);
-      } else {
-        await db.run("INSERT INTO project_columns (id, projectId, columnsJson, updatedAt) VALUES (?, ?, ?, ?)", [id, req.params.id, columnsJson, now]);
-      }
-    }
+    await projectService.saveColumns(db, req.params.id, columnsJson);
 
     res.json({ success: true, columns });
   } catch (err: any) {
@@ -933,7 +880,7 @@ router.delete("/projects/:id", authenticateToken, async (req: AuthRequest, res: 
       return res.status(403).json({ error: "Access denied: user is not a member of this project." });
     }
 
-    const project = await db.get("SELECT * FROM projects WHERE id = ?", req.params.id);
+    const project = await projectService.getProjectById(db, req.params.id);
     if (!project) return res.sendStatus(404);
 
     const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [req.params.id, req.user!.id]);
@@ -943,22 +890,7 @@ router.delete("/projects/:id", authenticateToken, async (req: AuthRequest, res: 
       return res.status(403).json({ error: "Only project owners, project admins, or system administrators can delete projects." });
     }
 
-    const projectId = req.params.id;
-    const projectTasks = await db.all("SELECT id FROM tasks WHERE projectId = ?", projectId);
-    if (projectTasks.length > 0) {
-      const taskIds = projectTasks.map((t: any) => t.id);
-      const placeholders = taskIds.map(() => "?").join(",");
-      await db.run(`DELETE FROM task_dependencies WHERE taskId IN (${placeholders}) OR blockedByTaskId IN (${placeholders})`, [...taskIds, ...taskIds]);
-      await db.run(`DELETE FROM task_comments WHERE taskId IN (${placeholders})`, taskIds);
-      await db.run(`DELETE FROM task_activities WHERE taskId IN (${placeholders})`, taskIds);
-      await db.run(`DELETE FROM tasks WHERE id IN (${placeholders})`, taskIds);
-    }
-
-    await db.run("DELETE FROM documents WHERE projectId = ?", projectId);
-    await db.run("DELETE FROM milestones WHERE projectId = ?", projectId);
-    await db.run("DELETE FROM project_members WHERE projectId = ?", projectId);
-    await db.run("DELETE FROM team_projects WHERE projectId = ?", projectId);
-    await db.run("DELETE FROM projects WHERE id = ?", projectId);
+    await projectService.deleteProject(db, req.params.id);
     res.json({ success: true });
   } catch (err: any) {
     console.error("Error deleting project:", err);
@@ -1080,12 +1012,7 @@ router.get("/projects/:id/members", authenticateToken, async (req: AuthRequest, 
     if (!(await checkProjectAccess(db, req.params.id, req.user))) {
       return res.status(403).json({ error: "Access denied to project members." });
     }
-    const members = await db.all(`
-      SELECT u.id, u.name, u.email, u.role as globalRole, pm.role, pm.joinedAt, pm.projectId
-      FROM project_members pm
-      JOIN users u ON pm.userId = u.id
-      WHERE pm.projectId = ?
-    `, req.params.id);
+    const members = await projectService.getMembers(db, req.params.id);
     res.json(members);
   } catch (err: any) {
     console.error("Error fetching project members:", err);
@@ -1099,7 +1026,7 @@ router.post("/projects/:id/members", authenticateToken, async (req: AuthRequest,
     const projectId = req.params.id;
     const { userId, role } = req.body;
 
-    const project = await db.get("SELECT * FROM projects WHERE id = ?", projectId);
+    const project = await projectService.getProjectById(db, projectId);
     if (!project) return res.sendStatus(404);
 
     const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [projectId, req.user!.id]);
@@ -1117,20 +1044,8 @@ router.post("/projects/:id/members", authenticateToken, async (req: AuthRequest,
       return res.status(404).json({ error: "User not found." });
     }
 
-    try {
-      await db.run(
-        "INSERT INTO project_members (projectId, userId, role, joinedAt) VALUES (?, ?, ?, ?) ON CONFLICT(projectId, userId) DO UPDATE SET role = ?",
-        [projectId, userId, newRole, new Date().toISOString(), newRole]
-      );
-      res.json({ success: true });
-    } catch (e: any) {
-      if (e.message?.includes("UNIQUE constraint failed") || e.code === 'SQLITE_CONSTRAINT' || e.code === '23505' || e.message?.includes("duplicate key value")) {
-        await db.run("UPDATE project_members SET role = ? WHERE projectId = ? AND userId = ?", [newRole, projectId, userId]);
-        res.json({ success: true });
-      } else {
-        res.status(500).json({ error: "Failed to add/update member" });
-      }
-    }
+    await projectService.addOrUpdateMember(db, projectId, userId, newRole);
+    res.json({ success: true });
   } catch (err: any) {
     console.error("Error adding project member:", err);
     res.status(500).json({ error: "Failed to add project member" });
@@ -1142,7 +1057,7 @@ router.delete("/projects/:id/members/:userId", authenticateToken, async (req: Au
     const db = await dbPromise;
     const projectId = req.params.id;
 
-    const project = await db.get("SELECT * FROM projects WHERE id = ?", projectId);
+    const project = await projectService.getProjectById(db, projectId);
     if (!project) return res.sendStatus(404);
 
     const pm = await db.get("SELECT role FROM project_members WHERE projectId = ? AND userId = ?", [projectId, req.user!.id]);
@@ -1152,7 +1067,7 @@ router.delete("/projects/:id/members/:userId", authenticateToken, async (req: Au
       return res.status(403).json({ error: "Only admins, project owner or project admins can remove members." });
     }
 
-    await db.run("DELETE FROM project_members WHERE projectId = ? AND userId = ?", [projectId, req.params.userId]);
+    await projectService.removeMember(db, projectId, req.params.userId);
     res.json({ success: true });
   } catch (err: any) {
     console.error("Error removing project member:", err);

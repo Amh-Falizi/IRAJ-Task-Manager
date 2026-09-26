@@ -7,9 +7,10 @@ import { Shield, UserCog, Plus, Edit2, Trash2, X, Save, ChevronDown } from 'luci
 import UserModal from '../components/UserModal';
 import UserAvatar from '../components/UserAvatar';
 import CustomSelect from '../components/CustomSelect';
+import ConfirmModal from '../components/ConfirmModal';
 
 export default function UsersAdmin() {
-  const { isAuthenticated, user: currentUser } = useAuth();
+  const { isAuthenticated, user: currentUser, can } = useAuth();
   const { success, error } = useToast();
   
   const [users, setUsers] = useState<User[]>([]);
@@ -28,6 +29,18 @@ export default function UsersAdmin() {
   // Role form states
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<any | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
   const [roleForm, setRoleForm] = useState({
     id: '',
     name: '',
@@ -73,33 +86,39 @@ export default function UsersAdmin() {
       await Promise.all([fetchUsers(), fetchRoles()]);
       setLoading(false);
     };
-    const canAccess = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.permissions?.manage_roles === true || currentUser?.permissions?.manage_users === true;
+    const canAccess = can('manage_users') || can('manage_roles');
     if (isAuthenticated && canAccess) {
       loadData();
     }
-  }, [isAuthenticated, currentUser?.role, currentUser?.permissions]);
+  }, [isAuthenticated, currentUser?.role, currentUser?.permissions, can]);
 
-  const handleDeleteUser = async (userToDelete: User) => {
-    if (!window.confirm(`Are you sure you want to delete user ${userToDelete.name}?`)) {
-      return;
-    }
-    try {
-      const res = await apiFetchRaw(`/api/users/${userToDelete.id}`, {
-        method: 'DELETE',
-        headers: { }
-      });
-      
-      if (res.ok) {
-        setUsers(users.filter(u => u.id !== userToDelete.id));
-        success(`User ${userToDelete.name} deleted successfully.`);
-      } else {
-        const data = await res.json();
-        error(data.error || 'Failed to delete user.');
+  const handleDeleteUser = (userToDelete: User) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete User',
+      message: `Are you sure you want to delete user ${userToDelete.name}? This action cannot be undone.`,
+      confirmText: 'Delete User',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          const res = await apiFetchRaw(`/api/users/${userToDelete.id}`, {
+            method: 'DELETE',
+            headers: { }
+          });
+          
+          if (res.ok) {
+            setUsers(users.filter(u => u.id !== userToDelete.id));
+            success(`User ${userToDelete.name} deleted successfully.`);
+          } else {
+            const data = await res.json();
+            error(data.error || 'Failed to delete user.');
+          }
+        } catch (err) {
+          console.error(err);
+          error('An unexpected error occurred.');
+        }
       }
-    } catch (err) {
-      console.error(err);
-      error('An unexpected error occurred.');
-    }
+    });
   };
 
   const handleSaveRole = async (e: React.FormEvent) => {
@@ -133,27 +152,33 @@ export default function UsersAdmin() {
     }
   };
 
-  const handleDeleteRole = async (roleId: string, roleName: string) => {
-    if (!window.confirm(`Are you sure you want to delete the role "${roleName}"? Any users assigned to this role will be reverted to "Developer" default role.`)) {
-      return;
-    }
-    try {
-      const res = await apiFetchRaw(`/api/roles/${roleId}`, {
-        method: 'DELETE',
-        headers: { }
-      });
-      if (res.ok) {
-        success(`Role "${roleName}" deleted successfully.`);
-        fetchRoles();
-        fetchUsers();
-      } else {
-        const data = await res.json();
-        error(data.error || 'Failed to delete role.');
+  const handleDeleteRole = (roleId: string, roleName: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Role',
+      message: `Are you sure you want to delete the role "${roleName}"? Any users assigned to this role will be reverted to "Developer" default role.`,
+      confirmText: 'Delete Role',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          const res = await apiFetchRaw(`/api/roles/${roleId}`, {
+            method: 'DELETE',
+            headers: { }
+          });
+          if (res.ok) {
+            success(`Role "${roleName}" deleted successfully.`);
+            fetchRoles();
+            fetchUsers();
+          } else {
+            const data = await res.json();
+            error(data.error || 'Failed to delete role.');
+          }
+        } catch (err) {
+          console.error(err);
+          error('An unexpected error occurred.');
+        }
       }
-    } catch (err) {
-      console.error(err);
-      error('An unexpected error occurred.');
-    }
+    });
   };
 
   const handleToggleSelectAll = () => {
@@ -245,13 +270,13 @@ export default function UsersAdmin() {
     }
   };
 
-  if (currentUser?.role !== 'admin' && currentUser?.role !== 'super_admin') {
+  if (!can('manage_users') && !can('manage_roles')) {
     return (
       <div className="flex h-full items-center justify-center p-6 bg-page-bg">
         <div className="text-center space-y-4">
           <Shield className="w-12 h-12 text-red-500 mx-auto" />
           <h2 className="text-lg font-semibold">Access Denied</h2>
-          <p className="text-sm text-subtle">You must be an administrator to view this page.</p>
+          <p className="text-sm text-subtle">You do not have permission to access administration.</p>
         </div>
       </div>
     );
@@ -687,6 +712,15 @@ export default function UsersAdmin() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

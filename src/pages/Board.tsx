@@ -20,6 +20,7 @@ import { exportToCSV, exportToJSON } from '../lib/export';
 import { HelpIcon, Tooltip } from '../components/Tooltip';
 import { EmptyState } from '../components/EmptyState';
 import { BoardColumn } from '../components/board/BoardColumn';
+import ConfirmModal from '../components/ConfirmModal';
 
 export interface Column {
   id: string;
@@ -91,6 +92,8 @@ export default function Board() {
   const handleDeleteColumn = (id: string) => {
     setColumns(columns.filter(c => c.id !== id));
   };
+
+  const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false);
 
   const currentProjectIdRef = useRef(projectId);
   useEffect(() => {
@@ -534,9 +537,13 @@ export default function Board() {
     }
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (selectedTaskIds.size === 0) return;
-    if (!window.confirm(`Are you sure you want to delete ${selectedTaskIds.size} tasks?`)) return;
+    setBulkDeleteModalOpen(true);
+  };
+
+  const confirmBulkDelete = async () => {
+    setBulkDeleteModalOpen(false);
     try {
       await Promise.all(Array.from(selectedTaskIds).map(id => 
         apiFetchRaw(`/api/tasks/${id}`, {
@@ -941,6 +948,15 @@ export default function Board() {
           onClose={() => setIsActivityModalOpen(false)}
         />
       )}
+
+      <ConfirmModal
+        isOpen={bulkDeleteModalOpen}
+        title="Delete Selected Tasks"
+        message={`Are you sure you want to delete ${selectedTaskIds.size} tasks? This action cannot be undone.`}
+        confirmText="Delete Tasks"
+        onConfirm={confirmBulkDelete}
+        onCancel={() => setBulkDeleteModalOpen(false)}
+      />
     </div>
   );
 }

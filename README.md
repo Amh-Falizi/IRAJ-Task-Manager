@@ -50,9 +50,6 @@ npm install
 ### 2. Environment Setup
 Copy `.env.example` to `.env` or declare environment variables:
 ```env
-# Optional Gemini API Key
-GEMINI_API_KEY="YOUR_API_KEY"
-
 # Optional PostgreSQL URL (defaults to local SQLite if omitted)
 DATABASE_URL="postgres://user:password@localhost:5432/dbname"
 

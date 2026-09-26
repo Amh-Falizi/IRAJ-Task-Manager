@@ -33,6 +33,7 @@ import ProfileSkillsTab from "../components/profile/ProfileSkillsTab";
 import ProfileActivityTab from "../components/profile/ProfileActivityTab";
 import ProfileDataBackupTab from "../components/profile/ProfileDataBackupTab";
 import ProfileGitIntegrationTab from "../components/profile/ProfileGitIntegrationTab";
+import ConfirmModal from "../components/ConfirmModal";
 
 export const STATUS_OPTIONS = [
   { value: "Available", label: "Available", color: "bg-green-500", text: "text-green-500" },
@@ -140,6 +141,7 @@ export default function Profile() {
   const [dbInfo, setDbInfo] = useState<any>(null);
   const [loadingInfo, setLoadingInfo] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [restoreConfirmFile, setRestoreConfirmFile] = useState<File | null>(null);
 
   // Git Integrations Connectivity State
   const [integrationsStatus, setIntegrationsStatus] = useState<any>(null);
@@ -253,16 +255,18 @@ export default function Profile() {
 
   /**
    * Handles portable `.json` database restoration.
-   * Parses the file content, structures the payload, and sends a transaction-backed import request.
-   * Reloads the page in 2 seconds to force a clean reload of all layout states.
-   * 
+   * Prompts user via ConfirmModal before proceeding with database wipe.
+   *
    * @param {File} file - Selected JSON backup file.
    */
-  const handleJsonRestore = async (file: File) => {
-    if (!window.confirm("Are you absolutely sure you want to restore from this JSON backup? ALL current tables will be cleared and replaced with backup data.")) {
-      return;
-    }
-    
+  const handleJsonRestore = (file: File) => {
+    setRestoreConfirmFile(file);
+  };
+
+  const confirmJsonRestore = async () => {
+    if (!restoreConfirmFile) return;
+    const file = restoreConfirmFile;
+    setRestoreConfirmFile(null);
     setRestoring(true);
     try {
       const text = await file.text();
@@ -683,6 +687,15 @@ export default function Profile() {
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={Boolean(restoreConfirmFile)}
+        title="Restore Database from Backup"
+        message="Are you absolutely sure you want to restore from this JSON backup? ALL current tables will be cleared and replaced with backup data."
+        confirmText="Restore Database"
+        onConfirm={confirmJsonRestore}
+        onCancel={() => setRestoreConfirmFile(null)}
+      />
     </div>
   );
 }

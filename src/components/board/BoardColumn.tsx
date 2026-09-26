@@ -4,6 +4,7 @@ import { Task, User, Milestone } from '../../types';
 import { Plus, Trash2 } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
 import { TaskCard } from './TaskCard';
+import { useAuth } from '../../contexts/AuthContext';
 
 export interface BoardColumnProps {
   column: Column;
@@ -70,6 +71,7 @@ export const BoardColumn: React.FC<BoardColumnProps> = ({
   gitEnabled,
   success
 }) => {
+  const { can } = useAuth();
   return (
     <div 
       className={`w-[290px] sm:w-80 snap-center flex-shrink-0 flex flex-col bg-surface border rounded-lg transition-colors duration-200 ${draggingColumnId === column.id ? 'opacity-50 border-dashed border-blue-500' : 'border-border-subtle'} `}
@@ -149,7 +151,7 @@ export const BoardColumn: React.FC<BoardColumnProps> = ({
           </span>
         </div>
         <div className="flex flex-row items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {userRole !== 'developer' && (
+          {can('create_tasks') && (
             <Tooltip content={`Add Task to ${column.title}`} position="top">
               <button
                 onClick={() => handleCreateTaskInColumn(column.id)}

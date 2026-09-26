@@ -14,7 +14,7 @@ interface Props {
 }
 
 export default function ProjectMembersModal({ project, allUsers, onClose }: Props) {
-  const { isAuthenticated, user: currentUser } = useAuth();
+  const { isAuthenticated, user: currentUser, can } = useAuth();
   const { error } = useToast();
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -108,7 +108,7 @@ export default function ProjectMembersModal({ project, allUsers, onClose }: Prop
   };
 
   const currentUserMember = members.find(m => m.id === currentUser?.id);
-  const canManage = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.id === project.ownerId || currentUserMember?.role === 'admin';
+  const canManage = can('manage_projects') || currentUser?.id === project.ownerId || currentUserMember?.role === 'admin';
 
   const nonMembers = allUsers.filter(u => !members.find(m => m.id === u.id) && u.id !== project.ownerId);
 

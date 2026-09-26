@@ -5,6 +5,7 @@ import { useToast } from '../contexts/ToastContext';
 import { Project, Team } from '../types';
 import { X, Trash2, Plus, LogIn } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
+import ConfirmModal from './ConfirmModal';
 
 interface Props {
   project: Project;
@@ -21,6 +22,7 @@ export default function ProjectTeamsModal({ project, onClose }: Props) {
   const [addingDesc, setAddingDesc] = useState('');
   const [creating, setCreating] = useState(false);
   const [addingExisting, setAddingExisting] = useState('');
+  const [removeTeamId, setRemoveTeamId] = useState<string | null>(null);
 
   const fetchTeams = async () => {
     try {
@@ -93,8 +95,14 @@ export default function ProjectTeamsModal({ project, onClose }: Props) {
     }
   };
 
-  const handleRemoveFromProject = async (teamId: string) => {
-    if (!confirm('Are you sure you want to remove this team from the project? (It will become a global team).')) return;
+  const handleRemoveFromProject = (teamId: string) => {
+    setRemoveTeamId(teamId);
+  };
+
+  const confirmRemoveFromProject = async () => {
+    if (!removeTeamId) return;
+    const teamId = removeTeamId;
+    setRemoveTeamId(null);
     try {
       const res = await apiFetchRaw(`/api/teams/${teamId}`, {
         method: 'PUT',
@@ -190,6 +198,15 @@ export default function ProjectTeamsModal({ project, onClose }: Props) {
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={Boolean(removeTeamId)}
+        title="Remove Team from Project"
+        message="Are you sure you want to remove this team from the project? It will become a global team."
+        confirmText="Remove Team"
+        onConfirm={confirmRemoveFromProject}
+        onCancel={() => setRemoveTeamId(null)}
+      />
     </div>
   );
 }

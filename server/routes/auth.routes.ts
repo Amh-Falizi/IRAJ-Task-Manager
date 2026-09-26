@@ -59,32 +59,143 @@ router.post("/register", async (req, res) => {
       const isFirstUser = parseInt(userCount.count, 10) === 0;
       const assignedRole = isFirstUser ? "super_admin" : "developer";
       const hasEmailService = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
-      const emailVerified = (isFirstUser || !hasEmailService) ? 1 : 0;
+
+      if (!isFirstUser) {
+        if (process.env.ALLOW_SELF_REGISTRATION === "false") {
+          throw new Error("Registration is currently closed. Please contact an administrator.");
+        }
+        if (!hasEmailService && process.env.ALLOW_SELF_REGISTRATION !== "true") {
+          throw new Error("Registration is closed because email verification service is not configured. Please contact an administrator.");
+        }
+      }
+
+      const emailVerified = isFirstUser ? 1 : 0;
+      const userStatus = isFirstUser ? "Available" : (hasEmailService ? "Available" : "Pending Approval");
+
+      let verificationToken: string | null = null;
+      if (!isFirstUser && hasEmailService) {
+        verificationToken = crypto.randomBytes(32).toString("hex");
+        const tokenHash = crypto.createHash("sha256").update(verificationToken).digest("hex");
+        const expiresAt = Date.now() + 24 * 3600000; // 24 hours
+        await tx.run(
+          "INSERT INTO email_verifications (token, userId, expiresAt) VALUES (?, ?, ?)",
+          [tokenHash, id, expiresAt]
+        );
+      }
 
       await tx.run(
-        "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status, createdAt) VALUES (?, ?, ?, ?, ?, 1, 'local', ?, 'Available', ?)",
-        [id, name, email, passwordHash, assignedRole, emailVerified, createdAt]
+        "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status, createdAt) VALUES (?, ?, ?, ?, ?, 1, 'local', ?, ?, ?)",
+        [id, name, email, passwordHash, assignedRole, emailVerified, userStatus, createdAt]
       );
       
-      return { id, name, email, role: assignedRole, emailVerified };
+      return { id, name, email, role: assignedRole, emailVerified, userStatus, verificationToken };
     });
 
     if (result.emailVerified === 1) {
       const token = jwt.sign({ id: result.id, role: result.role, tokenVersion: 1 }, SECRET_KEY, { expiresIn: "7d" });
       setAuthCookie(res, token);
       return res.json({ user: { id: result.id, name: result.name, email: result.email, role: result.role, rolePrefix: "" } });
-    } else {
+    }
+
+    if (result.verificationToken) {
+      try {
+        const baseUrl = getAppUrl(req);
+        const verifyLink = `${baseUrl}/api/auth/verify-email?token=${result.verificationToken}`;
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port: parseInt(process.env.SMTP_PORT || '587'),
+          secure: process.env.SMTP_PORT === '465',
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          },
+        });
+
+        await transporter.sendMail({
+          from: process.env.SMTP_FROM || '"IRAJ Task Manager" <noreply@example.com>',
+          to: result.email,
+          subject: "Verify Your Email Address - IRAJ",
+          text: `Welcome to IRAJ, ${result.name}!\n\nPlease verify your email address by visiting this link:\n${verifyLink}\n\nThis verification link expires in 24 hours.\nIf you did not create this account, please ignore this email.`,
+          html: `<p>Welcome to IRAJ, ${result.name}!</p><p><a href="${verifyLink}">Click here to verify your email address</a></p><p>This verification link expires in 24 hours.</p>`,
+        });
+      } catch (mailError) {
+        console.error("Failed to send verification email:", mailError);
+      }
+
       return res.json({
-        message: "Registration successful. Please contact an administrator or use 'Forgot Password' to verify your email address before logging in.",
+        message: "Registration successful. A verification email has been sent to your inbox. Please verify before logging in.",
         requiresVerification: true
       });
     }
+
+    return res.json({
+      message: "Registration submitted successfully. Administrator approval is required before logging in.",
+      requiresVerification: true
+    });
   } catch (e: any) {
-    if (e.message && (e.message.includes("Email already") || e.message.includes("pending verification"))) {
+    if (e.message && (e.message.includes("Email already") || e.message.includes("pending verification") || e.message.includes("Registration is"))) {
       return res.status(400).json({ error: e.message });
     }
     console.error("REGISTER ERROR:", e);
     res.status(500).json({ error: "An unexpected error occurred during registration." });
+  }
+});
+
+// Verify Email (GET link from email)
+router.get("/verify-email", async (req, res) => {
+  try {
+    const token = req.query.token as string;
+    if (!token || typeof token !== "string") {
+      return res.status(400).send("<h3>Invalid verification link.</h3>");
+    }
+
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const db = await dbPromise;
+    const record = await db.get("SELECT * FROM email_verifications WHERE token = ?", tokenHash);
+
+    if (!record || record.expiresAt < Date.now()) {
+      if (record) {
+        await db.run("DELETE FROM email_verifications WHERE token = ?", tokenHash);
+      }
+      return res.status(400).send("<h3>Verification link is invalid or has expired. Please register again.</h3>");
+    }
+
+    await db.run("UPDATE users SET emailVerified = 1 WHERE id = ?", record.userId);
+    await db.run("DELETE FROM email_verifications WHERE token = ?", tokenHash);
+
+    return res.redirect("/login?verified=true");
+  } catch (err) {
+    console.error("EMAIL VERIFICATION ERROR:", err);
+    return res.status(500).send("<h3>An unexpected error occurred during email verification.</h3>");
+  }
+});
+
+// Verify Email (POST API)
+router.post("/verify-email", async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token || typeof token !== "string") {
+      return res.status(400).json({ error: "Verification token is required." });
+    }
+
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const db = await dbPromise;
+    const record = await db.get("SELECT * FROM email_verifications WHERE token = ?", tokenHash);
+
+    if (!record || record.expiresAt < Date.now()) {
+      if (record) {
+        await db.run("DELETE FROM email_verifications WHERE token = ?", tokenHash);
+      }
+      return res.status(400).json({ error: "Invalid or expired verification token." });
+    }
+
+    await db.run("UPDATE users SET emailVerified = 1 WHERE id = ?", record.userId);
+    await db.run("DELETE FROM email_verifications WHERE token = ?", tokenHash);
+
+    return res.json({ success: true, message: "Email verified successfully. You can now log in." });
+  } catch (err) {
+    console.error("EMAIL VERIFICATION ERROR:", err);
+    return res.status(500).json({ error: "Failed to verify email." });
   }
 });
 
@@ -110,6 +221,10 @@ router.post("/login", async (req, res) => {
 
     if (user.status && (user.status.toLowerCase() === 'inactive' || user.status.toLowerCase() === 'disabled' || user.status.toLowerCase() === 'suspended')) {
       return res.status(403).json({ error: "Account is inactive or disabled. Contact administrator." });
+    }
+
+    if (user.status === 'Pending Approval') {
+      return res.status(403).json({ error: "Your account is pending administrator approval before you can log in." });
     }
 
     if (user.emailVerified === 0 || user.emailVerified === false) {

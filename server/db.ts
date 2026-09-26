@@ -221,9 +221,12 @@ export async function purgeStaleUnverifiedUsers(db: any) {
   try {
     const cutoffDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     await db.run(
-      "DELETE FROM users WHERE authProvider = 'local' AND (emailVerified = 0 OR emailVerified IS NULL) AND createdAt IS NOT NULL AND createdAt < ?",
+      "DELETE FROM users WHERE authProvider = 'local' AND (emailVerified = 0 OR emailVerified IS NULL) AND (status IS NULL OR status != 'Pending Approval') AND createdAt IS NOT NULL AND createdAt < ?",
       [cutoffDate]
     );
+    try {
+      await db.run("DELETE FROM email_verifications WHERE expiresAt < ?", [Date.now()]);
+    } catch {}
   } catch (e) {
     console.error("Failed to purge stale unverified users:", e);
   }
@@ -625,6 +628,21 @@ const migrations: Migration[] = [
         );
         CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhookId ON webhook_deliveries(webhookId);
       `);
+    }
+  },
+  {
+    id: 8,
+    name: "008_email_verifications",
+    up: async (db) => {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS email_verifications (
+          token TEXT PRIMARY KEY,
+          userId TEXT NOT NULL,
+          expiresAt INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_email_verifications_userId ON email_verifications(userId);
+      `);
+      await safeAddColumn(db, "users", "verificationToken", "TEXT");
     }
   }
 ];

@@ -78,6 +78,10 @@ class EventsService {
     }
   }
 
+  public getClientCount(): number {
+    return this.clients.size;
+  }
+
   public updateClientProject(clientId: string, projectId?: string) {
     const client = this.clients.get(clientId);
     if (client) {

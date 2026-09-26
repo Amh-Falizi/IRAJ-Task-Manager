@@ -9,8 +9,16 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const { login, refetchUser } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('verified') === 'true') {
+      setSuccessMsg('Email verified successfully! You can now log in.');
+    }
+  }, []);
 
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
@@ -134,6 +142,7 @@ export default function Login() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {successMsg && <div className="rounded border border-green-500/20 bg-green-500/10 p-2 text-xs font-bold text-green-400 uppercase">{successMsg}</div>}
           {error && <div className="rounded border border-red-500/20 bg-red-500/10 p-2 text-xs font-bold text-red-500 uppercase">{error}</div>}
           
           <div className="space-y-1">
