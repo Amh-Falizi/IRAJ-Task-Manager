@@ -15,7 +15,7 @@ import TaskModal from '../components/TaskModal';
 import { GitSettingsPanel } from '../components/git/GitSettingsPanel';
 
 export default function GitRepositoryPage() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, can } = useAuth();
   const { success, error, info } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -200,7 +200,7 @@ export default function GitRepositoryPage() {
     }
   }, [selectedProjectId]);
 
-  const isManagerOrAdmin = Boolean(user && (user.role === 'admin' || user.role === 'super_admin' || user.role === 'manager' || (activeProject && activeProject.ownerId === user.id)));
+  const isManagerOrAdmin = Boolean(user && (can('manage_projects') || (activeProject && activeProject.ownerId === user.id)));
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();

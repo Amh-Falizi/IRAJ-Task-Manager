@@ -11,7 +11,7 @@ import SearchableSelect from '../components/SearchableSelect';
 import { EmptyState } from '../components/EmptyState';
 
 export default function Teams() {
-  const { isAuthenticated, user: currentUser } = useAuth();
+  const { isAuthenticated, user: currentUser, can } = useAuth();
   const { success, error, info } = useToast();
   const [teams, setTeams] = useState<Team[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -50,7 +50,7 @@ export default function Teams() {
           <h1 className="text-xl font-semibold text-strong tracking-tight">Teams</h1>
           <p className="text-xs text-muted mt-1">Manage development teams and members</p>
         </div>
-        {(currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.role === 'manager') && (
+        {can('manage_teams') && (
           <button
             onClick={() => setShowCreateModal(true)}
             className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md shadow hover:scale-105 font-bold transition-all text-sm self-end sm:self-auto"
@@ -72,7 +72,7 @@ export default function Teams() {
                   icon={Users}
                   title="No teams available"
                   description="There are no development teams available yet. Create a team to organize your members and assign them to projects."
-                  actionText={(currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.role === 'manager') ? "New Team" : undefined}
+                  actionText={can('manage_teams') ? "New Team" : undefined}
                   onAction={() => setShowCreateModal(true)}
                 />
               </div>
@@ -95,7 +95,7 @@ export default function Teams() {
                       {team.ownerId === currentUser?.id && (
                         <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full font-bold">OWNER</span>
                       )}
-                      {(currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || team.ownerId === currentUser?.id) && (
+                      {(can('manage_teams') || team.ownerId === currentUser?.id) && (
                         <>
                           <button
                             onClick={(e) => {
@@ -187,6 +187,7 @@ export default function Teams() {
 
 function CreateTeamModal({ team, onClose, onSuccess }: { team?: Team | null, onClose: () => void, onSuccess: () => void }) {
   const { isAuthenticated, user } = useAuth();
+  const { error } = useToast();
   const [name, setName] = useState(team?.name || '');
   const [description, setDescription] = useState(team?.description || '');
   const [projectId, setProjectId] = useState(team?.projectId || '');
@@ -214,8 +215,15 @@ function CreateTeamModal({ team, onClose, onSuccess }: { team?: Team | null, onC
       if (res.ok) {
         onSuccess();
       } else {
-        const err = await res.text();
-        alert(`Error saving team: ${err}`);
+        let errMsg = 'Failed to save team';
+        try {
+          const errJson = await res.json();
+          errMsg = errJson.error || errJson.message || errMsg;
+        } catch {
+          const errText = await res.text();
+          if (errText) errMsg = errText;
+        }
+        error(errMsg);
       }
     } catch (err) {
       console.error(err);
@@ -327,7 +335,8 @@ function CreateTeamModal({ team, onClose, onSuccess }: { team?: Team | null, onC
 }
 
 function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: () => void, onTeamDeleted: () => void }) {
-  const { isAuthenticated, user: currentUser } = useAuth();
+  const { isAuthenticated, user: currentUser, can } = useAuth();
+  const { error } = useToast();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [teamProjects, setTeamProjects] = useState<Project[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
@@ -338,7 +347,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
   const [addingUser, setAddingUser] = useState(false);
   const [addingProject, setAddingProject] = useState(false);
 
-  const isAdminOrOwner = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.id === team.ownerId;
+  const isAdminOrOwner = can('manage_teams') || currentUser?.id === team.ownerId;
 
   const fetchData = async () => {
     setLoading(true);
@@ -382,7 +391,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
         fetchData();
       } else {
         const data = await res.json();
-        alert(data.error);
+        error(data.error || 'Failed to add member');
       }
     } catch (err) {
       console.error(err);
@@ -421,7 +430,7 @@ function TeamDetails({ team, onClose, onTeamDeleted }: { team: Team, onClose: ()
         fetchData();
       } else {
         const data = await res.json();
-        alert(data.error);
+        error(data.error || 'Failed to add project');
       }
     } catch (err) {
       console.error(err);

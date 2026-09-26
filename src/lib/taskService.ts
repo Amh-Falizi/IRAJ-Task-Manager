@@ -30,8 +30,15 @@ export async function saveTask({ taskData, editingTaskId, onSuccess, toast }: Sa
       if (toast) toast.success(isEdit ? 'Task updated' : 'Task created');
       return true;
     } else {
-      const errData = await res.text();
-      if (toast) toast.error(`Failed to save task: ${errData}`);
+      let errMsg = 'Failed to save task';
+      try {
+        const errJson = await res.json();
+        errMsg = errJson.error || errJson.message || errMsg;
+      } catch {
+        const errText = await res.text();
+        if (errText) errMsg = errText;
+      }
+      if (toast) toast.error(errMsg);
       return false;
     }
   } catch (err: any) {

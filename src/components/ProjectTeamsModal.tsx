@@ -1,6 +1,7 @@
 import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { Project, Team } from '../types';
 import { X, Trash2, Plus, LogIn } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
@@ -12,6 +13,7 @@ interface Props {
 
 export default function ProjectTeamsModal({ project, onClose }: Props) {
   const { isAuthenticated, user: currentUser } = useAuth();
+  const { error } = useToast();
   const [teams, setTeams] = useState<Team[]>([]);
   const [allTeams, setAllTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,8 +57,15 @@ export default function ProjectTeamsModal({ project, onClose }: Props) {
         setAddingDesc('');
         fetchTeams();
       } else {
-        const err = await res.text();
-        alert(`Failed to create team: ${err}`);
+        let errMessage = 'Failed to create team';
+        try {
+          const errJson = await res.json();
+          errMessage = errJson.error || errJson.message || errMessage;
+        } catch {
+          const err = await res.text();
+          if (err) errMessage = err;
+        }
+        error(errMessage);
       }
     } catch(err) {
       console.error(err);

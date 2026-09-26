@@ -16,7 +16,7 @@ type SortOption = 'custom' | 'priority' | 'deadline' | 'createdAt';
 type SortDirection = 'asc' | 'desc';
 
 export default function Graph() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, can } = useAuth();
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('projectId');
   
@@ -288,7 +288,7 @@ export default function Graph() {
             <FolderKanban size={14} className="text-blue-400" />
             <span>TASK BOARD</span>
           </Link>
-          {user?.role !== 'developer' && (
+          {can('create_tasks') && (
             <button
               onClick={handleCreateTask}
               className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow hover:scale-105 transition-all flex items-center space-x-2"

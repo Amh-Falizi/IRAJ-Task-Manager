@@ -205,6 +205,9 @@ class EventsService {
         }
       }
     }, 25000);
+    if (this.heartbeatTimer && typeof this.heartbeatTimer.unref === "function") {
+      this.heartbeatTimer.unref();
+    }
   }
 
   public getConnectedCount(): number {

@@ -44,7 +44,7 @@ export const STATUS_OPTIONS = [
 ];
 
 export default function Profile() {
-  const { user, isAuthenticated, updateUser, login } = useAuth();
+  const { user, isAuthenticated, updateUser, login, can } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { success, error } = useToast();
   const { gitEnabled, setGitEnabled } = useGitFeature();
@@ -84,7 +84,7 @@ export default function Profile() {
     }
   };
 
-  const isManagerOrAdmin = user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'manager';
+  const isManagerOrAdmin = can('manage_projects');
 
   const profileTabs = [
     { id: 'general', label: 'General Settings', icon: Settings },
@@ -92,7 +92,7 @@ export default function Profile() {
     { id: 'security', label: 'Security Log', icon: Shield },
     { id: 'skills', label: 'Skills & Expertise', icon: Code },
     ...(isManagerOrAdmin && gitEnabled ? [{ id: 'integrations', label: 'Integrations', icon: GitBranch }] : []),
-    ...((user?.role === 'admin' || user?.role === 'super_admin') ? [{ id: 'backup', label: 'Backup & Restore', icon: Database }] : []),
+    ...(user?.role === 'super_admin' ? [{ id: 'backup', label: 'Backup & Restore', icon: Database }] : []),
   ];
 
   const handleNextTab = () => {
@@ -665,7 +665,7 @@ export default function Profile() {
                 />
               )}
 
-              {activeTab === 'backup' && (user?.role === 'admin' || user?.role === 'super_admin') && (
+              {activeTab === 'backup' && user?.role === 'super_admin' && (
                 <ProfileDataBackupTab
                   dbInfo={dbInfo}
                   loadingInfo={loadingInfo}

@@ -45,7 +45,7 @@ const priorityWeight = {
 };
 
 export default function Board() {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, can } = useAuth();
   const { success, error, info } = useToast();
   const { gitEnabled } = useGitFeature();
   const navigate = useNavigate();
@@ -425,15 +425,26 @@ export default function Board() {
     setTasks(tasks.map(t => t.id === taskId ? { ...t, status: targetStatus as any, orderIndex: newOrderIndex } : t));
     
     try {
-      await apiFetchRaw(`/api/tasks/${taskId}`, {
+      const res = await apiFetchRaw(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json' 
         },
         body: JSON.stringify({ ...task, status: targetStatus, orderIndex: newOrderIndex })
       });
-    } catch (err) {
+      if (!res.ok) {
+        let msg = 'Failed to move task';
+        try {
+          const data = await res.json();
+          msg = data.error || data.message || msg;
+        } catch {
+          // ignore
+        }
+        error(msg);
+      }
+    } catch (err: any) {
       console.error('Failed to update status', err);
+      error(err?.message ? `Failed to move task: ${err.message}` : 'Failed to move task');
     } finally {
       fetchData();
     }
@@ -773,7 +784,7 @@ export default function Board() {
               </>
             )}
           </div>
-          {user?.role !== 'developer' && (
+          {can('create_tasks') && (
             <Tooltip content="Create a new task with keyboard shortcut: c" position="bottom">
               <button
                 onClick={handleCreateTask}

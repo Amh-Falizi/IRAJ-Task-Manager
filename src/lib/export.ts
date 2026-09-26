@@ -26,7 +26,6 @@ export function exportToJSON(filename: string, data: any) {
 
 function downloadFile(filename: string, mimeType: string, content: string) {
   const blob = new Blob([content], { type: mimeType });
-  const link = document.createElement('url');
   if ((window.navigator as any).msSaveOrOpenBlob) {
     (window.navigator as any).msSaveOrOpenBlob(blob, filename);
   } else {

@@ -1,6 +1,7 @@
 import { apiFetchRaw } from "../lib/api";
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { Project, User, ProjectMember } from '../types';
 import { X, Trash2, UserPlus, Settings, Shield, ChevronDown } from 'lucide-react';
 import UserAvatar from './UserAvatar';
@@ -14,6 +15,7 @@ interface Props {
 
 export default function ProjectMembersModal({ project, allUsers, onClose }: Props) {
   const { isAuthenticated, user: currentUser } = useAuth();
+  const { error } = useToast();
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedUserId, setSelectedUserId] = useState('');
@@ -56,8 +58,15 @@ export default function ProjectMembersModal({ project, allUsers, onClose }: Prop
         setSelectedRole('member');
         fetchMembers();
       } else {
-        const errData = await res.text();
-        alert(`Failed to add member: ${errData}`);
+        let errMessage = 'Failed to add member';
+        try {
+          const errJson = await res.json();
+          errMessage = errJson.error || errJson.message || errMessage;
+        } catch {
+          const errData = await res.text();
+          if (errData) errMessage = errData;
+        }
+        error(errMessage);
       }
     } catch (err) {
       console.error(err);

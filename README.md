@@ -33,11 +33,10 @@ Full operational guides and feature documentation are available in the [`/docs`]
 
 ## Tech Stack
 
-- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Lucide React, Framer Motion (`motion/react`)
+- **Frontend**: React 19, TypeScript, Vite, Tailwind CSS, Lucide React, Framer Motion (`motion/react`)
 - **Data Visualizations**: `@xyflow/react`, Dagre, Recharts, D3.js
 - **Backend Application**: Node.js + Express.js API (bundle output via `esbuild`)
 - **Database Architecture**: SQLite (`sqlite3`) default with optional PostgreSQL (`pg`) support
-- **AI Tooling**: Google Gemini (`@google/genai`) for intelligent code branch suggestions and task formatting
 
 ---
 

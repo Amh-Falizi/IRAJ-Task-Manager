@@ -224,6 +224,11 @@ app.use("/api/backup", backupRouter);
 app.use("/api", eventsRouter);
 app.use("/api", webhooksRouter);
 
+// Catch-all 404 handler for unmatched API routes (prevents fallthrough to SPA HTML)
+app.all(["/api", "/api/*"], (_req, res) => {
+  res.status(404).json({ error: "API endpoint not found" });
+});
+
 async function startServer() {
   // Ensure database initialization begins
   await dbPromise;

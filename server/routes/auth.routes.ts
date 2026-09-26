@@ -43,11 +43,7 @@ router.post("/register", async (req, res) => {
       const existing = await tx.get("SELECT * FROM users WHERE email = ?", email);
       if (existing) {
         if (existing.authProvider === 'local' && (existing.emailVerified === 0 || existing.emailVerified === false)) {
-          const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-          if (existing.createdAt && existing.createdAt > oneDayAgo) {
-            throw new Error("Email is already registered and pending verification. Please wait 24 hours before re-registering.");
-          }
-          // Clear previous unverified reservation so the legitimate user can register
+          // Clear previous unverified reservation so the legitimate user can re-register immediately
           await tx.run("DELETE FROM users WHERE id = ?", existing.id);
         } else {
           throw new Error("Email already exists");
@@ -62,7 +58,8 @@ router.post("/register", async (req, res) => {
       const userCount = await tx.get("SELECT COUNT(*) as count FROM users");
       const isFirstUser = parseInt(userCount.count, 10) === 0;
       const assignedRole = isFirstUser ? "super_admin" : "developer";
-      const emailVerified = isFirstUser ? 1 : 0;
+      const hasEmailService = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+      const emailVerified = (isFirstUser || !hasEmailService) ? 1 : 0;
 
       await tx.run(
         "INSERT INTO users (id, name, email, passwordHash, role, tokenVersion, authProvider, emailVerified, status, createdAt) VALUES (?, ?, ?, ?, ?, 1, 'local', ?, 'Available', ?)",

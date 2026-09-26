@@ -2,6 +2,7 @@ import React from 'react';
 import { Task } from '../../types';
 import { cn } from '../../lib/utils';
 import { CheckCircle2, Plus } from 'lucide-react';
+import { useToast } from '../../contexts/ToastContext';
 
 export interface TaskSubtasksTreeProps {
   taskId: string;
@@ -22,6 +23,7 @@ export const TaskSubtasksTree: React.FC<TaskSubtasksTreeProps> = ({
   onUpdateTask,
   getStatusTitle
 }) => {
+  const { error } = useToast();
   return (
     <div>
       <div className="flex justify-between items-center mb-3 border-b border-border-subtle pb-1">
@@ -50,7 +52,7 @@ export const TaskSubtasksTree: React.FC<TaskSubtasksTreeProps> = ({
                           return dep && dep.status !== 'done';
                         });
                         if (pendingDeps.length > 0) {
-                          alert(`Cannot complete task. ${pendingDeps.length} dependencies are still pending.`);
+                          error(`Cannot complete task. ${pendingDeps.length} dependencies are still pending.`);
                           return;
                         }
                       }

@@ -41,7 +41,7 @@ export default function Login() {
       
       const authWindow = window.open(data.url, 'gitlab_oauth', 'width=600,height=700');
       if (!authWindow) {
-        alert('Please allow popups to sign in with GitLab.');
+        setError('Please allow popups to sign in with GitLab.');
       }
     } catch (err: any) {
       setError(err.message);
@@ -56,7 +56,7 @@ export default function Login() {
       
       const authWindow = window.open(data.url, 'google_oauth', 'width=600,height=700');
       if (!authWindow) {
-        alert('Please allow popups to sign in with Google.');
+        setError('Please allow popups to sign in with Google.');
       }
     } catch (err: any) {
       setError(err.message);
@@ -71,7 +71,7 @@ export default function Login() {
       
       const authWindow = window.open(data.url, 'github_oauth', 'width=600,height=700');
       if (!authWindow) {
-        alert('Please allow popups to sign in with GitHub.');
+        setError('Please allow popups to sign in with GitHub.');
       }
     } catch (err: any) {
       setError(err.message);

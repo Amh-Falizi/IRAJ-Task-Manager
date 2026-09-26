@@ -48,7 +48,7 @@ export async function runBackgroundPrSync() {
             const headers: Record<string, string> = {
               "User-Agent": "devteam-taskmanager",
               Accept: "application/vnd.github.v3+json",
-              Authorization: `Bearer ${token}`
+              ...(token ? { Authorization: `Bearer ${token}` } : {})
             };
             const ghRes = await fetch(
               `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${prNumber}`,

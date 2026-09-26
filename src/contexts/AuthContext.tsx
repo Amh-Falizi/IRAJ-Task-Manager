@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { User } from "../types";
 import { apiFetchRaw, onUnauthorized } from "../lib/api";
+import { can as checkPermission } from "../lib/permissions";
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   token?: string | null;
+  can: (permission: string) => boolean;
   login: (userOrToken?: any, maybeUser?: User) => void;
   logout: () => void;
   updateUser: (user: User) => void;
@@ -131,8 +133,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Deprecated backwards-compat placeholder string for any external or lingering references
   const token = user ? "cookie_authenticated" : null;
 
+  const can = useCallback((permission: string) => {
+    return checkPermission(user, permission);
+  }, [user]);
+
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, token, login, logout, updateUser, refetchUser, loading, settings, refreshSettings, updateSettings }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, token, can, login, logout, updateUser, refetchUser, loading, settings, refreshSettings, updateSettings }}>
       {children}
     </AuthContext.Provider>
   );

@@ -9,17 +9,6 @@ import { AuthRequest } from "../types.js";
 
 export const webhooksRouter = Router();
 
-// Scoped JSON body parser with rawBody verification buffer for inbound webhooks
-webhooksRouter.use(
-  "/webhooks",
-  express.json({
-    limit: "5mb",
-    verify: (req: AuthRequest, _res, buf) => {
-      req.rawBody = buf;
-    }
-  })
-);
-
 // Inbound GitHub webhook endpoint
 webhooksRouter.post("/webhooks/github", async (req: AuthRequest, res: Response) => {
   const event = req.headers["x-github-event"] as string;

@@ -18,10 +18,10 @@ interface ProjectGitModalProps {
 }
 
 export default function ProjectGitModal({ project, onClose, onUpdateProject }: ProjectGitModalProps) {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, can } = useAuth();
   const { success, error, info } = useToast();
 
-  const canManageRepoSettings = user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'manager' || project.ownerId === user?.id;
+  const canManageRepoSettings = can('manage_projects') || project.ownerId === user?.id;
 
   const [activeTab, setActiveTab] = useState<'branches' | 'settings' | 'create_branch'>('branches');
   const [loading, setLoading] = useState(false);

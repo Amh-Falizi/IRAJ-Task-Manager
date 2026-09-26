@@ -67,10 +67,6 @@ router.get("/", authenticateToken, async (req: AuthRequest, res: Response) => {
       tasks.forEach((t: any) => {
         t.dependencies = deps.filter((d: any) => d.taskId === t.id).map((d: any) => d.blockedByTaskId);
       });
-    } else {
-      tasks.forEach((t: any) => {
-        t.dependencies = [];
-      });
     }
     
     res.json(tasks);

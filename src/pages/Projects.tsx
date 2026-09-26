@@ -18,7 +18,7 @@ import { EmptyState } from '../components/EmptyState';
 import { Tooltip } from '../components/Tooltip';
 
 export default function Projects() {
-  const { isAuthenticated, user: currentUser } = useAuth();
+  const { isAuthenticated, user: currentUser, can } = useAuth();
   const { success, error, info } = useToast();
   const { gitEnabled } = useGitFeature();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -114,16 +114,18 @@ export default function Projects() {
               </>
             )}
           </div>
-          <button
-            onClick={() => {
-              setSelectedProject(null);
-              setShowCreateModal(true);
-            }}
-            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md shadow hover:scale-105 font-bold transition-all text-sm"
-          >
-            <Plus size={16} />
-            <span>New Project</span>
-          </button>
+          {can('manage_projects') && (
+            <button
+              onClick={() => {
+                setSelectedProject(null);
+                setShowCreateModal(true);
+              }}
+              className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md shadow hover:scale-105 font-bold transition-all text-sm"
+            >
+              <Plus size={16} />
+              <span>New Project</span>
+            </button>
+          )}
         </div>
       </header>
       
@@ -136,7 +138,7 @@ export default function Projects() {
               icon={FolderKanban}
               title="No projects yet"
               description="Create a new project to start organizing tasks and collaborating with your team."
-              actionText="New Project"
+              actionText={can('manage_projects') ? "New Project" : undefined}
               onAction={() => {
                 setSelectedProject(null);
                 setShowCreateModal(true);
@@ -146,7 +148,7 @@ export default function Projects() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {projects.map(project => {
-              const isOwnerOrAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.role === 'manager' || currentUser?.id === project.ownerId;
+              const isOwnerOrAdmin = can('manage_projects') || currentUser?.id === project.ownerId;
               
               return (
               <div 
